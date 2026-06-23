@@ -1,0 +1,42 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    --background: 38 34% 94%;
+    --foreground: 30 21% 7%;
+    --card: 43 100% 97%;
+    --card-foreground: 30 21% 7%;
+    --primary: 174 67% 18%;
+    --primary-foreground: 43 100% 97%;
+    --secondary: 38 45% 89%;
+    --secondary-foreground: 174 67% 18%;
+    --muted: 37 32% 90%;
+    --muted-foreground: 31 12% 38%;
+    --accent: 25 59% 47%;
+    --accent-foreground: 39 93% 27%;
+    --destructive: 6 63% 38%;
+    --destructive-foreground: 10 100% 96%;
+    --border: 37 25% 80%;
+    --input: 37 25% 80%;
+    --ring: 174 67% 18% / 0.12;
+    --radius-sm: 0.625rem;
+    --radius-md: 1rem;
+    --radius-lg: 1.5rem;
+    --shadow-panel: 0 18px 48px rgb(38 28 18 / 0.12);
+  }
+
+  * { @apply border-border; }
+
+  body {
+    @apply m-0 min-h-screen bg-background font-body text-foreground antialiased;
+    background:
+      radial-gradient(circle at top left, rgb(199 111 43 / 0.18), transparent 34rem),
+      radial-gradient(circle at 84% 8%, rgb(15 76 69 / 0.14), transparent 28rem),
+      linear-gradient(135deg, rgb(15 76 69 / 0.08) 25%, transparent 25%) 0 0 / 18px 18px,
+      hsl(var(--background));
+  }
+
+  button, input { font: inherit; }
+}

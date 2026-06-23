@@ -1,0 +1,12 @@
+{
+  "name": "@vps-manager/web",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "vite --config vite.config.ts",
+    "build": "vite build --config vite.config.ts",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "test": "vitest run src/**/*.test.tsx --config vite.config.ts"
+  }
+}

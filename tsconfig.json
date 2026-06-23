@@ -1,0 +1,11 @@
+{
+  "compilerOptions": {
+    "experimentalDecorators": true,
+    "emitDecoratorMetadata": true
+  },
+  "files": [],
+  "references": [
+    { "path": "./packages/api" },
+    { "path": "./packages/web" }
+  ]
+}
