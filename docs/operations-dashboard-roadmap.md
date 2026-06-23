@@ -148,6 +148,50 @@ Security rules:
 - Block metadata hosts such as `169.254.169.254`.
 - Private-network targets require explicit local config.
 
+### Implementation Plan
+
+1. Lock the security/config contract first.
+   - Add a typed config service that reads `APP_MODE`, `LOCAL_AUTH_TOKEN`, `ENABLE_WEB_TERMINAL`, `ALLOW_PRIVATE_NETWORK_TARGETS`, and data/private directory paths.
+   - Validate config during Nest bootstrap and fail fast on invalid modes, missing local auth token, or unsafe terminal settings.
+   - Add `.env.example` entries for every supported variable with safe defaults.
+
+2. Split persistence behind repositories.
+   - Move the existing VPS JSON access behind `VpsRepository` without changing API responses.
+   - Add JSON repository shells for `JobRepository`, `AuditRepository`, and `MetricRepository` using `data/jobs.json`, `data/audit.json`, and `data/metrics.json`.
+   - Keep repository methods small and async so SQLite can replace JSON later without controller changes.
+
+3. Expand backend domain models deliberately.
+   - Extend `VpsRecord` with `provider`, `region`, `tags`, `status`, `lastSeenAt`, and `notes`.
+   - Add default values at the service boundary so existing records and tests keep working.
+   - Introduce `MetricSample`, `CommandJob`, `AuditEvent`, and `CredentialState` types before exposing new endpoints.
+
+4. Add request safety middleware.
+   - Add request ID middleware and include the ID in normalized error responses.
+   - Add `helmet` and conservative rate limiting for mutations and SSH-related endpoints.
+   - Add local-mode auth guard for create, update, delete, provision, verify, and future command endpoints.
+   - Keep health checks and static assets public.
+
+5. Enforce SSH host policy.
+   - Centralize host validation before any real SSH provider call.
+   - Block metadata addresses and localhost targets by default.
+   - Block private-network targets unless `APP_MODE=local` and `ALLOW_PRIVATE_NETWORK_TARGETS=true`.
+   - Keep demo mode physically unable to resolve to the real `ssh2` provider.
+
+6. Add redaction and audit primitives.
+   - Create one redaction utility used by exception filters, audit writers, and job output previews.
+   - Write audit events for VPS mutations, key provisioning, key verification, auth failures, and blocked SSH host attempts.
+   - Store only safe metadata in audit records; never passwords, private keys, or raw SSH stderr containing secrets.
+
+7. Preserve the current frontend contract.
+   - Keep all existing `/api/vps` response shapes stable while backend internals change.
+   - Only add optional fields to returned VPS records.
+   - Do not require frontend auth changes until a later UI pass adds token entry or settings.
+
+8. Verify Phase 1 as a backend slice.
+   - Add unit tests for config validation, host policy, redaction, and auth guard behavior.
+   - Extend API tests for local auth requirements, demo SSH blocking, safe error messages, and static path protection.
+   - Run `npm test`, `npm run typecheck`, `npm run build`, and production smoke tests for `/api/health`, `/`, protected mutations, and blocked static paths.
+
 ### Tests
 
 - Local mode requires auth for mutations.

@@ -23,6 +23,7 @@
     "@nestjs/platform-express": "^10.4.15",
     "dotenv": "^16.4.7",
     "express": "^4.21.2",
+    "helmet": "^8.2.0",
     "nanoid": "^5.0.9",
     "reflect-metadata": "^0.2.2",
     "rxjs": "^7.8.1",

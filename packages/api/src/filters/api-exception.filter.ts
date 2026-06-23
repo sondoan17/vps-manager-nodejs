@@ -1,29 +1,46 @@
 import { Catch, HttpException, type ArgumentsHost, type ExceptionFilter } from "@nestjs/common";
-import type { Response } from "express";
+import type { Request, Response } from "express";
 import { ZodError } from "zod";
-import { VpsNotFoundError } from "../errors.js";
+import { DemoSshDisabledError, SshHostBlockedError, VpsNotFoundError } from "../errors.js";
+import { safeErrorMessage } from "../common/redaction.js";
+
+function errorBody(message: string, _requestId?: string) {
+  return { error: { message } };
+}
 
 export class ApiExceptionFilter implements ExceptionFilter {
   catch(error: unknown, host: ArgumentsHost) {
+    const request = host.switchToHttp().getRequest<Request>();
     const response = host.switchToHttp().getResponse<Response>();
+    const requestId = request.requestId;
 
     if (error instanceof ZodError) {
-      return response.status(400).json({ error: { message: "Invalid request" } });
+      return response.status(400).json(errorBody("Invalid request", requestId));
     }
 
     if (error instanceof VpsNotFoundError) {
-      return response.status(404).json({ error: { message: "VPS not found" } });
+      return response.status(404).json(errorBody("VPS not found", requestId));
+    }
+
+    if (error instanceof DemoSshDisabledError || error instanceof SshHostBlockedError) {
+      return response.status(403).json(errorBody(safeErrorMessage(error), requestId));
     }
 
     if ((error as NodeJS.ErrnoException).code === "ENOENT") {
-      return response.status(404).json({ error: { message: "Required resource not found" } });
+      return response.status(404).json(errorBody("Required resource not found", requestId));
     }
 
     if (error instanceof HttpException) {
-      return response.status(error.getStatus()).json(error.getResponse());
+      const payload = error.getResponse();
+      const message = typeof payload === "object" && payload && "error" in payload
+        ? (payload as { error?: { message?: unknown } }).error?.message
+        : typeof payload === "object" && payload && "message" in payload
+          ? (payload as { message?: unknown }).message
+          : error.message;
+      return response.status(error.getStatus()).json(errorBody(typeof message === "string" ? safeErrorMessage(message) : "Request failed", requestId));
     }
 
-    return response.status(500).json({ error: { message: "Internal server error" } });
+    return response.status(500).json(errorBody("Internal server error", requestId));
   }
 }
 

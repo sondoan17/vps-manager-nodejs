@@ -1,7 +1,7 @@
-import { mkdir, readFile, rename, writeFile } from "node:fs/promises";
-import { dirname } from "node:path";
 import { nanoid } from "nanoid";
 import type { CreateVpsInput, UpdateVpsInput, VpsRecord } from "../models/vps.js";
+import { readJsonFile, writeJsonFile } from "../repositories/json-file.js";
+import { withVpsDefaults, type VpsRepository } from "../repositories/vps.repository.js";
 
 type StoreFile = { vps: VpsRecord[] };
 
@@ -9,22 +9,15 @@ const now = () => new Date().toISOString();
 
 export function createVpsStore(filePath = "data/vps.json") {
   async function readStore(): Promise<StoreFile> {
-    try {
-      return JSON.parse(await readFile(filePath, "utf8")) as StoreFile;
-    } catch (error: unknown) {
-      if ((error as NodeJS.ErrnoException).code === "ENOENT") return { vps: [] };
-      throw error;
-    }
+    const data = await readJsonFile<StoreFile>(filePath, { vps: [] });
+    return { vps: data.vps.map(withVpsDefaults) };
   }
 
   async function writeStore(data: StoreFile): Promise<void> {
-    await mkdir(dirname(filePath), { recursive: true });
-    const tempPath = `${filePath}.${process.pid}.tmp`;
-    await writeFile(tempPath, `${JSON.stringify(data, null, 2)}\n`, { mode: 0o600 });
-    await rename(tempPath, filePath);
+    await writeJsonFile(filePath, data);
   }
 
-  return {
+  const repository: VpsRepository = {
     async list() {
       return (await readStore()).vps;
     },
@@ -40,6 +33,11 @@ export function createVpsStore(filePath = "data/vps.json") {
         host: input.host,
         port: input.port,
         username: input.username,
+        provider: input.provider ?? "unknown",
+        region: input.region,
+        tags: input.tags ?? [],
+        status: input.status ?? "unknown",
+        notes: input.notes,
         createdAt: timestamp,
         updatedAt: timestamp
       };
@@ -71,6 +69,8 @@ export function createVpsStore(filePath = "data/vps.json") {
       return true;
     }
   };
+
+  return repository;
 }
 
 export type VpsStore = ReturnType<typeof createVpsStore>;
