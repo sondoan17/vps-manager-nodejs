@@ -13,12 +13,12 @@ export class SshService {
     private readonly audit: AuditService
   ) {}
 
-  private assertRealSshAllowed(vps: VpsRecord) {
+  private async assertRealSshAllowed(vps: VpsRecord) {
     try {
       if (this.config.mode === "demo") throw new DemoSshDisabledError();
       assertSshHostAllowed(vps.host, this.config);
     } catch (error: unknown) {
-      void this.audit.record({
+      await this.audit.record({
         actor: "system",
         action: "ssh.host.blocked",
         resourceType: "vps",
@@ -31,12 +31,12 @@ export class SshService {
   }
 
   async provisionPublicKey(vps: VpsRecord, password: string, publicKey: string) {
-    this.assertRealSshAllowed(vps);
+    await this.assertRealSshAllowed(vps);
     return provisionPublicKey(vps, password, publicKey);
   }
 
   async verifyPrivateKey(vps: VpsRecord, privateKey: string) {
-    this.assertRealSshAllowed(vps);
+    await this.assertRealSshAllowed(vps);
     return verifyPrivateKey(vps, privateKey);
   }
 }

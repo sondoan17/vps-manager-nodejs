@@ -21,7 +21,7 @@ const booleanSchema = z
 
 const envSchema = z.object({
   APP_MODE: z.enum(["demo", "local"]).default("demo"),
-  LOCAL_AUTH_TOKEN: z.string().trim().min(1).optional(),
+  LOCAL_AUTH_TOKEN: z.preprocess((value) => (value === "" ? undefined : value), z.string().trim().min(1).optional()),
   ENABLE_WEB_TERMINAL: booleanSchema.default("false"),
   ALLOW_PRIVATE_NETWORK_TARGETS: booleanSchema.default("false"),
   DATA_DIR: z.string().trim().min(1).default("data"),

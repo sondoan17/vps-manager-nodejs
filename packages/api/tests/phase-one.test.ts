@@ -2,7 +2,7 @@ import { mkdtemp, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import request from "supertest";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { describe, expect, it } from "vitest";
 import { createApp } from "../src/app.js";
 import type { AppConfig } from "../src/config/app-config.js";
 import { parseAppConfig } from "../src/config/app-config.js";
@@ -12,8 +12,6 @@ import { assertSshHostAllowed } from "../src/security/ssh-host-policy.js";
 import { createKeyService } from "../src/services/keyService.js";
 import { createVpsStore } from "../src/store/vpsStore.js";
 import { createJsonAuditRepository } from "../src/repositories/audit.repository.js";
-
-let tempDir: string;
 
 const demoConfig: AppConfig = {
   mode: "demo",
@@ -25,22 +23,18 @@ const demoConfig: AppConfig = {
   rateLimitMax: 120
 };
 
-beforeEach(async () => {
-  tempDir = await mkdtemp(join(tmpdir(), "vps-manager-phase-one-"));
-});
-
-afterEach(async () => {
-  await rm(tempDir, { recursive: true, force: true });
-});
-
-function testApp(config: AppConfig = demoConfig) {
+async function testHarness(config: AppConfig = demoConfig) {
+  const tempDir = await mkdtemp(join(tmpdir(), "vps-manager-phase-one-"));
   const scopedConfig = { ...config, dataDir: join(tempDir, "data"), privateDir: join(tempDir, "private") };
-  return createApp({
-    config: scopedConfig,
-    store: createVpsStore(join(tempDir, "data", "vps.json")),
-    keys: createKeyService(join(tempDir, "private", "keys")),
-    audit: createJsonAuditRepository(join(tempDir, "data", "audit.json"))
-  });
+  return {
+    tempDir,
+    server: createApp({
+      config: scopedConfig,
+      store: createVpsStore(join(tempDir, "data", "vps.json")),
+      keys: createKeyService(join(tempDir, "private", "keys")),
+      audit: createJsonAuditRepository(join(tempDir, "data", "audit.json"))
+    })
+  };
 }
 
 describe("phase one config", () => {
@@ -51,6 +45,13 @@ describe("phase one config", () => {
       allowPrivateNetworkTargets: false,
       dataDir: "data",
       privateDir: "private"
+    });
+  });
+
+  it("accepts blank local auth token in demo mode", () => {
+    expect(parseAppConfig({ APP_MODE: "demo", LOCAL_AUTH_TOKEN: "" } as NodeJS.ProcessEnv)).toMatchObject({
+      mode: "demo",
+      localAuthToken: undefined
     });
   });
 
@@ -86,36 +87,49 @@ describe("phase one SSH host policy", () => {
 
 describe("phase one route security", () => {
   it("keeps demo mutations compatible and adds security headers/request IDs", async () => {
-    const response = await request(testApp()).post("/api/vps").send({ name: "prod", host: "203.0.113.20", port: 22, username: "root" }).expect(201);
-    expect(response.headers["x-request-id"]).toBeDefined();
-    expect(response.headers["x-content-type-options"]).toBe("nosniff");
-    expect(response.body.data).toMatchObject({ provider: "unknown", tags: [], status: "unknown" });
+    const { server, tempDir } = await testHarness();
+    try {
+      const response = await request(server).post("/api/vps").send({ name: "prod", host: "203.0.113.20", port: 22, username: "root" }).expect(201);
+      expect(response.headers["x-request-id"]).toBeDefined();
+      expect(response.headers["x-content-type-options"]).toBe("nosniff");
+      expect(response.body.data).toMatchObject({ provider: "unknown", tags: [], status: "unknown" });
+    } finally {
+      await rm(tempDir, { recursive: true, force: true });
+    }
   });
 
   it("requires bearer auth for local-mode mutations", async () => {
     const config = { ...demoConfig, mode: "local" as const, localAuthToken: "local-token" };
-    const server = testApp(config);
+    const { server, tempDir } = await testHarness(config);
 
-    await request(server).get("/api/health").expect(200, { ok: true });
-    await request(server).post("/api/vps").send({ name: "prod", host: "203.0.113.20", port: 22, username: "root" }).expect(401);
+    try {
+      await request(server).get("/api/health").expect(200, { ok: true });
+      await request(server).post("/api/vps").send({ name: "prod", host: "203.0.113.20", port: 22, username: "root" }).expect(401);
 
-    await request(server)
-      .post("/api/vps")
-      .set("Authorization", "Bearer local-token")
-      .send({ name: "prod", host: "203.0.113.20", port: 22, username: "root" })
-      .expect(201);
+      await request(server)
+        .post("/api/vps")
+        .set("Authorization", "Bearer local-token")
+        .send({ name: "prod", host: "203.0.113.20", port: 22, username: "root" })
+        .expect(201);
+    } finally {
+      await rm(tempDir, { recursive: true, force: true });
+    }
   });
 
   it("blocks real SSH in demo mode and writes redacted audit events", async () => {
-    const server = testApp();
-    const created = await request(server).post("/api/vps").send({ name: "prod", host: "203.0.113.20", port: 22, username: "root" }).expect(201);
+    const { server, tempDir } = await testHarness();
+    try {
+      const created = await request(server).post("/api/vps").send({ name: "prod", host: "203.0.113.20", port: 22, username: "root" }).expect(201);
 
-    const blocked = await request(server).post(`/api/vps/${created.body.data.id}/provision-key`).send({ password: "super-secret" }).expect(403);
-    expect(blocked.body.error.message).toBe("Real SSH is disabled in demo mode");
-    expect(JSON.stringify(blocked.body)).not.toContain("super-secret");
+      const blocked = await request(server).post(`/api/vps/${created.body.data.id}/provision-key`).send({ password: "super-secret" }).expect(403);
+      expect(blocked.body.error.message).toBe("Real SSH is disabled in demo mode");
+      expect(JSON.stringify(blocked.body)).not.toContain("super-secret");
 
-    const audit = await readFile(join(tempDir, "data", "audit.json"), "utf8");
-    expect(audit).toContain("vps.key.provision");
-    expect(audit).not.toContain("super-secret");
+      const audit = await readFile(join(tempDir, "data", "audit.json"), "utf8");
+      expect(audit).toContain("vps.key.provision");
+      expect(audit).not.toContain("super-secret");
+    } finally {
+      await rm(tempDir, { recursive: true, force: true });
+    }
   });
 });
