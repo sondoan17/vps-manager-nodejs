@@ -1,50 +1,78 @@
-# vps-manager-nodejs
+# VPS Operations Dashboard
 
-TypeScript Express backend and Vite React frontend for a local VPS manager, organized as an npm workspaces monorepo.
+Self-hosted VPS Operations Dashboard with safe demo mode, SSH key provisioning, simulated realtime metrics, command jobs, demo terminal output, audit logs, Docker deployment, and CI.
 
-## Monorepo layout
+The project is portfolio-ready without real VPS credentials: `APP_MODE=demo` seeds sample servers, fake metrics, job progress, audit events, and canned terminal output while disabling real SSH/network operations.
 
-- `packages/api/` - Express API source and backend tests.
-- `packages/web/` - Vite React dashboard source, Tailwind config, and frontend tests.
-- `public/` - production web build output served by Express from `process.cwd()/public`.
-- `dist/` - compiled API output. `npm start` runs `node dist/server.js`.
-- `data/` - local VPS metadata storage.
-- `private/` - local SSH key material, gitignored when created.
+## Screenshots
 
-## Web UI
+Screenshots are captured under `docs/screenshots/` after running the production dashboard locally:
 
-The dashboard is a Vite React TypeScript app in `packages/web/`, styled with local shadcn/ui-style primitives and Tailwind tokens. `npm run build:web` writes the compiled app to root `public/`, and Express serves only that built output.
+- `docs/screenshots/overview.png` - dashboard overview, server health, jobs, metrics, audit, and demo terminal
+- `docs/screenshots/mobile.png` - mobile responsive layout
 
-Development workflow:
+## Demo Quickstart
 
-1. Run `npm run dev` for the Express API on `http://localhost:3000`.
-2. In another terminal, run `npm run dev:web` for Vite. Vite proxies `/api` to the API server.
-3. Run `npm run build` before production; this builds the React dashboard to `public/` and then compiles the API to `dist/`.
+```bash
+npm ci
+npm run build
+APP_MODE=demo npm start
+```
 
-The UI lets you:
+Open `http://localhost:3000`. Demo mode needs no credentials and shows the banner `Demo mode: simulated servers, no real SSH connections.`
 
-- add a VPS with name, host, port, username, and an optional one-time password
-- automatically provision the SSH public key immediately when a password is supplied during creation
-- provision a key later from the VPS list by entering the password again
-- verify SSH key access without showing key material
-- delete VPS entries
+## Docker Quickstart
 
-The frontend is served only from `public/`. Express does not serve `packages/web/`, `packages/api/`, `private/`, or `data/`. Passwords are only sent to `POST /api/vps/:id/provision-key` and are never stored in localStorage, sessionStorage, IndexedDB, cookies, public assets, or backend data files. Public/private key contents are not displayed by the dashboard.
+```bash
+docker compose up --build
+```
+
+The Compose service defaults to `APP_MODE=demo`, exposes `http://localhost:3000`, and mounts writable volumes for `/app/data` and `/app/private`.
+
+## Features
+
+- Safe demo dashboard with seeded servers: `edge-sgp-01`, `api-fra-02`, and `worker-sfo-01`.
+- Health cards for total, healthy, warning, unreachable, and running jobs.
+- Simulated command jobs with queued/running/succeeded progress states and bounded output previews.
+- Fresh/stale metric cards for CPU, memory, disk, load, network, and uptime samples.
+- Audit timeline for dashboard views, job state transitions, terminal opens, and blocked SSH host attempts.
+- Read-only demo terminal with canned commands and no real network access.
+- Local VPS CRUD and SSH key provisioning flow with one-time passwords only.
+- Runtime safety config, local-mode bearer auth, request IDs, rate limiting, Helmet headers, redaction, and SSH host policy.
+- Production web build served from root `public/` with static path protection.
+
+## Architecture
+
+- `packages/api/` - NestJS on an Express adapter, controllers, services, repositories, config, security middleware, and tests.
+- `packages/web/` - Vite React dashboard with shadcn-style local primitives and Tailwind design tokens.
+- `data/` - JSON persistence for portfolio MVP data files.
+- `private/` - local SSH key material, gitignored and never returned by the API.
+- `public/` - built frontend assets served by the backend.
+- `dist/` - compiled backend; `npm start` runs `node dist/server.js`.
+
+See `docs/architecture.md` for module details.
+
+## Security Model
+
+Demo mode cannot call real SSH. Local mode requires `LOCAL_AUTH_TOKEN` for mutations and real SSH operations remain guarded by host policy and explicit config. Passwords are accepted only for provisioning requests and are never stored in browser storage, JSON files, logs, public assets, or API responses.
+
+See `docs/security.md` for the full model.
 
 ## Scripts
 
-- `npm run dev` - run API workspace with `tsx watch`
-- `npm run dev:web` - run web workspace Vite dashboard with `/api` proxy
-- `npm run build:web` - build React dashboard into `public/`
-- `npm run build:api` - compile TypeScript API to `dist/`
+- `npm run dev` - run the API workspace with `tsx watch`
+- `npm run dev:web` - run the Vite dashboard with `/api` proxy
+- `npm run build:web` - build React dashboard into root `public/`
+- `npm run build:api` - compile TypeScript API to root `dist/`
 - `npm run build` - build web, then API
 - `npm start` - run compiled server
-- `npm test` - run backend and frontend Vitest tests from the root config
-- `npm run typecheck` - TypeScript type check API and web workspaces
+- `npm test` - run backend and frontend Vitest tests
+- `npm run typecheck` - typecheck API and web workspaces
 
-## API
+## API Surface
 
 - `GET /api/health`
+- `GET /api/dashboard`
 - `GET /api/vps`
 - `POST /api/vps`
 - `GET /api/vps/:id`
@@ -53,4 +81,10 @@ The frontend is served only from `public/`. Express does not serve `packages/web
 - `POST /api/vps/:id/provision-key` with `{ "password": "..." }`
 - `POST /api/vps/:id/verify-key`
 
-VPS metadata is stored in `data/vps.json`. Passwords are accepted only for provisioning and are never persisted or returned. SSH key material is stored under `private/keys/`, which is gitignored, and is not returned by the API.
+## Testing Strategy
+
+CI runs `npm ci`, `npm test`, `npm run typecheck`, `npm run build`, and a Docker image build. Backend tests cover config safety, auth, redaction, SSH host policy, static path protection, secret non-leakage, and demo dashboard data. Frontend tests cover dashboard rendering and password storage invariants.
+
+## Roadmap Scope
+
+Implemented portfolio MVP: demo mode, seeded servers, health cards, simulated jobs, metrics, audit timeline, demo terminal, Docker Compose, GitHub Actions, and portfolio docs. Post-MVP items remain intentionally deferred: full WebSocket SSH terminal, SQLite persistence, server-sent realtime updates, and cloud-provider provisioning.

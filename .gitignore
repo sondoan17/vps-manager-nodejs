@@ -5,3 +5,5 @@ private/
 data/vps.json
 *.log
 .omo
+.playwright-mcp/
+dashboard-*.png

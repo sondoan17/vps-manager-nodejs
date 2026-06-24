@@ -4,9 +4,33 @@ export type VpsRecord = {
   host: string;
   port: number;
   username: string;
+  provider?: string;
+  region?: string;
+  tags?: string[];
+  status?: "unknown" | "healthy" | "warning" | "unreachable";
+  lastSeenAt?: string;
+  notes?: string;
   createdAt: string;
   updatedAt: string;
   keyProvisionedAt?: string;
+};
+
+export type DashboardOverview = {
+  mode: "demo" | "local";
+  banner?: string;
+  summary: {
+    totalServers: number;
+    healthyServers: number;
+    warningServers: number;
+    unreachableServers: number;
+    runningJobs: number;
+  };
+  servers: VpsRecord[];
+  metrics: Array<{ vpsId: string; cpu: number; memory: number; disk: number; collectedAt: string; freshness: "fresh" | "stale" }>;
+  jobs: Array<{ id: string; vpsId: string; type: string; status: "queued" | "running" | "succeeded" | "failed" | "cancelled"; progress: number; outputPreview?: string }>;
+  auditEvents: Array<{ id: string; action: string; result: "success" | "failure" | "blocked"; timestamp: string }>;
+  terminal: { label: "Demo terminal"; networkAccess: "disabled"; commands: string[]; sessions: Array<{ command: string; output: string }> };
+  settings: { appMode: "demo" | "local"; webTerminalEnabled: boolean; realSshEnabled: boolean; authRequiredInLocalMode: boolean };
 };
 
 export type CreateVpsPayload = {
@@ -32,6 +56,10 @@ async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
 
 export function listVps() {
   return request<VpsRecord[]>("/api/vps");
+}
+
+export function getDashboardOverview() {
+  return request<DashboardOverview>("/api/dashboard");
 }
 
 export function createVps(payload: CreateVpsPayload) {

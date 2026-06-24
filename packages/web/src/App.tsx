@@ -6,22 +6,36 @@ import { Button } from "./components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "./components/ui/card";
 import { Input } from "./components/ui/input";
 import { Label } from "./components/ui/label";
-import { createVps, deleteVps, listVps, provisionKey, verifyKey, type VpsRecord } from "./lib/api";
+import { DemoDashboard } from "./components/dashboard/DemoDashboard";
+import { createVps, deleteVps, getDashboardOverview, listVps, provisionKey, verifyKey, type DashboardOverview, type VpsRecord } from "./lib/api";
 
 type StatusKind = "default" | "success" | "destructive";
 type Status = { message: string; kind: StatusKind };
 
 const initialCreateForm = { name: "", host: "", port: "22", username: "", password: "" };
 
+const emptyOverview: DashboardOverview = {
+  mode: "local",
+  summary: { totalServers: 0, healthyServers: 0, warningServers: 0, unreachableServers: 0, runningJobs: 0 },
+  servers: [],
+  metrics: [],
+  jobs: [],
+  auditEvents: [],
+  terminal: { label: "Demo terminal", networkAccess: "disabled", commands: [], sessions: [] },
+  settings: { appMode: "local", webTerminalEnabled: false, realSshEnabled: false, authRequiredInLocalMode: true }
+};
+
 export function App() {
   const [records, setRecords] = useState<VpsRecord[]>([]);
+  const [overview, setOverview] = useState<DashboardOverview>(emptyOverview);
   const [createForm, setCreateForm] = useState(initialCreateForm);
   const [provisionPasswords, setProvisionPasswords] = useState<Record<string, string>>({});
   const [busy, setBusy] = useState(false);
   const [status, setStatus] = useState<Status>({ message: "Đang tải danh sách VPS...", kind: "default" });
 
   async function loadVps(message = "Danh sách VPS đã được làm mới.") {
-    const data = await listVps();
+    const [dashboard, data] = await Promise.all([getDashboardOverview(), listVps()]);
+    setOverview(dashboard);
     setRecords(data);
     setStatus({ message, kind: "success" });
   }
@@ -113,6 +127,8 @@ export function App() {
           Mật khẩu chỉ nằm trong form và request provision-key. Dashboard không dùng localStorage, sessionStorage, IndexedDB hoặc cookies để lưu password.
         </Alert>
       </section>
+
+      <DemoDashboard overview={overview} />
 
       <Card className="mb-6 overflow-hidden">
         <CardHeader className="grid gap-4 md:grid-cols-[1fr_auto] md:items-center">

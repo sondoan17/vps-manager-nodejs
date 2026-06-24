@@ -1,0 +1,13 @@
+node_modules
+dist
+public/assets
+.git
+.github
+.env
+.playwright-mcp
+dashboard-*.png
+data
+private
+*.log
+.omo
+docs/screenshots/*.png
