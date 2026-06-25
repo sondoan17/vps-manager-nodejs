@@ -8,4 +8,8 @@ export type CommandJob = {
   exitCode?: number;
   outputPreview?: string;
   errorMessage?: string;
+  workerId?: string;
+  durationMs?: number;
+  retryCount?: number;
+  errorLogUrl?: string;
 };

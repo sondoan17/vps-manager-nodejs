@@ -1,3 +1,12 @@
+export type MetricTrend = {
+  range: string;
+  points: number[];
+  min: number;
+  max: number;
+  threshold: number;
+  unit?: string;
+};
+
 export type MetricSample = {
   vpsId: string;
   cpu: number;
@@ -8,4 +17,5 @@ export type MetricSample = {
   networkTx: number;
   uptime: number;
   collectedAt: string;
+  trend?: MetricTrend;
 };

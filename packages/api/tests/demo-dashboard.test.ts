@@ -55,4 +55,11 @@ describe("demo dashboard", () => {
     expect(response.body.data.settings).toMatchObject({ appMode: "demo", webTerminalEnabled: false, realSshEnabled: false, authRequiredInLocalMode: true });
     expect(JSON.stringify(response.body)).not.toMatch(/password|private key|ssh-ed25519/i);
   });
+
+  it("serves demo VPS records from the VPS API", async () => {
+    const response = await request(app()).get("/api/vps").expect(200);
+
+    expect(response.body.data.map((server: { name: string }) => server.name)).toEqual(["edge-sgp-01", "api-fra-02", "worker-sfo-01"]);
+    expect(JSON.stringify(response.body)).not.toMatch(/password|private key|ssh-ed25519/i);
+  });
 });

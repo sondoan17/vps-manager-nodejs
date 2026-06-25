@@ -7,4 +7,7 @@ export type AuditEvent = {
   result: "success" | "failure" | "blocked";
   timestamp: string;
   metadata?: Record<string, unknown>;
+  severity?: "info" | "warning" | "critical";
+  serverLabel?: string;
+  actionLabel?: string;
 };

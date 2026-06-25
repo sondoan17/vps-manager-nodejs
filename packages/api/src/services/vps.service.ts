@@ -1,5 +1,7 @@
 import { Injectable } from "@nestjs/common";
 import { AuditService } from "../audit/audit.service.js";
+import type { AppConfig } from "../config/app-config.js";
+import { demoServers } from "../demo/demo-data.js";
 import { VpsNotFoundError } from "../errors.js";
 import type { KeyService } from "./keyService.js";
 import { SshService } from "./ssh.service.js";
@@ -12,11 +14,14 @@ export class VpsService {
     private readonly store: VpsRepository,
     private readonly keys: KeyService,
     private readonly ssh: SshService,
-    private readonly audit: AuditService
+    private readonly audit: AuditService,
+    private readonly config: AppConfig
   ) {}
 
-  list() {
-    return this.store.list();
+  async list() {
+    const records = await this.store.list();
+    if (records.length === 0 && this.config.mode === "demo") return [...demoServers];
+    return records;
   }
 
   async create(body: unknown) {

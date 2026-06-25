@@ -2,8 +2,11 @@ import { Module, type DynamicModule } from "@nestjs/common";
 import { join } from "node:path";
 import { AuditService } from "./audit/audit.service.js";
 import { loadAppConfig, type AppConfig } from "./config/app-config.js";
-import { HealthController } from "./controllers/health.controller.js";
+import { AuditController } from "./controllers/audit.controller.js";
 import { DashboardController } from "./controllers/dashboard.controller.js";
+import { HealthController } from "./controllers/health.controller.js";
+import { JobsController } from "./controllers/jobs.controller.js";
+import { MetricsController } from "./controllers/metrics.controller.js";
 import { VpsController } from "./controllers/vps.controller.js";
 import { LocalAuthGuard } from "./auth/local-auth.guard.js";
 import { createJsonAuditRepository, type AuditRepository } from "./repositories/audit.repository.js";
@@ -12,6 +15,8 @@ import { createJsonMetricRepository, type MetricRepository } from "./repositorie
 import { createKeyService, type KeyService } from "./services/keyService.js";
 import { SshService } from "./services/ssh.service.js";
 import { DashboardService } from "./dashboard/dashboard.service.js";
+import { JobService } from "./services/job.service.js";
+import { MetricService } from "./services/metric.service.js";
 import { VpsService } from "./services/vps.service.js";
 import { createVpsStore } from "./store/vpsStore.js";
 import type { VpsRepository } from "./repositories/vps.repository.js";
@@ -37,7 +42,7 @@ export function createAppModule(deps: AppDependencies = {}): DynamicModule {
 
   return {
     module: AppModule,
-    controllers: [HealthController, DashboardController, VpsController],
+    controllers: [HealthController, DashboardController, VpsController, JobsController, MetricsController, AuditController],
     providers: [
       { provide: APP_CONFIG, useValue: config },
       { provide: VPS_REPOSITORY, useValue: deps.store ?? createVpsStore(join(config.dataDir, "vps.json")) },
@@ -48,6 +53,8 @@ export function createAppModule(deps: AppDependencies = {}): DynamicModule {
       LocalAuthGuard,
       AuditService,
       DashboardService,
+      JobService,
+      MetricService,
       {
         provide: SshService,
         inject: [APP_CONFIG, AuditService],
@@ -55,8 +62,8 @@ export function createAppModule(deps: AppDependencies = {}): DynamicModule {
       },
       {
         provide: VpsService,
-        inject: [VPS_REPOSITORY, KEY_SERVICE, SshService, AuditService],
-        useFactory: (store: VpsRepository, keys: KeyService, ssh: SshService, audit: AuditService) => new VpsService(store, keys, ssh, audit)
+        inject: [VPS_REPOSITORY, KEY_SERVICE, SshService, AuditService, APP_CONFIG],
+        useFactory: (store: VpsRepository, keys: KeyService, ssh: SshService, audit: AuditService, appConfig: AppConfig) => new VpsService(store, keys, ssh, audit, appConfig)
       }
     ]
   };
