@@ -211,9 +211,9 @@ export function DashboardShell({
                   VPS command center
                 </p>
                 <h1 className="mt-1 break-words font-display text-2xl leading-none sm:text-3xl">
-                  Operations dashboard
+                  {activeView === "servers" ? "Servers" : "Operations dashboard"}
                 </h1>
-                
+                {activeView === "servers" ? <p className="mt-2 max-w-2xl text-sm font-semibold leading-6 text-white/70 sm:text-base">Manage VPS access, SSH keys, health checks, and provisioning.</p> : null}
               </div>
             </div>
           </div>

@@ -29,9 +29,9 @@ export function App() {
   const [statusFilter, setStatusFilter] = useState("all");
   const [activeView, setActiveView] = useState<DashboardView>("overview");
   const [busy, setBusy] = useState(false);
-  const [status, setStatus] = useState<Status>({ message: "Đang tải danh sách VPS...", kind: "default" });
+  const [status, setStatus] = useState<Status>({ message: "Loading VPS list...", kind: "default" });
 
-  async function loadVps(message = "Danh sách VPS đã được làm mới.") {
+  async function loadVps(message = "VPS list refreshed.") {
     const [dashboard, servers, jobs, metrics, auditEvents] = await Promise.all([getDashboardOverview(), listVps(), listJobs(), listMetrics(), listAuditEvents()]);
     setOverview({
       ...dashboard,
@@ -58,7 +58,7 @@ export function App() {
     setStatus({ message: loadingMessage, kind: "default" });
     try {
       await action();
-      await loadVps("Trạng thái dashboard đã đồng bộ.");
+      await loadVps("Dashboard state synced.");
     } catch (error) {
       setStatus({ message: error instanceof Error ? error.message : "Request failed", kind: "destructive" });
     } finally {
@@ -75,14 +75,14 @@ export function App() {
     const password = createForm.password;
     const payload = { name: createForm.name.trim(), host: createForm.host.trim(), port: Number(createForm.port || 22), username: createForm.username.trim() };
 
-    await runAction("Đang tạo VPS...", async () => {
+    await runAction("Creating VPS...", async () => {
       const created = await createVps(payload);
       if (password) {
-        setStatus({ message: `Đã tạo ${created.name}. Đang provision SSH key...`, kind: "default" });
+        setStatus({ message: `Created ${created.name}. Installing SSH key...`, kind: "default" });
         await provisionKey(created.id, password);
-        setStatus({ message: `Đã tạo VPS và provision key cho ${created.name}. Password không được lưu.`, kind: "success" });
+        setStatus({ message: `Created VPS and installed key for ${created.name}. Password was not stored.`, kind: "success" });
       } else {
-        setStatus({ message: `Đã tạo VPS ${created.name}. Có thể provision key sau từ danh sách.`, kind: "success" });
+        setStatus({ message: `Created VPS ${created.name}. You can install the key from the list.`, kind: "success" });
       }
       setCreateForm(initialCreateForm);
     });
@@ -92,29 +92,29 @@ export function App() {
     event.preventDefault();
     const password = provisionPasswords[vps.id] || "";
     if (!password) {
-      setStatus({ message: "Nhập password một lần để provision SSH key.", kind: "destructive" });
+      setStatus({ message: "Enter the one-time password to install the SSH key.", kind: "destructive" });
       return;
     }
 
-    await runAction(`Đang provision key cho ${vps.name}...`, async () => {
+    await runAction(`Installing key for ${vps.name}...`, async () => {
       await provisionKey(vps.id, password);
       setProvisionPasswords((current) => ({ ...current, [vps.id]: "" }));
-      setStatus({ message: `Đã provision SSH key cho ${vps.name}. Password không được lưu.`, kind: "success" });
+      setStatus({ message: `Installed SSH key for ${vps.name}. Password was not stored.`, kind: "success" });
     });
   }
 
   async function handleVerify(vps: VpsRecord) {
-    await runAction(`Đang verify key cho ${vps.name}...`, async () => {
+    await runAction(`Verifying key for ${vps.name}...`, async () => {
       await verifyKey(vps.id);
-      setStatus({ message: `Verify key thành công cho ${vps.name}.`, kind: "success" });
+      setStatus({ message: `Key verified for ${vps.name}.`, kind: "success" });
     });
   }
 
   async function handleDelete(vps: VpsRecord) {
-    if (!window.confirm(`Xóa ${vps.name}?`)) return;
-    await runAction(`Đang xóa ${vps.name}...`, async () => {
+    if (!window.confirm(`Delete ${vps.name}? This cannot be undone.`)) return;
+    await runAction(`Deleting ${vps.name}...`, async () => {
       await deleteVps(vps.id);
-      setStatus({ message: `Đã xóa ${vps.name}.`, kind: "success" });
+      setStatus({ message: `Deleted ${vps.name}.`, kind: "success" });
     });
   }
 
@@ -128,9 +128,9 @@ export function App() {
   const statusAlert = <Alert variant={status.kind}>{status.message}</Alert>;
 
   return (
-    <DashboardShell activeView={activeView} onViewChange={setActiveView} mode={overview.mode} busy={busy} onRefresh={() => runAction("Đang làm mới danh sách VPS...", () => loadVps())}>
+    <DashboardShell activeView={activeView} onViewChange={setActiveView} mode={overview.mode} busy={busy} onRefresh={() => runAction("Refreshing VPS list...", () => loadVps())}>
       {activeView === "overview" ? <OverviewPanel overview={overview} /> : null}
-      {activeView === "servers" ? <ServersPanel records={records} visibleRecords={visibleRecords} statusMessage={statusAlert} serverSearch={serverSearch} statusFilter={statusFilter} busy={busy} provisionPasswords={provisionPasswords} createForm={createForm} onSearchChange={setServerSearch} onStatusFilterChange={setStatusFilter} onCreateFormChange={setCreateForm} onCreate={handleCreate} onPasswordChange={(id, value) => setProvisionPasswords((current) => ({ ...current, [id]: value }))} onProvision={handleProvision} onVerify={handleVerify} onDelete={handleDelete} /> : null}
+      {activeView === "servers" ? <ServersPanel records={records} visibleRecords={visibleRecords} statusMessage={statusAlert} serverSearch={serverSearch} statusFilter={statusFilter} busy={busy} provisionPasswords={provisionPasswords} createForm={createForm} metrics={overview.metrics} onSearchChange={setServerSearch} onStatusFilterChange={setStatusFilter} onCreateFormChange={setCreateForm} onCreate={handleCreate} onPasswordChange={(id, value) => setProvisionPasswords((current) => ({ ...current, [id]: value }))} onProvision={handleProvision} onVerify={handleVerify} onDelete={handleDelete} /> : null}
       {activeView === "jobs" ? <JobsPanel jobs={overview.jobs} /> : null}
       {activeView === "metrics" ? <MetricsPanel metrics={overview.metrics} /> : null}
       {activeView === "audit" ? <AuditPanel events={overview.auditEvents} /> : null}

@@ -44,7 +44,7 @@ describe("React dashboard", () => {
     expect(await screen.findByText("Operations dashboard")).toBeInTheDocument();
     expect(screen.getByText("Passwords are sent only for one-time key provisioning and are not stored in browser storage.")).toBeInTheDocument();
     await userEvent.click(screen.getAllByRole("button", { name: "Servers" })[0]);
-    expect(await screen.findByText("Chưa có VPS nào. Thêm server đầu tiên ở form bên cạnh.")).toBeInTheDocument();
+    expect(await screen.findByText("No VPS servers yet. Add your first server with the form beside this list.")).toBeInTheDocument();
     expect(fetchMock).toHaveBeenCalledWith("/api/vps", expect.any(Object));
   });
 
@@ -68,13 +68,13 @@ describe("React dashboard", () => {
     render(<App />);
     await screen.findByText("Operations dashboard");
     await userEvent.click(screen.getAllByRole("button", { name: "Servers" })[0]);
-    await screen.findByText("Chưa có VPS nào. Thêm server đầu tiên ở form bên cạnh.");
+    await screen.findByText("No VPS servers yet. Add your first server with the form beside this list.");
 
-    await userEvent.type(screen.getByLabelText(/Tên/i), "prod");
+    await userEvent.type(screen.getByLabelText("Name"), "prod");
     await userEvent.type(screen.getByLabelText(/Host/i), "203.0.113.20");
     await userEvent.type(screen.getByLabelText(/Username/i), "root");
-    await userEvent.type(screen.getByLabelText(/Password tùy chọn/i), "secret-once");
-    await userEvent.click(screen.getByRole("button", { name: /Tạo VPS/i }));
+    await userEvent.type(screen.getByLabelText(/Optional password/i), "secret-once");
+    await userEvent.click(screen.getByRole("button", { name: /Create VPS/i }));
 
     await waitFor(() => expect(fetchMock).toHaveBeenCalledWith("/api/vps/vps_1/provision-key", expect.objectContaining({ method: "POST", body: JSON.stringify({ password: "secret-once" }) })));
     expect(localStorage.length).toBe(0);
@@ -167,7 +167,7 @@ describe("React dashboard", () => {
     expect(await screen.findByText("Passwords are sent only for one-time key provisioning and are not stored in browser storage.")).toBeInTheDocument();
     await userEvent.click(screen.getAllByRole("button", { name: "Servers" })[0]);
     expect(screen.getByText("Primary node")).toBeInTheDocument();
-    await userEvent.type(screen.getByLabelText("Tìm server"), "ovh");
+    await userEvent.type(screen.getByLabelText("Search servers"), "ovh");
     expect(screen.queryByText("prod-sgp-01")).not.toBeInTheDocument();
     expect(screen.getByText("dev-fra-01")).toBeInTheDocument();
     expect(localStorage.length).toBe(0);
