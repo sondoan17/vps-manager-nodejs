@@ -25,6 +25,9 @@ export async function createNestApp(deps: Dependencies = {}, server: Express = e
   });
   nestApp.useGlobalFilters(new ApiExceptionFilter());
   await nestApp.init();
+  server.get(/^\/(overview|servers|jobs|metrics|audit|terminal|settings)$/, (_req, res) => {
+    res.sendFile(join(process.cwd(), "public", "index.html"));
+  });
   return nestApp;
 }
 

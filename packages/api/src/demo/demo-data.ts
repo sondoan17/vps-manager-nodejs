@@ -64,8 +64,9 @@ export const demoMetrics: readonly DashboardMetricSample[] = [
 
 export const demoJobs: readonly DashboardJob[] = [
   { id: "job_demo_disk_check", vpsId: "demo-worker-sfo-01", type: "check disk usage", status: "queued", progress: 0, workerId: "worker-queue-01", retryCount: 0, outputPreview: "Waiting for the active metrics collection to finish." },
-  { id: "job_demo_collect_metrics", vpsId: "demo-edge-sgp-01", type: "collect metrics", status: "running", progress: 64, startedAt: "2026-06-24T11:59:30.000Z", workerId: "worker-metrics-01", durationMs: 14_200, outputPreview: "Collecting uptime, disk, and load averages..." },
-  { id: "job_demo_verify_key", vpsId: "demo-api-fra-02", type: "verify key", status: "succeeded", progress: 100, startedAt: "2026-06-24T11:55:00.000Z", finishedAt: "2026-06-24T11:55:03.000Z", exitCode: 0, workerId: "worker-crypto-02", durationMs: 3_200, retryCount: 1, outputPreview: "Key verification succeeded." }
+  { id: "job_demo_collect_metrics", vpsId: "demo-edge-sgp-01", type: "collect metrics", status: "running", progress: 64, startedAt: "2026-06-24T11:59:46.000Z", workerId: "worker-metrics-01", durationMs: 14_200, outputPreview: "Collecting uptime, disk, and load averages...", errorLogUrl: "https://example.com/demo/logs/job_demo_collect_metrics.txt" },
+  { id: "job_demo_verify_key", vpsId: "demo-api-fra-02", type: "verify key", status: "succeeded", progress: 100, startedAt: "2026-06-24T11:58:00.000Z", finishedAt: "2026-06-24T11:59:00.000Z", exitCode: 0, workerId: "worker-crypto-02", durationMs: 60_000, retryCount: 1, outputPreview: "Key verification succeeded." },
+  { id: "job_demo_rotate_key_failed", vpsId: "demo-worker-sfo-01", type: "rotate key", status: "failed", progress: 42, startedAt: "2026-06-24T11:11:00.000Z", finishedAt: "2026-06-24T11:12:00.000Z", exitCode: 255, workerId: "worker-crypto-01", durationMs: 60_000, retryCount: 2, errorMessage: "SSH connection timed out while rotating the key.", errorLogUrl: "https://example.com/demo/logs/job_demo_rotate_key_failed.txt", outputPreview: "Host unreachable after two retry attempts." }
 ] as const;
 
 export const demoAuditEvents: readonly AuditEvent[] = [
@@ -73,6 +74,7 @@ export const demoAuditEvents: readonly AuditEvent[] = [
   { id: "audit_demo_job_queued", actor: "system", action: "job.queued", resourceType: "job", resourceId: "job_demo_disk_check", result: "success", timestamp: "2026-06-24T11:59:00.000Z", severity: "info", actionLabel: "Job queued", serverLabel: "worker-sfo-01" },
   { id: "audit_demo_job_running", actor: "system", action: "job.running", resourceType: "job", resourceId: "job_demo_collect_metrics", result: "success", timestamp: "2026-06-24T11:59:30.000Z", severity: "info", actionLabel: "Job started", serverLabel: "edge-sgp-01" },
   { id: "audit_demo_job_succeeded", actor: "system", action: "job.succeeded", resourceType: "job", resourceId: "job_demo_verify_key", result: "success", timestamp: "2026-06-24T11:55:03.000Z", severity: "info", actionLabel: "Job completed", serverLabel: "api-fra-02" },
+  { id: "audit_demo_job_failed", actor: "system", action: "job.failed", resourceType: "job", resourceId: "job_demo_rotate_key_failed", result: "failure", timestamp: "2026-06-24T10:40:00.000Z", severity: "critical", actionLabel: "Job failed", serverLabel: "worker-sfo-01" },
   { id: "audit_demo_terminal_opened", actor: "demo", action: "terminal.opened", resourceType: "terminal", result: "success", timestamp: "2026-06-24T11:58:00.000Z", severity: "info", actionLabel: "Terminal session", metadata: { mode: "canned-demo" } },
   { id: "audit_demo_host_blocked", actor: "system", action: "ssh.host.blocked", resourceType: "vps", resourceId: "demo-worker-sfo-01", result: "blocked", timestamp: "2026-06-24T10:40:00.000Z", severity: "critical", actionLabel: "SSH host blocked", serverLabel: "worker-sfo-01", metadata: { reason: "simulated unreachable host" } }
 ] as const;

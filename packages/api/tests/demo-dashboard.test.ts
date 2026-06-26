@@ -48,9 +48,9 @@ describe("demo dashboard", () => {
     expect(response.body.data.summary).toMatchObject({ totalServers: 3, healthyServers: 1, warningServers: 1, unreachableServers: 1, runningJobs: 1 });
     expect(response.body.data.metrics).toHaveLength(3);
     expect(response.body.data.metrics.map((metric: { freshness: string }) => metric.freshness)).toEqual(["fresh", "fresh", "stale"]);
-    expect(response.body.data.jobs.map((job: { status: string }) => job.status)).toEqual(["queued", "running", "succeeded"]);
+    expect(response.body.data.jobs.map((job: { status: string }) => job.status)).toEqual(["queued", "running", "succeeded", "failed"]);
     expect(response.body.data.jobs[1]).toMatchObject({ vpsId: "demo-edge-sgp-01", status: "running", progress: 64 });
-    expect(response.body.data.auditEvents.map((event: { action: string }) => event.action)).toEqual(["demo.dashboard.view", "job.queued", "job.running", "job.succeeded", "terminal.opened", "ssh.host.blocked"]);
+    expect(response.body.data.auditEvents.map((event: { action: string }) => event.action)).toEqual(["demo.dashboard.view", "job.queued", "job.running", "job.succeeded", "job.failed", "terminal.opened", "ssh.host.blocked"]);
     expect(response.body.data.terminal).toMatchObject({ label: "Demo terminal", networkAccess: "disabled", commands: ["uptime", "df -h", "free -m", "systemctl status nginx", "journalctl -n 20"] });
     expect(response.body.data.settings).toMatchObject({ appMode: "demo", webTerminalEnabled: false, realSshEnabled: false, authRequiredInLocalMode: true });
     expect(JSON.stringify(response.body)).not.toMatch(/password|private key|ssh-ed25519/i);

@@ -48,13 +48,14 @@ describe("jobs API", () => {
     it("returns seeded demo jobs", async () => {
       const res = await request(app()).get("/api/jobs").expect(200);
 
-      expect(res.body.data).toHaveLength(3);
+      expect(res.body.data).toHaveLength(4);
       expect(res.body.data.map((job: { id: string }) => job.id)).toEqual([
         "job_demo_disk_check",
         "job_demo_collect_metrics",
-        "job_demo_verify_key"
+        "job_demo_verify_key",
+        "job_demo_rotate_key_failed"
       ]);
-      expect(res.body.data.map((job: { status: string }) => job.status)).toEqual(["queued", "running", "succeeded"]);
+      expect(res.body.data.map((job: { status: string }) => job.status)).toEqual(["queued", "running", "succeeded", "failed"]);
     });
 
     it("includes job progress and output preview", async () => {
@@ -213,12 +214,13 @@ describe("audit API", () => {
     it("returns seeded demo audit events", async () => {
       const res = await request(app()).get("/api/audit").expect(200);
 
-      expect(res.body.data).toHaveLength(6);
+      expect(res.body.data).toHaveLength(7);
       expect(res.body.data.map((e: { action: string }) => e.action)).toEqual([
         "demo.dashboard.view",
         "job.queued",
         "job.running",
         "job.succeeded",
+        "job.failed",
         "terminal.opened",
         "ssh.host.blocked"
       ]);

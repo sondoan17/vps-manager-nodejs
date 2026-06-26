@@ -9,6 +9,25 @@ type Status = { message: string; kind: StatusKind };
 
 const initialCreateForm = { name: "", host: "", port: "22", username: "", password: "" };
 
+const routeByView = {
+  overview: "/overview",
+  servers: "/servers",
+  jobs: "/jobs",
+  metrics: "/metrics",
+  audit: "/audit",
+  terminal: "/terminal",
+  settings: "/settings"
+} satisfies Record<DashboardView, string>;
+
+const viewByRoute = Object.fromEntries(
+  Object.entries(routeByView).map(([view, route]) => [route, view]),
+) as Record<string, DashboardView>;
+
+function getViewFromPathname(pathname: string): DashboardView {
+  if (pathname === "/") return "overview";
+  return viewByRoute[pathname] || "overview";
+}
+
 const emptyOverview: DashboardOverview = {
   mode: "local",
   summary: { totalServers: 0, healthyServers: 0, warningServers: 0, unreachableServers: 0, runningJobs: 0 },
@@ -27,7 +46,7 @@ export function App() {
   const [provisionPasswords, setProvisionPasswords] = useState<Record<string, string>>({});
   const [serverSearch, setServerSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState("all");
-  const [activeView, setActiveView] = useState<DashboardView>("overview");
+  const [activeView, setActiveView] = useState<DashboardView>(() => getViewFromPathname(window.location.pathname));
   const [busy, setBusy] = useState(false);
   const [status, setStatus] = useState<Status>({ message: "Loading VPS list...", kind: "default" });
 
@@ -69,6 +88,23 @@ export function App() {
   useEffect(() => {
     loadVps().catch((error: unknown) => setStatus({ message: error instanceof Error ? error.message : "Request failed", kind: "destructive" }));
   }, []);
+
+  useEffect(() => {
+    function handlePopState() {
+      setActiveView(getViewFromPathname(window.location.pathname));
+    }
+
+    window.addEventListener("popstate", handlePopState);
+    return () => window.removeEventListener("popstate", handlePopState);
+  }, []);
+
+  function handleViewChange(view: DashboardView) {
+    setActiveView(view);
+    const route = routeByView[view];
+    if (window.location.pathname !== route) {
+      window.history.pushState({}, "", route);
+    }
+  }
 
   async function handleCreate(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -125,12 +161,12 @@ export function App() {
     return matchesSearch && (statusFilter === "all" || vps.status === statusFilter || keyState === statusFilter);
   });
 
-  const statusAlert = <Alert variant={status.kind}>{status.message}</Alert>;
+  const statusAlert = <Alert variant={status.kind} className="rounded-xl px-3 py-2 text-sm font-semibold">{status.message}</Alert>;
 
   return (
-    <DashboardShell activeView={activeView} onViewChange={setActiveView} mode={overview.mode} busy={busy} onRefresh={() => runAction("Refreshing VPS list...", () => loadVps())}>
+    <DashboardShell activeView={activeView} onViewChange={handleViewChange} mode={overview.mode} busy={busy} onRefresh={() => runAction("Refreshing VPS list...", () => loadVps())}>
       {activeView === "overview" ? <OverviewPanel overview={overview} /> : null}
-      {activeView === "servers" ? <ServersPanel records={records} visibleRecords={visibleRecords} statusMessage={statusAlert} serverSearch={serverSearch} statusFilter={statusFilter} busy={busy} provisionPasswords={provisionPasswords} createForm={createForm} metrics={overview.metrics} onSearchChange={setServerSearch} onStatusFilterChange={setStatusFilter} onCreateFormChange={setCreateForm} onCreate={handleCreate} onPasswordChange={(id, value) => setProvisionPasswords((current) => ({ ...current, [id]: value }))} onProvision={handleProvision} onVerify={handleVerify} onDelete={handleDelete} /> : null}
+      {activeView === "servers" ? <ServersPanel records={records} visibleRecords={visibleRecords} statusMessage={statusAlert} serverSearch={serverSearch} statusFilter={statusFilter} busy={busy} provisionPasswords={provisionPasswords} createForm={createForm} metrics={overview.metrics} jobs={overview.jobs} onSearchChange={setServerSearch} onStatusFilterChange={setStatusFilter} onCreateFormChange={setCreateForm} onCreate={handleCreate} onPasswordChange={(id, value) => setProvisionPasswords((current) => ({ ...current, [id]: value }))} onProvision={handleProvision} onVerify={handleVerify} onDelete={handleDelete} /> : null}
       {activeView === "jobs" ? <JobsPanel jobs={overview.jobs} /> : null}
       {activeView === "metrics" ? <MetricsPanel metrics={overview.metrics} /> : null}
       {activeView === "audit" ? <AuditPanel events={overview.auditEvents} /> : null}

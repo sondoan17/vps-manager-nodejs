@@ -89,8 +89,8 @@ export function DashboardShell({
 
   return (
     <main className="min-h-screen w-full max-w-full overflow-x-clip bg-background">
-      <div className="grid min-h-screen w-full min-w-0 lg:grid-cols-[17rem_minmax(0,1fr)]">
-        <aside className="hidden min-h-screen w-[17rem] shrink-0 border-r border-slate-200 bg-white px-4 py-5 lg:flex lg:flex-col">
+      <div className="grid min-h-screen w-full min-w-0 xl:grid-cols-[17rem_minmax(0,1fr)]">
+        <aside className="hidden min-h-screen w-[17rem] shrink-0 border-r border-slate-200 bg-white px-4 py-5 xl:flex xl:flex-col">
           <div className="mb-7 flex items-center gap-3 px-1">
             <span className="grid h-10 w-10 place-items-center rounded-xl bg-slate-950 text-white shadow-sm">
               <Server size={19} />
@@ -125,12 +125,12 @@ export function DashboardShell({
           </div>
         </aside>
         <section className="min-w-0 max-w-full overflow-hidden">
-          <div className="relative min-h-[15.5rem] max-w-full overflow-hidden bg-gradient-to-br from-slate-950 via-indigo-950 to-cyan-950 sm:min-h-[15rem] lg:min-h-[14.5rem]">
+          <div className="relative min-h-[11.75rem] max-w-full overflow-hidden bg-gradient-to-br from-slate-950 via-indigo-950 to-cyan-950 sm:min-h-[13rem] xl:min-h-[14.5rem]">
             <div className="absolute inset-0 bg-[radial-gradient(circle_at_12%_10%,rgba(34,211,238,0.22),transparent_24%),radial-gradient(circle_at_88%_0%,rgba(99,102,241,0.28),transparent_26%),linear-gradient(135deg,rgba(255,255,255,0.08),transparent_42%)]" />
             <div className="absolute -right-20 top-2 h-36 w-36 rounded-full bg-cyan-400/25 blur-3xl" />
             <div className="absolute left-12 top-16 h-24 w-24 rounded-full bg-indigo-300/20 blur-2xl" />
-            <div className="relative px-3 py-3 text-white sm:px-4 lg:px-6">
-              <div className="rounded-2xl border border-white/10 bg-slate-950/20 p-3 backdrop-blur-md">
+            <div className="relative px-3 py-2 text-white sm:px-4 xl:px-6 xl:py-3">
+              <div className="rounded-2xl border border-white/10 bg-slate-950/20 p-2.5 backdrop-blur-md sm:p-3">
                 <div className="flex min-w-0 flex-col gap-3 xl:flex-row xl:items-center xl:justify-between">
                   <label className="relative min-w-0 max-w-full xl:w-80">
                     <Search
@@ -158,21 +158,22 @@ export function DashboardShell({
                 </div>
                 <nav
                   aria-label="Dashboard sections"
-                  className="relative mt-3 lg:hidden"
+                  className="relative mt-2 xl:hidden"
                 >
                   <Sheet open={mobileMenuOpen} onOpenChange={setMobileMenuOpen}>
-                    <div className="flex items-center justify-between gap-3 rounded-2xl bg-white/90 p-3 text-sm font-black text-primary">
-                      <div className="min-w-0">
+                    <div className="flex items-center justify-between gap-3 rounded-xl bg-white/90 p-2 text-sm font-black text-primary sm:p-3">
+                      <div className="hidden min-w-0 md:block">
                         <p className="text-xs uppercase tracking-[0.16em] text-muted-foreground">
                           Current section
                         </p>
                         <p className="truncate">{activeLabel}</p>
                       </div>
+                      <p className="min-w-0 truncate text-sm md:hidden">{activeLabel}</p>
                       <SheetTrigger asChild>
                         <button
                           type="button"
                           aria-label="Open dashboard menu"
-                          className="grid h-11 w-11 shrink-0 place-items-center rounded-2xl bg-primary text-white shadow-sm transition hover:bg-primary/90"
+                          className="grid h-9 w-9 shrink-0 place-items-center rounded-xl bg-primary text-white shadow-sm transition hover:bg-primary/90 sm:h-11 sm:w-11 sm:rounded-2xl"
                         >
                           <Menu size={20} />
                         </button>
@@ -205,22 +206,23 @@ export function DashboardShell({
                 </nav>
               </div>
             </div>
-            <div className="relative flex min-w-0 max-w-full items-start px-5 pb-14 pt-1 text-white sm:px-8 sm:pt-3 lg:px-10">
+            <div className={cn("relative flex min-w-0 max-w-full items-start px-4 text-white sm:px-8 xl:px-10", activeView === "servers" ? "pb-5 pt-0 sm:pb-7 sm:pt-1" : "pb-8 pt-0 sm:pb-14 sm:pt-3")}>
               <div className="min-w-0 max-w-3xl">
-                <p className="text-xs font-black uppercase tracking-[0.22em] text-white/65">
+                <p className="text-[10px] font-black uppercase tracking-[0.2em] text-white/65 sm:text-xs sm:tracking-[0.22em]">
                   VPS command center
                 </p>
-                <h1 className="mt-1 break-words font-display text-2xl leading-none sm:text-3xl">
-                  {activeView === "servers" ? "Servers" : "Operations dashboard"}
+                <h1 className="mt-1 break-words font-display text-xl leading-none sm:text-3xl">
+                  {activeView === "servers" ? "Servers" : activeView === "jobs" ? "Jobs" : "Operations dashboard"}
                 </h1>
-                {activeView === "servers" ? <p className="mt-2 max-w-2xl text-sm font-semibold leading-6 text-white/70 sm:text-base">Manage VPS access, SSH keys, health checks, and provisioning.</p> : null}
+                {activeView === "servers" ? <p className="mt-1 max-w-2xl text-xs font-semibold leading-4 text-white/70 sm:mt-1.5 sm:text-sm sm:leading-5">Manage VPS access, SSH keys, health checks, and provisioning.</p> : null}
+                {activeView === "jobs" ? <p className="mt-1 max-w-2xl text-xs font-semibold leading-4 text-white/70 sm:mt-1.5 sm:text-sm sm:leading-5">Track provisioning, metrics collection, key verification, and background tasks.</p> : null}
               </div>
             </div>
           </div>
           <div
             className={cn(
-              "relative min-w-0 max-w-full overflow-hidden px-3 pb-4 sm:px-4 lg:px-6",
-              activeView === "overview" ? "-mt-10 pt-0 sm:-mt-12" : "pt-5",
+              "relative min-w-0 max-w-full overflow-hidden px-3 pb-4 sm:px-4 xl:px-6",
+              activeView === "overview" ? "-mt-10 pt-0 sm:-mt-12" : activeView === "servers" ? "pt-3" : "pt-5",
             )}
           >
             {children}

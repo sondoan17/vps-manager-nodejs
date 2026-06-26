@@ -19,6 +19,7 @@ const emptyDashboard = {
 
 beforeEach(() => {
   fetchMock.mockReset();
+  window.history.replaceState({}, "", "/");
   vi.stubGlobal("fetch", fetchMock);
   vi.stubGlobal("confirm", vi.fn(() => true));
 });
@@ -44,8 +45,24 @@ describe("React dashboard", () => {
     expect(await screen.findByText("Operations dashboard")).toBeInTheDocument();
     expect(screen.getByText("Passwords are sent only for one-time key provisioning and are not stored in browser storage.")).toBeInTheDocument();
     await userEvent.click(screen.getAllByRole("button", { name: "Servers" })[0]);
+    expect(window.location.pathname).toBe("/servers");
     expect(await screen.findByText("No VPS servers yet. Add your first server with the form beside this list.")).toBeInTheDocument();
     expect(fetchMock).toHaveBeenCalledWith("/api/vps", expect.any(Object));
+  });
+
+  it("opens a dashboard section from its route", async () => {
+    window.history.replaceState({}, "", "/metrics");
+    fetchMock
+      .mockResolvedValueOnce({ ok: true, status: 200, json: async () => ({ data: emptyDashboard }) })
+      .mockResolvedValueOnce({ ok: true, status: 200, json: async () => ({ data: [] }) })
+      .mockResolvedValueOnce({ ok: true, status: 200, json: async () => ({ data: [] }) })
+      .mockResolvedValueOnce({ ok: true, status: 200, json: async () => ({ data: [] }) })
+      .mockResolvedValueOnce({ ok: true, status: 200, json: async () => ({ data: [] }) });
+
+    render(<App />);
+
+    expect(await screen.findByText("Telemetry freshness and resource usage.")).toBeInTheDocument();
+    expect(window.location.pathname).toBe("/metrics");
   });
 
   it("creates a VPS then provisions key only when one-time password is submitted", async () => {
@@ -125,7 +142,7 @@ describe("React dashboard", () => {
     expect(screen.getByText("1 healthy")).toBeInTheDocument();
     expect(screen.getByText("CPU load")).toBeInTheDocument();
     expect(screen.getByText("collect metrics")).toBeInTheDocument();
-    expect(screen.getByText(/demo-edge-sgp-01 · 64% progress/)).toBeInTheDocument();
+    expect(screen.getByText(/demo-edge-sgp-01.*64% progress/)).toBeInTheDocument();
     expect(screen.getByText("demo.dashboard.view")).toBeInTheDocument();
     expect(screen.getByRole("navigation", { name: "Dashboard sections" })).toBeInTheDocument();
     expect(screen.getByRole("navigation", { name: "Dashboard sidebar sections" })).toBeInTheDocument();
@@ -137,7 +154,7 @@ describe("React dashboard", () => {
     expect(screen.getByText("Hetzner")).toBeInTheDocument();
     expect(screen.getByText("Singapore")).toBeInTheDocument();
     expect(screen.getByText("Handles public ingress.")).toBeInTheDocument();
-    expect(screen.getByText("edge")).toBeInTheDocument();
+    expect(screen.getByText((content) => content.includes("edge, public"))).toBeInTheDocument();
 
     await userEvent.click(screen.getAllByRole("button", { name: "Metrics" })[0]);
     expect(screen.getByText(/CPU 22% · Memory 48% · Disk 61%/)).toBeInTheDocument();

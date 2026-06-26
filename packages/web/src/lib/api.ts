@@ -27,7 +27,7 @@ export type DashboardOverview = {
   };
   servers: VpsRecord[];
   metrics: Array<{ vpsId: string; cpu: number; memory: number; disk: number; loadAverage: number; networkRx: number; networkTx: number; uptime: number; collectedAt: string; freshness: "fresh" | "stale"; trend?: { range: string; points: number[]; min: number; max: number; threshold: number; unit?: string } }>;
-  jobs: Array<{ id: string; vpsId: string; type: string; status: "queued" | "running" | "succeeded" | "failed" | "cancelled"; progress: number; outputPreview?: string; errorMessage?: string; workerId?: string; durationMs?: number; retryCount?: number; errorLogUrl?: string }>;
+  jobs: Array<{ id: string; vpsId: string; type: string; status: "queued" | "running" | "succeeded" | "failed" | "cancelled"; progress: number; startedAt?: string; finishedAt?: string; outputPreview?: string; errorMessage?: string; workerId?: string; durationMs?: number; retryCount?: number; errorLogUrl?: string }>;
   auditEvents: Array<{ id: string; actor?: string; action: string; resourceType?: string; resourceId?: string; result: "success" | "failure" | "blocked"; timestamp: string; severity?: "info" | "warning" | "critical"; serverLabel?: string; actionLabel?: string }>;
   terminal: { label: "Demo terminal"; networkAccess: "disabled"; commands: string[]; sessions: Array<{ command: string; output: string }> };
   settings: { appMode: "demo" | "local"; webTerminalEnabled: boolean; realSshEnabled: boolean; authRequiredInLocalMode: boolean };
