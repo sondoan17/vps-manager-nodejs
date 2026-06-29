@@ -1,6 +1,6 @@
 import { Inject, Injectable } from "@nestjs/common";
 import type { AppConfig } from "../config/app-config.js";
-import { demoJobs } from "../demo/demo-data.js";
+import { getDemoJobs } from "../demo/demo-fixtures.js";
 import type { CommandJob } from "../models/jobs.js";
 import type { JobRepository } from "../repositories/job.repository.js";
 import { APP_CONFIG, JOB_REPOSITORY } from "../tokens.js";
@@ -14,7 +14,7 @@ export class JobService {
 
   async list(): Promise<CommandJob[]> {
     if (this.config.mode === "demo") {
-      return [...demoJobs];
+      return getDemoJobs();
     }
     return this.jobRepository.list();
   }

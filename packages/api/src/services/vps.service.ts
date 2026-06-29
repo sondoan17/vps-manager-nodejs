@@ -1,7 +1,7 @@
 import { Injectable } from "@nestjs/common";
 import { AuditService } from "../audit/audit.service.js";
 import type { AppConfig } from "../config/app-config.js";
-import { demoServers } from "../demo/demo-data.js";
+import { demoServers } from "../demo/demo-fixtures.js";
 import { VpsNotFoundError } from "../errors.js";
 import type { KeyService } from "./keyService.js";
 import { SshService } from "./ssh.service.js";

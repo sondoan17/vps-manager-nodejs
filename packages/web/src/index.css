@@ -27,15 +27,28 @@
     --shadow-panel: 0 22px 70px rgb(89 70 140 / 0.14);
   }
 
-  * { @apply border-border; }
+  * {
+    @apply border-border;
+  }
 
   body {
     @apply m-0 min-h-screen bg-background font-body text-foreground antialiased;
     background:
-      radial-gradient(circle at 8% 4%, rgb(129 90 248 / 0.12), transparent 30rem),
-      radial-gradient(circle at 92% 8%, rgb(217 121 255 / 0.12), transparent 28rem),
+      radial-gradient(
+        circle at 8% 4%,
+        rgb(129 90 248 / 0.12),
+        transparent 30rem
+      ),
+      radial-gradient(
+        circle at 92% 8%,
+        rgb(217 121 255 / 0.12),
+        transparent 28rem
+      ),
       hsl(var(--background));
   }
 
-  button, input { font: inherit; }
+  button,
+  input {
+    font: inherit;
+  }
 }

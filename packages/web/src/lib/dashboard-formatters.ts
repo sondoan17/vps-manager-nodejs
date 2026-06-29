@@ -10,8 +10,16 @@ export function serverStatusLabel(status?: VpsRecord["status"]) {
 }
 
 export function chipVariant(status?: string): ChipVariant {
-  if (["healthy", "fresh", "succeeded", "success", "ready"].includes(status || "")) return "ready";
-  if (["unreachable", "failed", "failure", "blocked", "destructive"].includes(status || "")) return "destructive";
+  if (
+    ["healthy", "fresh", "succeeded", "success", "ready"].includes(status || "")
+  )
+    return "ready";
+  if (
+    ["unreachable", "failed", "failure", "blocked", "destructive"].includes(
+      status || "",
+    )
+  )
+    return "destructive";
   if (!status || status === "unknown") return "outline";
   return "pending";
 }
@@ -23,7 +31,10 @@ export function formatDate(value?: string) {
 
 export function freshnessLabel(value?: string) {
   if (!value) return "No timestamp";
-  const minutes = Math.max(0, Math.round((Date.now() - new Date(value).getTime()) / 60000));
+  const minutes = Math.max(
+    0,
+    Math.round((Date.now() - new Date(value).getTime()) / 60000),
+  );
   if (minutes < 1) return "just now";
   if (minutes < 60) return `${minutes}m ago`;
   return `${Math.round(minutes / 60)}h ago`;

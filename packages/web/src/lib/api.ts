@@ -26,11 +26,73 @@ export type DashboardOverview = {
     runningJobs: number;
   };
   servers: VpsRecord[];
-  metrics: Array<{ vpsId: string; cpu: number; memory: number; disk: number; loadAverage: number; networkRx: number; networkTx: number; uptime: number; collectedAt: string; freshness: "fresh" | "stale"; trend?: { range: string; points: number[]; min: number; max: number; threshold: number; unit?: string } }>;
-  jobs: Array<{ id: string; vpsId: string; type: string; status: "queued" | "running" | "succeeded" | "failed" | "cancelled"; progress: number; startedAt?: string; finishedAt?: string; outputPreview?: string; errorMessage?: string; workerId?: string; durationMs?: number; retryCount?: number; errorLogUrl?: string }>;
-  auditEvents: Array<{ id: string; actor?: string; action: string; resourceType?: string; resourceId?: string; result: "success" | "failure" | "blocked"; timestamp: string; severity?: "info" | "warning" | "critical"; serverLabel?: string; actionLabel?: string }>;
-  terminal: { label: "Demo terminal"; networkAccess: "disabled"; commands: string[]; sessions: Array<{ command: string; output: string }> };
-  settings: { appMode: "demo" | "local"; webTerminalEnabled: boolean; realSshEnabled: boolean; authRequiredInLocalMode: boolean };
+  metrics: Array<{
+    vpsId: string;
+    cpu: number;
+    memory: number;
+    disk: number;
+    loadAverage: number;
+    networkRx: number;
+    networkTx: number;
+    uptime: number;
+    collectedAt: string;
+    freshness: "fresh" | "stale";
+    trend?: {
+      range: string;
+      points: number[];
+      min: number;
+      max: number;
+      threshold: number;
+      unit?: string;
+    };
+  }>;
+  jobs: Array<{
+    id: string;
+    vpsId: string;
+    type: string;
+    status: "queued" | "running" | "succeeded" | "failed" | "cancelled";
+    progress: number;
+    startedAt?: string;
+    finishedAt?: string;
+    outputPreview?: string;
+    errorMessage?: string;
+    workerId?: string;
+    durationMs?: number;
+    retryCount?: number;
+    errorLogUrl?: string;
+  }>;
+  auditEvents: Array<{
+    id: string;
+    actor?: string;
+    action: string;
+    resourceType?: string;
+    resourceId?: string;
+    result: "success" | "failure" | "blocked";
+    timestamp: string;
+    severity?: "info" | "warning" | "critical";
+    serverLabel?: string;
+    actionLabel?: string;
+    eventCode?: string;
+    sourceIp?: string;
+    requestId?: string;
+    client?: string;
+    jobId?: string;
+    durationMs?: number;
+    authMethod?: string;
+    reason?: string;
+  }>;
+  terminal: {
+    label: "Demo terminal";
+    networkAccess: "disabled";
+    commands: string[];
+    sessions: Array<{ command: string; output: string }>;
+  };
+  settings: {
+    appMode: "demo" | "local";
+    webTerminalEnabled: boolean;
+    realSshEnabled: boolean;
+    authRequiredInLocalMode: boolean;
+  };
 };
 
 export type DashboardMetric = DashboardOverview["metrics"][number];
@@ -49,7 +111,7 @@ type ApiResponse<T> = { data?: T; error?: { message?: string } };
 async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
   const response = await fetch(path, {
     headers: { "Content-Type": "application/json", ...options.headers },
-    ...options
+    ...options,
   });
 
   if (response.status === 204) return null as T;
@@ -79,11 +141,17 @@ export function listAuditEvents() {
 }
 
 export function createVps(payload: CreateVpsPayload) {
-  return request<VpsRecord>("/api/vps", { method: "POST", body: JSON.stringify(payload) });
+  return request<VpsRecord>("/api/vps", {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
 }
 
 export function provisionKey(id: string, password: string) {
-  return request<VpsRecord>(`/api/vps/${id}/provision-key`, { method: "POST", body: JSON.stringify({ password }) });
+  return request<VpsRecord>(`/api/vps/${id}/provision-key`, {
+    method: "POST",
+    body: JSON.stringify({ password }),
+  });
 }
 
 export function verifyKey(id: string) {

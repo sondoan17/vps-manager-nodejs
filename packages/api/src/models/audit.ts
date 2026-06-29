@@ -10,4 +10,12 @@ export type AuditEvent = {
   severity?: "info" | "warning" | "critical";
   serverLabel?: string;
   actionLabel?: string;
+  eventCode?: string;
+  sourceIp?: string;
+  requestId?: string;
+  client?: string;
+  jobId?: string;
+  durationMs?: number;
+  authMethod?: string;
+  reason?: string;
 };

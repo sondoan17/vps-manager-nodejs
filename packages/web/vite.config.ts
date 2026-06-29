@@ -7,20 +7,20 @@ export default defineConfig({
   plugins: [react()],
   resolve: {
     alias: {
-      "@": path.resolve(__dirname, "src")
-    }
+      "@": path.resolve(__dirname, "src"),
+    },
   },
   build: {
     outDir: "../../public",
-    emptyOutDir: true
+    emptyOutDir: true,
   },
   server: {
     proxy: {
-      "/api": "http://localhost:3000"
-    }
+      "/api": "http://localhost:3000",
+    },
   },
   test: {
     environment: "jsdom",
-    setupFiles: "./src/test/setup.ts"
-  }
+    setupFiles: "./src/test/setup.ts",
+  },
 });

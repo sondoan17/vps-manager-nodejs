@@ -96,7 +96,9 @@ export function DashboardShell({
               <Server size={19} />
             </span>
             <div className="min-w-0">
-              <p className="truncate font-display text-lg text-slate-950">VPS Ops</p>
+              <p className="truncate font-display text-lg text-slate-950">
+                VPS Ops
+              </p>
               <p className="text-[11px] font-bold uppercase tracking-[0.12em] text-slate-500">
                 Operations console
               </p>
@@ -120,7 +122,8 @@ export function DashboardShell({
           <div className="mt-auto flex items-start gap-2 border-t border-slate-200 pt-4 text-slate-500">
             <HelpCircle className="mt-0.5 shrink-0" size={15} />
             <p className="text-[13px] font-semibold leading-5">
-              Passwords are sent only for one-time key provisioning and are not stored in browser storage.
+              Passwords are sent only for one-time key provisioning and are not
+              stored in browser storage.
             </p>
           </div>
         </aside>
@@ -150,7 +153,11 @@ export function DashboardShell({
                       <Bell size={18} />
                     </IconButton>
 
-                    <IconButton label="Refresh" disabled={busy} onClick={onRefresh}>
+                    <IconButton
+                      label="Refresh"
+                      disabled={busy}
+                      onClick={onRefresh}
+                    >
                       <RefreshCw size={18} />
                     </IconButton>
                     <UserMenu />
@@ -168,7 +175,9 @@ export function DashboardShell({
                         </p>
                         <p className="truncate">{activeLabel}</p>
                       </div>
-                      <p className="min-w-0 truncate text-sm md:hidden">{activeLabel}</p>
+                      <p className="min-w-0 truncate text-sm md:hidden">
+                        {activeLabel}
+                      </p>
                       <SheetTrigger asChild>
                         <button
                           type="button"
@@ -206,23 +215,64 @@ export function DashboardShell({
                 </nav>
               </div>
             </div>
-            <div className={cn("relative flex min-w-0 max-w-full items-start px-4 text-white sm:px-8 xl:px-10", activeView === "servers" ? "pb-5 pt-0 sm:pb-7 sm:pt-1" : "pb-8 pt-0 sm:pb-14 sm:pt-3")}>
+            <div
+              className={cn(
+                "relative flex min-w-0 max-w-full items-start px-4 text-white sm:px-8 xl:px-10",
+                activeView === "servers"
+                  ? "pb-5 pt-0 sm:pb-7 sm:pt-1"
+                  : "pb-8 pt-0 sm:pb-14 sm:pt-3",
+              )}
+            >
               <div className="min-w-0 max-w-3xl">
                 <p className="text-[10px] font-black uppercase tracking-[0.2em] text-white/65 sm:text-xs sm:tracking-[0.22em]">
                   VPS command center
                 </p>
                 <h1 className="mt-1 break-words font-display text-xl leading-none sm:text-3xl">
-                  {activeView === "servers" ? "Servers" : activeView === "jobs" ? "Jobs" : "Operations dashboard"}
+                  {activeView === "servers"
+                    ? "Servers"
+                    : activeView === "jobs"
+                      ? "Jobs"
+                      : activeView === "metrics"
+                        ? "Metrics"
+                        : activeView === "audit"
+                          ? "Audit"
+                          : "Operations dashboard"}
                 </h1>
-                {activeView === "servers" ? <p className="mt-1 max-w-2xl text-xs font-semibold leading-4 text-white/70 sm:mt-1.5 sm:text-sm sm:leading-5">Manage VPS access, SSH keys, health checks, and provisioning.</p> : null}
-                {activeView === "jobs" ? <p className="mt-1 max-w-2xl text-xs font-semibold leading-4 text-white/70 sm:mt-1.5 sm:text-sm sm:leading-5">Track provisioning, metrics collection, key verification, and background tasks.</p> : null}
+                {activeView === "servers" ? (
+                  <p className="mt-1 max-w-2xl text-xs font-semibold leading-4 text-white/70 sm:mt-1.5 sm:text-sm sm:leading-5">
+                    Manage VPS access, SSH keys, health checks, and
+                    provisioning.
+                  </p>
+                ) : null}
+                {activeView === "jobs" ? (
+                  <p className="mt-1 max-w-2xl text-xs font-semibold leading-4 text-white/70 sm:mt-1.5 sm:text-sm sm:leading-5">
+                    Track provisioning, metrics collection, key verification,
+                    and background tasks.
+                  </p>
+                ) : null}
+                {activeView === "metrics" ? (
+                  <p className="mt-1 max-w-2xl text-xs font-semibold leading-4 text-white/70 sm:mt-1.5 sm:text-sm sm:leading-5">
+                    Monitor CPU, memory, disk, load, and telemetry freshness
+                    across servers.
+                  </p>
+                ) : null}
+                {activeView === "audit" ? (
+                  <p className="mt-1 max-w-2xl text-xs font-semibold leading-4 text-white/70 sm:mt-1.5 sm:text-sm sm:leading-5">
+                    Review operational events, security actions, SSH access, and
+                    job activity.
+                  </p>
+                ) : null}
               </div>
             </div>
           </div>
           <div
             className={cn(
               "relative min-w-0 max-w-full overflow-hidden px-3 pb-4 sm:px-4 xl:px-6",
-              activeView === "overview" ? "-mt-10 pt-0 sm:-mt-12" : activeView === "servers" ? "pt-3" : "pt-5",
+              activeView === "overview"
+                ? "-mt-10 pt-0 sm:-mt-12"
+                : activeView === "servers"
+                  ? "pt-3"
+                  : "pt-5",
             )}
           >
             {children}

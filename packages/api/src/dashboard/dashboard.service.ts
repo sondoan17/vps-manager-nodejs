@@ -1,6 +1,6 @@
 import { Inject, Injectable } from "@nestjs/common";
 import type { AppConfig } from "../config/app-config.js";
-import { DEMO_BANNER, demoAuditEvents, demoJobs, demoMetrics, demoServers, demoTerminal } from "../demo/demo-data.js";
+import { DEMO_BANNER, demoAuditEvents, demoServers, demoTerminal, getDemoJobs, getDemoMetrics } from "../demo/demo-fixtures.js";
 import type { DashboardOverview, DashboardSummary } from "../models/dashboard.js";
 import type { VpsRecord } from "../models/vps.js";
 import type { VpsRepository } from "../repositories/vps.repository.js";
@@ -25,6 +25,8 @@ export class DashboardService {
 
   async overview(): Promise<DashboardOverview> {
     if (this.config.mode === "demo") {
+      const demoJobs = getDemoJobs();
+      const demoMetrics = getDemoMetrics();
       const runningJobs = demoJobs.filter((job) => job.status === "running").length;
       return {
         mode: "demo",
