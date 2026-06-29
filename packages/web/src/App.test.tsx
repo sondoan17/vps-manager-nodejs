@@ -6,6 +6,76 @@ import { App } from "./App";
 
 const fetchMock = vi.fn();
 
+// ── Mock EventSource ──────────────────────────────────────────────────
+
+type EventCallback = (event: MessageEvent) => void;
+type OpenCallback = () => void;
+type ErrorCallback = (event: Event) => void;
+
+let mockEventSourceInstance: {
+  url: string;
+  close: ReturnType<typeof vi.fn>;
+  addEventListener: ReturnType<typeof vi.fn>;
+  removeEventListener: ReturnType<typeof vi.fn>;
+  dispatchEvent: (type: string, data: string) => void;
+  triggerOpen: () => void;
+  triggerError: () => void;
+  onopen: OpenCallback | null;
+  onerror: ErrorCallback | null;
+} | null = null;
+
+let eventSourceConstructorSpy: ReturnType<typeof vi.fn>;
+
+function createMockEventSource() {
+  const listeners = new Map<string, Set<EventCallback>>();
+  let closed = false;
+
+  const instance = {
+    url: "",
+    close: vi.fn(() => {
+      closed = true;
+    }),
+    addEventListener: vi.fn((type: string, callback: EventCallback) => {
+      if (!listeners.has(type)) listeners.set(type, new Set());
+      listeners.get(type)!.add(callback);
+    }),
+    removeEventListener: vi.fn((type: string, callback: EventCallback) => {
+      listeners.get(type)?.delete(callback);
+    }),
+    dispatchEvent: (type: string, data: string) => {
+      if (closed) return;
+      const callbacks = listeners.get(type);
+      if (callbacks) {
+        const event = new MessageEvent(type, { data });
+        for (const cb of callbacks) cb(event);
+      }
+    },
+    triggerOpen: () => {
+      if (instance.onopen) instance.onopen();
+    },
+    triggerError: () => {
+      if (instance.onerror) instance.onerror(new Event("error"));
+    },
+    onopen: null as OpenCallback | null,
+    onerror: null as ErrorCallback | null,
+  };
+
+  return instance;
+}
+
+function stubEventSource() {
+  mockEventSourceInstance = null;
+
+  eventSourceConstructorSpy = vi.fn((url: string) => {
+    const instance = createMockEventSource();
+    instance.url = url;
+    mockEventSourceInstance = instance;
+    return instance;
+  });
+
+  vi.stubGlobal("EventSource", eventSourceConstructorSpy);
+}
+
 const emptyDashboard = {
   mode: "local",
   summary: {
@@ -33,6 +103,16 @@ const emptyDashboard = {
   },
 };
 
+function makeEnvelope(type: string, payload: unknown) {
+  return JSON.stringify({
+    schemaVersion: 1,
+    type,
+    id: "test-id",
+    emittedAt: new Date().toISOString(),
+    payload,
+  });
+}
+
 beforeEach(() => {
   fetchMock.mockReset();
   window.history.replaceState({}, "", "/");
@@ -41,6 +121,7 @@ beforeEach(() => {
     "confirm",
     vi.fn(() => true),
   );
+  stubEventSource();
 });
 
 afterEach(() => {
@@ -48,6 +129,7 @@ afterEach(() => {
   vi.unstubAllGlobals();
   localStorage.clear();
   sessionStorage.clear();
+  mockEventSourceInstance = null;
 });
 
 describe("React dashboard", () => {
@@ -609,5 +691,245 @@ describe("React dashboard", () => {
     expect(screen.getByText("dev-fra-01")).toBeInTheDocument();
     expect(localStorage.length).toBe(0);
     expect(sessionStorage.length).toBe(0);
+  });
+
+  describe("SSE live monitoring events", () => {
+    function renderAppWithLiveEvents(mockData: any) {
+      fetchMock
+        .mockResolvedValueOnce({
+          ok: true,
+          status: 200,
+          json: async () => ({ data: mockData.dashboard }),
+        })
+        .mockResolvedValueOnce({
+          ok: true,
+          status: 200,
+          json: async () => ({ data: mockData.servers }),
+        })
+        .mockResolvedValueOnce({
+          ok: true,
+          status: 200,
+          json: async () => ({ data: mockData.jobs }),
+        })
+        .mockResolvedValueOnce({
+          ok: true,
+          status: 200,
+          json: async () => ({ data: mockData.metrics }),
+        })
+        .mockResolvedValueOnce({
+          ok: true,
+          status: 200,
+          json: async () => ({ data: mockData.auditEvents }),
+        });
+
+      render(<App />);
+      return mockEventSourceInstance;
+    }
+
+    const demoDashboard = {
+      mode: "demo",
+      banner: "Demo mode: simulated servers, no real SSH connections.",
+      summary: {
+        totalServers: 3,
+        healthyServers: 1,
+        warningServers: 1,
+        unreachableServers: 1,
+        runningJobs: 1,
+      },
+      servers: [],
+      metrics: [],
+      jobs: [],
+      auditEvents: [],
+      terminal: {
+        label: "Demo terminal",
+        networkAccess: "disabled",
+        commands: [],
+        sessions: [],
+      },
+      settings: {
+        appMode: "demo",
+        webTerminalEnabled: false,
+        realSshEnabled: false,
+        authRequiredInLocalMode: true,
+      },
+    };
+
+    const demoServerRecords = [
+      { id: "vps-1", name: "web-01", host: "10.0.0.1", port: 22, username: "root", status: "healthy", createdAt: "2026-01-01T00:00:00.000Z", updatedAt: "2026-01-01T00:00:00.000Z" },
+    ];
+
+    it("metrics.updated event changes displayed metrics without crashing", async () => {
+      const es = renderAppWithLiveEvents({
+        dashboard: demoDashboard,
+        servers: demoServerRecords,
+        jobs: [],
+        metrics: [],
+        auditEvents: [],
+      });
+
+      expect(
+        await screen.findByText("Demo mode: simulated servers, no real SSH connections."),
+      ).toBeInTheDocument();
+
+      // Navigate to metrics panel
+      await userEvent.click(
+        screen.getAllByRole("button", { name: "Metrics" })[0],
+      );
+
+      expect(await screen.findByText("No metrics match these filters.")).toBeInTheDocument();
+
+      // Simulate a metrics.updated event via EventSource
+      const metricsPayload = {
+        metrics: [
+          {
+            vpsId: "vps-1",
+            cpu: 42,
+            memory: 63,
+            disk: 55,
+            loadAverage: 1.2,
+            networkRx: 100000,
+            networkTx: 50000,
+            uptime: 3600,
+            collectedAt: new Date().toISOString(),
+            freshness: "fresh" as const,
+          },
+        ],
+      };
+
+      es?.dispatchEvent("metrics.updated", makeEnvelope("metrics.updated", metricsPayload));
+
+      // Wait for metrics to appear (may appear in multiple places)
+      await waitFor(() => {
+        expect(screen.getAllByText("42%").length).toBeGreaterThanOrEqual(1);
+      });
+      expect(screen.getAllByText("63%").length).toBeGreaterThanOrEqual(1);
+      expect(screen.getAllByText("55%").length).toBeGreaterThanOrEqual(1);
+
+      // No passwords stored
+      expect(localStorage.length).toBe(0);
+      expect(sessionStorage.length).toBe(0);
+    });
+
+    it("unknown event types are ignored without crashing", async () => {
+      const es = renderAppWithLiveEvents({
+        dashboard: demoDashboard,
+        servers: demoServerRecords,
+        jobs: [],
+        metrics: [],
+        auditEvents: [],
+      });
+
+      expect(
+        await screen.findByText("Demo mode: simulated servers, no real SSH connections."),
+      ).toBeInTheDocument();
+
+      // Dispatch an unknown event type
+      es?.dispatchEvent("unknown.event", makeEnvelope("unknown.event", { foo: "bar" }));
+
+      // App should still be functional - navigate and check
+      await userEvent.click(
+        screen.getAllByRole("button", { name: "Metrics" })[0],
+      );
+
+      expect(await screen.findByText("No metrics match these filters.")).toBeInTheDocument();
+
+      // Dispatch a valid metrics.updated to ensure it still works
+      const metricsPayload = {
+        metrics: [
+          {
+            vpsId: "vps-1",
+            cpu: 55,
+            memory: 70,
+            disk: 60,
+            loadAverage: 1.0,
+            networkRx: 100000,
+            networkTx: 50000,
+            uptime: 3600,
+            collectedAt: new Date().toISOString(),
+            freshness: "fresh" as const,
+          },
+        ],
+      };
+
+      es?.dispatchEvent("metrics.updated", makeEnvelope("metrics.updated", metricsPayload));
+
+      await waitFor(() => {
+        expect(screen.getAllByText("55%").length).toBeGreaterThanOrEqual(1);
+      });
+
+      expect(localStorage.length).toBe(0);
+    });
+
+    it("shows live connection state in header", async () => {
+      const es = renderAppWithLiveEvents({
+        dashboard: { ...demoDashboard, mode: "local" },
+        servers: demoServerRecords,
+        jobs: [],
+        metrics: [],
+        auditEvents: [],
+      });
+
+      // Initially shows Connecting (EventSource is opened)
+      await waitFor(() => {
+        expect(screen.getByText("Connecting")).toBeInTheDocument();
+      });
+
+      // Simulate hello event which transitions to Live
+      es?.dispatchEvent(
+        "monitoring.hello",
+        makeEnvelope("monitoring.hello", { mode: "local", intervalMs: 5000 }),
+      );
+
+      await waitFor(() => {
+        expect(screen.getByText("Live")).toBeInTheDocument();
+      });
+
+      expect(localStorage.length).toBe(0);
+      expect(sessionStorage.length).toBe(0);
+    });
+
+    it("monitoring.heartbeat updates live timestamp without changing metrics", async () => {
+      const es = renderAppWithLiveEvents({
+        dashboard: { ...demoDashboard, mode: "local" },
+        servers: demoServerRecords,
+        jobs: [],
+        metrics: [],
+        auditEvents: [],
+      });
+
+      expect(
+        await screen.findByText("Demo mode: simulated servers, no real SSH connections."),
+      ).toBeInTheDocument();
+
+      // Navigate to metrics
+      await userEvent.click(
+        screen.getAllByRole("button", { name: "Metrics" })[0],
+      );
+      expect(await screen.findByText("No metrics match these filters.")).toBeInTheDocument();
+
+      // Send hello first to go live
+      es?.dispatchEvent(
+        "monitoring.hello",
+        makeEnvelope("monitoring.hello", { mode: "local", intervalMs: 5000 }),
+      );
+
+      await waitFor(() => {
+        expect(screen.getByText("Live")).toBeInTheDocument();
+      });
+
+      // Send heartbeat
+      es?.dispatchEvent(
+        "monitoring.heartbeat",
+        makeEnvelope("monitoring.heartbeat", {}),
+      );
+
+      // Still "Live" (heartbeat updates timestamp, keeps status as live)
+      expect(screen.getByText("Live")).toBeInTheDocument();
+
+      // Metrics still show empty state
+      expect(screen.getByText("No metrics match these filters.")).toBeInTheDocument();
+
+      expect(localStorage.length).toBe(0);
+    });
   });
 });

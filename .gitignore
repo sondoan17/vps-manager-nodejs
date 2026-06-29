@@ -7,3 +7,4 @@ data/vps.json
 .omo
 .playwright-mcp/
 dashboard-*.png
+.slim/deepwork/

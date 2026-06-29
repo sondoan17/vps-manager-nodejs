@@ -42,6 +42,12 @@ import {
 } from "../ui/sheet";
 import { cn } from "../../lib/utils";
 
+export type LiveConnectionState =
+  | { status: "connecting" }
+  | { status: "live"; latestEventAt: string }
+  | { status: "reconnecting"; latestEventAt?: string }
+  | { status: "stale"; latestEventAt?: string };
+
 export type DashboardView =
   | "overview"
   | "servers"
@@ -66,6 +72,7 @@ type Props = {
   onViewChange: (view: DashboardView) => void;
   mode: "demo" | "local";
   busy: boolean;
+  liveState: LiveConnectionState;
   onRefresh: () => void;
   children: ReactNode;
 };
@@ -75,6 +82,7 @@ export function DashboardShell({
   onViewChange,
   mode,
   busy,
+  liveState,
   onRefresh,
   children,
 }: Props) {
@@ -149,6 +157,7 @@ export function DashboardShell({
 
                   <div className="flex min-w-0 flex-wrap items-center gap-2">
                     <ModeBadge mode={mode} />
+                    <LiveBadge state={liveState} />
                     <IconButton label="Alerts">
                       <Bell size={18} />
                     </IconButton>
@@ -299,6 +308,34 @@ function ModeBadge({ mode }: { mode: "demo" | "local" }) {
     >
       <Icon size={14} />
       {mode}
+    </Badge>
+  );
+}
+
+function LiveBadge({ state }: { state: LiveConnectionState }) {
+  const label = state.status === "connecting" ? "Connecting"
+    : state.status === "live" ? "Live"
+    : state.status === "reconnecting" ? "Reconnecting"
+    : "Stale";
+
+  const dotColor = state.status === "connecting" ? "bg-amber-400"
+    : state.status === "live" ? "bg-emerald-400"
+    : state.status === "reconnecting" ? "bg-amber-400"
+    : "bg-red-400";
+
+  const badgeVariant = state.status === "live" ? "ready"
+    : state.status === "connecting" ? "pending"
+    : "destructive";
+
+  return (
+    <Badge variant={badgeVariant as any} className="gap-1.5 text-[11px] uppercase">
+      <span className={`h-1.5 w-1.5 rounded-full ${dotColor}`} />
+      {label}
+      {state.status !== "connecting" && "latestEventAt" in state && state.latestEventAt ? (
+        <span className="ml-1 text-[10px] font-normal opacity-70">
+          {new Date(state.latestEventAt).toLocaleTimeString()}
+        </span>
+      ) : null}
     </Badge>
   );
 }

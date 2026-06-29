@@ -1,8 +1,9 @@
-import { FormEvent, useEffect, useState } from "react";
+import { FormEvent, useEffect, useState, useRef } from "react";
 import { Alert } from "./components/ui/alert";
 import {
   DashboardShell,
   type DashboardView,
+  type LiveConnectionState,
 } from "./components/layout/DashboardShell";
 import {
   AuditPanel,
@@ -25,7 +26,14 @@ import {
   verifyKey,
   type DashboardOverview,
   type VpsRecord,
+  type DashboardMetric,
+  type AuditEvent,
+  type DashboardJob,
 } from "./lib/api";
+import {
+  subscribeMonitoring,
+  type LiveConnectionState as LiveState,
+} from "./lib/live-api";
 
 type StatusKind = "default" | "success" | "destructive";
 type Status = { message: string; kind: StatusKind };
@@ -55,6 +63,35 @@ const viewByRoute = Object.fromEntries(
 function getViewFromPathname(pathname: string): DashboardView {
   if (pathname === "/") return "overview";
   return viewByRoute[pathname] || "overview";
+}
+
+/**
+ * Merge incoming metrics.updated events into existing metrics,
+ * replacing by vpsId and preserving order from the server list.
+ */
+function mergeMetrics(
+  existing: DashboardMetric[],
+  updated: DashboardMetric[],
+): DashboardMetric[] {
+  const updatedMap = new Map(updated.map((m) => [m.vpsId, m]));
+  // Preserve order of existing metrics, replace values by vpsId
+  const seen = new Set<string>();
+  const merged = existing.map((m) => {
+    const replacement = updatedMap.get(m.vpsId);
+    if (replacement) {
+      seen.add(m.vpsId);
+      return replacement;
+    }
+    return m;
+  });
+  // Append any new metric entries not already present
+  for (const m of updated) {
+    if (!seen.has(m.vpsId)) {
+      merged.push(m);
+      seen.add(m.vpsId);
+    }
+  }
+  return merged;
 }
 
 const emptyOverview: DashboardOverview = {
@@ -101,6 +138,8 @@ export function App() {
     message: "Loading VPS list...",
     kind: "default",
   });
+  const [liveState, setLiveState] = useState<LiveState>({ status: "connecting" });
+  const unsubscribeRef = useRef<(() => void) | null>(null);
 
   async function loadVps(message = "VPS list refreshed.") {
     const [dashboard, servers, jobs, metrics, auditEvents] = await Promise.all([
@@ -160,6 +199,45 @@ export function App() {
         kind: "destructive",
       }),
     );
+  }, []);
+
+  // ── SSE monitoring subscription ─────────────────────────────────
+
+  useEffect(() => {
+    const unsubscribe = subscribeMonitoring({
+      onSnapshot: (payload) => {
+        setOverview((prev) => ({
+          ...prev,
+          ...payload.overview,
+          servers: payload.servers,
+          jobs: payload.jobs,
+          metrics: payload.metrics,
+          auditEvents: payload.auditEvents,
+        }));
+        setRecords(payload.servers);
+      },
+      onMetricsUpdated: (payload) => {
+        setOverview((prev) => {
+          const updatedMetrics = mergeMetrics(prev.metrics, payload.metrics);
+          return { ...prev, metrics: updatedMetrics };
+        });
+      },
+      onHeartbeat: (_payload) => {
+        // Heartbeat updates the live timestamp (handled in onConnectionChange)
+      },
+      onError: (_payload) => {
+        setLiveState({ status: "stale", latestEventAt: undefined });
+      },
+      onConnectionChange: (state: LiveState) => {
+        setLiveState(state);
+      },
+    });
+
+    unsubscribeRef.current = unsubscribe;
+    return () => {
+      unsubscribe();
+      unsubscribeRef.current = null;
+    };
   }, []);
 
   useEffect(() => {
@@ -288,6 +366,7 @@ export function App() {
       onViewChange={handleViewChange}
       mode={overview.mode}
       busy={busy}
+      liveState={liveState}
       onRefresh={() => runAction("Refreshing VPS list...", () => loadVps())}
     >
       {activeView === "overview" ? <OverviewPanel overview={overview} /> : null}

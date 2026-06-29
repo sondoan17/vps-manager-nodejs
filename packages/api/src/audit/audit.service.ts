@@ -15,17 +15,23 @@ export type AuditFilter = {
 export class AuditService {
   constructor(
     @Inject(APP_CONFIG) private readonly config: AppConfig,
-    @Inject(AUDIT_REPOSITORY) private readonly repository: AuditRepository
+    @Inject(AUDIT_REPOSITORY) private readonly repository: AuditRepository,
   ) {}
 
-  record(event: Omit<AuditEvent, "id" | "timestamp"> & { id?: string; timestamp?: string }) {
+  record(
+    event: Omit<AuditEvent, "id" | "timestamp"> & {
+      id?: string;
+      timestamp?: string;
+    },
+  ) {
     return this.repository.append(event);
   }
 
   async list(filter?: AuditFilter): Promise<AuditEvent[]> {
-    const events = this.config.mode === "demo"
-      ? [...demoAuditEvents]
-      : await this.repository.list();
+    const events =
+      this.config.mode === "demo"
+        ? [...demoAuditEvents]
+        : await this.repository.list();
 
     if (filter?.resourceId) {
       return events.filter((e) => e.resourceId === filter.resourceId);

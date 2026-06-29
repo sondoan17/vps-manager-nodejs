@@ -7,10 +7,17 @@ type AuditFile = { audit: AuditEvent[] };
 
 export type AuditRepository = {
   list(): Promise<AuditEvent[]>;
-  append(event: Omit<AuditEvent, "id" | "timestamp"> & { id?: string; timestamp?: string }): Promise<AuditEvent>;
+  append(
+    event: Omit<AuditEvent, "id" | "timestamp"> & {
+      id?: string;
+      timestamp?: string;
+    },
+  ): Promise<AuditEvent>;
 };
 
-export function createJsonAuditRepository(filePath = "data/audit.json"): AuditRepository {
+export function createJsonAuditRepository(
+  filePath = "data/audit.json",
+): AuditRepository {
   return {
     async list() {
       return (await readJsonFile<AuditFile>(filePath, { audit: [] })).audit;
@@ -21,11 +28,13 @@ export function createJsonAuditRepository(filePath = "data/audit.json"): AuditRe
         ...input,
         id: input.id ?? `audit_${nanoid(12)}`,
         timestamp: input.timestamp ?? new Date().toISOString(),
-        metadata: redactValue(input.metadata) as Record<string, unknown> | undefined
+        metadata: redactValue(input.metadata) as
+          | Record<string, unknown>
+          | undefined,
       };
       data.audit.push(event);
       await writeJsonFile(filePath, data);
       return event;
-    }
+    },
   };
 }

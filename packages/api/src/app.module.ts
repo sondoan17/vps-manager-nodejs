@@ -7,6 +7,7 @@ import { DashboardController } from "./controllers/dashboard.controller.js";
 import { HealthController } from "./controllers/health.controller.js";
 import { JobsController } from "./controllers/jobs.controller.js";
 import { MetricsController } from "./controllers/metrics.controller.js";
+import { MonitoringController } from "./controllers/monitoring.controller.js";
 import { VpsController } from "./controllers/vps.controller.js";
 import { LocalAuthGuard } from "./auth/local-auth.guard.js";
 import { createJsonAuditRepository, type AuditRepository } from "./repositories/audit.repository.js";
@@ -17,6 +18,7 @@ import { SshService } from "./services/ssh.service.js";
 import { DashboardService } from "./dashboard/dashboard.service.js";
 import { JobService } from "./services/job.service.js";
 import { MetricService } from "./services/metric.service.js";
+import { MonitoringService } from "./services/monitoring.service.js";
 import { VpsService } from "./services/vps.service.js";
 import { createVpsStore } from "./store/vpsStore.js";
 import type { VpsRepository } from "./repositories/vps.repository.js";
@@ -42,7 +44,7 @@ export function createAppModule(deps: AppDependencies = {}): DynamicModule {
 
   return {
     module: AppModule,
-    controllers: [HealthController, DashboardController, VpsController, JobsController, MetricsController, AuditController],
+    controllers: [HealthController, DashboardController, VpsController, JobsController, MetricsController, AuditController, MonitoringController],
     providers: [
       { provide: APP_CONFIG, useValue: config },
       { provide: VPS_REPOSITORY, useValue: deps.store ?? createVpsStore(join(config.dataDir, "vps.json")) },
@@ -55,6 +57,7 @@ export function createAppModule(deps: AppDependencies = {}): DynamicModule {
       DashboardService,
       JobService,
       MetricService,
+      MonitoringService,
       {
         provide: SshService,
         inject: [APP_CONFIG, AuditService],
