@@ -49,7 +49,7 @@ export class DashboardService {
       metrics: [],
       jobs: [],
       auditEvents: [],
-      terminal: { label: "Demo terminal", networkAccess: "disabled", commands: [], sessions: [] },
+      terminal: { label: "Terminal", networkAccess: "disabled", commands: [], sessions: [] },
       settings: { appMode: "local", webTerminalEnabled: this.config.enableWebTerminal, realSshEnabled: true, authRequiredInLocalMode: true }
     };
   }

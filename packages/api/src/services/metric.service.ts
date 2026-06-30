@@ -27,4 +27,32 @@ export class MetricService {
     }
     return results;
   }
+
+  async append(sample: MetricSample): Promise<MetricSample> {
+    return this.metricRepository.append(sample);
+  }
+
+  async listLatest(vpsId?: string): Promise<MetricSample[]> {
+    const results = await this.metricRepository.listLatest();
+    if (vpsId) {
+      return results.filter((m) => m.vpsId === vpsId);
+    }
+    return results;
+  }
+
+  async getLatest(vpsId: string): Promise<MetricSample | undefined> {
+    return this.metricRepository.getLatest(vpsId);
+  }
+
+  async upsertLatest(sample: MetricSample): Promise<MetricSample> {
+    return this.metricRepository.upsertLatest(sample);
+  }
+
+  async appendWindow(sample: MetricSample, limit?: number): Promise<void> {
+    return this.metricRepository.appendWindow(sample, limit);
+  }
+
+  async listWindow(vpsId: string, limit?: number): Promise<MetricSample[]> {
+    return this.metricRepository.listWindow(vpsId, limit);
+  }
 }

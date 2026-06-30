@@ -12,6 +12,8 @@ const demoConfig: AppConfig = {
   allowPrivateNetworkTargets: false,
   rateLimitWindowMs: 60_000,
   rateLimitMax: 120,
+  agentInstallIntervalSeconds: 1,
+  allowInsecureAgentHttp: false,
 };
 
 let app: Express;

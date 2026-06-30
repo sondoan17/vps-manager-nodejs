@@ -26,6 +26,17 @@ import {
 import { Input } from "../../ui/input";
 import { Label } from "../../ui/label";
 import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from "../../ui/alert-dialog";
+import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
@@ -65,7 +76,7 @@ type ServersPanelProps = {
   onCreateFormChange: (value: ServersPanelProps["createForm"]) => void;
   onCreate: (event: FormEvent<HTMLFormElement>) => void;
   onPasswordChange: (id: string, value: string) => void;
-  onProvision: (vps: VpsRecord, event: FormEvent<HTMLFormElement>) => void;
+  onProvision: (vps: VpsRecord) => void;
   onVerify: (vps: VpsRecord) => void;
   onDelete: (vps: VpsRecord) => void;
 };
@@ -294,6 +305,23 @@ function ServerCard({
   const isReady = Boolean(vps.keyProvisionedAt);
   const isDown = vps.status === "unreachable";
   const [showPassword, setShowPassword] = useState(false);
+  const [confirmOpen, setConfirmOpen] = useState(false);
+  const [passwordError, setPasswordError] = useState("");
+  const [deleteTarget, setDeleteTarget] = useState<VpsRecord | null>(null);
+
+  const handlePasswordKeyDown = (e: React.KeyboardEvent) => {
+    if (e.key === "Enter") {
+      e.preventDefault();
+      const trimmed = password.trim();
+      if (!trimmed) {
+        setPasswordError("Password cannot be empty");
+        return;
+      }
+      setPasswordError("");
+      setConfirmOpen(true);
+    }
+  };
+
   return (
     <article
       className={`min-w-0 rounded-xl border bg-white px-4 py-4 shadow-sm transition ${isDown ? "border-red-200 bg-red-50/45 shadow-red-950/5 ring-1 ring-red-100" : "border-slate-200 hover:border-slate-300"}`}
@@ -410,13 +438,40 @@ function ServerCard({
             vps={vps}
             busy={busy}
             onRotate={() => setShowPassword(true)}
-            onDelete={onDelete}
+            onRequestDelete={() => {
+              window.setTimeout(() => setDeleteTarget(vps), 0);
+            }}
           />
         </div>
       </div>
+      {/* Delete confirmation – rendered outside DropdownMenu to avoid focus-trap nesting */}
+      <AlertDialog
+        open={deleteTarget?.id === vps.id}
+        onOpenChange={(open) => { if (!open) setDeleteTarget(null); }}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete {vps.name}?</AlertDialogTitle>
+            <AlertDialogDescription>
+              This permanently removes the server record for {vps.username}@{vps.host}:{vps.port}. This cannot be undone.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+              onClick={() => {
+                onDelete(vps);
+              }}
+            >
+              Delete server
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
       {showPassword ? (
         <form
-          onSubmit={(event) => onProvision(vps, event)}
+          onSubmit={(event) => event.preventDefault()}
           autoComplete="off"
           className="mt-3 grid gap-2 border-t border-slate-200 pt-3 sm:grid-cols-[minmax(0,1fr)_auto]"
         >
@@ -428,18 +483,49 @@ function ServerCard({
               autoComplete="new-password"
               placeholder="Used once to install or rotate the key"
               value={password}
-              onChange={(event) => onPasswordChange(vps.id, event.target.value)}
+              onChange={(event) => {
+                onPasswordChange(vps.id, event.target.value);
+                if (passwordError) setPasswordError("");
+              }}
+              onKeyDown={handlePasswordKeyDown}
             />
+            {passwordError ? (
+              <p className="mt-1 text-xs font-semibold text-red-600">{passwordError}</p>
+            ) : null}
           </Label>
-          <Button
-            type="submit"
-            size="sm"
-            disabled={busy}
-            className="self-end rounded-xl"
-          >
-            <KeyRound size={16} />
-            {isReady ? "Rotate key" : "Install key"}
-          </Button>
+          <AlertDialog open={confirmOpen} onOpenChange={setConfirmOpen}>
+            <AlertDialogTrigger asChild>
+              <Button
+                type="button"
+                size="sm"
+                disabled={busy || !password.trim()}
+                className="self-end rounded-xl"
+              >
+                <KeyRound size={16} />
+                {isReady ? "Rotate key" : "Install key"}
+              </Button>
+            </AlertDialogTrigger>
+            <AlertDialogContent>
+              <AlertDialogHeader>
+                <AlertDialogTitle>
+                  {isReady ? "Rotate SSH key?" : "Install SSH key?"}
+                </AlertDialogTitle>
+                <AlertDialogDescription>
+                  This will connect to {vps.name} and update authorized SSH access using the one-time password. The password will not be stored.
+                </AlertDialogDescription>
+              </AlertDialogHeader>
+              <AlertDialogFooter>
+                <AlertDialogCancel>Cancel</AlertDialogCancel>
+                <AlertDialogAction
+                  onClick={() => {
+                    onProvision(vps);
+                  }}
+                >
+                  {isReady ? "Rotate key" : "Install key"}
+                </AlertDialogAction>
+              </AlertDialogFooter>
+            </AlertDialogContent>
+          </AlertDialog>
         </form>
       ) : null}
     </article>
@@ -506,12 +592,12 @@ function ServerOverflow({
   vps,
   busy,
   onRotate,
-  onDelete,
+  onRequestDelete,
 }: {
   vps: VpsRecord;
   busy: boolean;
   onRotate: () => void;
-  onDelete: ServersPanelProps["onDelete"];
+  onRequestDelete: () => void;
 }) {
   return (
     <DropdownMenu>
@@ -546,7 +632,7 @@ function ServerOverflow({
         <DropdownMenuItem
           className="text-destructive focus:text-destructive"
           disabled={busy}
-          onClick={() => onDelete(vps)}
+          onClick={onRequestDelete}
         >
           <Trash2 size={15} />
           Delete server

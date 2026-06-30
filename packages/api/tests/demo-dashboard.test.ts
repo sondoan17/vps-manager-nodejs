@@ -16,7 +16,9 @@ const demoConfig: AppConfig = {
   dataDir: "data",
   privateDir: "private",
   rateLimitWindowMs: 60_000,
-  rateLimitMax: 120
+  rateLimitMax: 120,
+  agentInstallIntervalSeconds: 1,
+  allowInsecureAgentHttp: false
 };
 
 let tempDir: string;

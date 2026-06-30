@@ -20,7 +20,7 @@ export type DemoTerminalSession = {
 };
 
 export type DemoTerminalOverview = {
-  label: "Demo terminal";
+  label: string;
   networkAccess: "disabled";
   commands: string[];
   sessions: DemoTerminalSession[];

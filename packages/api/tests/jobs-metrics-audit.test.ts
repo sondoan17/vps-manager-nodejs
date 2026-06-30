@@ -18,7 +18,9 @@ const demoConfig: AppConfig = {
   dataDir: "data",
   privateDir: "private",
   rateLimitWindowMs: 60_000,
-  rateLimitMax: 120
+  rateLimitMax: 120,
+  agentInstallIntervalSeconds: 1,
+  allowInsecureAgentHttp: false
 };
 
 let tempDir: string;
@@ -99,6 +101,7 @@ describe("jobs API", () => {
         vpsId: "vps_test_01",
         type: "check disk",
         status: "succeeded",
+        progress: 100,
         startedAt: "2026-06-25T10:00:00.000Z",
         finishedAt: "2026-06-25T10:00:05.000Z",
         exitCode: 0,

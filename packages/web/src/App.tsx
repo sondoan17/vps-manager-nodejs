@@ -108,7 +108,7 @@ const emptyOverview: DashboardOverview = {
   jobs: [],
   auditEvents: [],
   terminal: {
-    label: "Demo terminal",
+    label: "Terminal",
     networkAccess: "disabled",
     commands: [],
     sessions: [],
@@ -289,11 +289,7 @@ export function App() {
     });
   }
 
-  async function handleProvision(
-    vps: VpsRecord,
-    event: FormEvent<HTMLFormElement>,
-  ) {
-    event.preventDefault();
+  async function handleProvision(vps: VpsRecord) {
     const password = provisionPasswords[vps.id] || "";
     if (!password) {
       setStatus({
@@ -321,7 +317,6 @@ export function App() {
   }
 
   async function handleDelete(vps: VpsRecord) {
-    if (!window.confirm(`Delete ${vps.name}? This cannot be undone.`)) return;
     await runAction(`Deleting ${vps.name}...`, async () => {
       await deleteVps(vps.id);
       setStatus({ message: `Deleted ${vps.name}.`, kind: "success" });

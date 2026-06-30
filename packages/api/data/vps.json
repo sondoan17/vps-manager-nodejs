@@ -1,0 +1,17 @@
+{
+  "vps": [
+    {
+      "provider": "unknown",
+      "tags": [],
+      "status": "unknown",
+      "id": "vps_boj9jWUbLvUN",
+      "name": "test",
+      "host": "192.168.0.195",
+      "port": 22,
+      "username": "admin",
+      "createdAt": "2026-06-30T19:43:34.247Z",
+      "updatedAt": "2026-06-30T19:43:35.329Z",
+      "keyProvisionedAt": "2026-06-30T19:43:35.329Z"
+    }
+  ]
+}

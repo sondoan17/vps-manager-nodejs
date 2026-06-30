@@ -15,7 +15,12 @@
     "build:api": "npm run build -w @vps-manager/api",
     "start": "node dist/server.js",
     "test": "vitest run",
-    "typecheck": "npm run typecheck -w @vps-manager/api && npm run typecheck -w @vps-manager/web"
+    "typecheck": "npm run typecheck -w @vps-manager/api && npm run typecheck -w @vps-manager/web",
+    "build:agent": "node scripts/build-agent.mjs",
+    "test:agent": "cd packages/agent && go test ./...",
+    "create-agent-token": "tsx scripts/create-agent-token.ts",
+    "import-vps-env": "node scripts/import-vps-env.mjs",
+    "add-vps-env": "node scripts/add-vps-from-env.mjs"
   },
   "dependencies": {
     "@nestjs/common": "^10.4.15",

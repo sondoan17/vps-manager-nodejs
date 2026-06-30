@@ -88,6 +88,11 @@ export function DashboardShell({
 }: Props) {
   const activeLabel =
     views.find((view) => view.id === activeView)?.label || "Overview";
+  const terminalTitle = mode === "demo" ? "Demo terminal" : "Terminal";
+  const terminalDescription =
+    mode === "demo"
+      ? "Preview command output without opening real SSH sessions."
+      : "Run safe read-only commands and inspect server output.";
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
 
   function handleMobileViewChange(view: DashboardView) {
@@ -245,7 +250,9 @@ export function DashboardShell({
                         ? "Metrics"
                         : activeView === "audit"
                           ? "Audit"
-                          : "Operations dashboard"}
+                          : activeView === "terminal"
+                            ? terminalTitle
+                            : "Operations dashboard"}
                 </h1>
                 {activeView === "servers" ? (
                   <p className="mt-1 max-w-2xl text-xs font-semibold leading-4 text-white/70 sm:mt-1.5 sm:text-sm sm:leading-5">
@@ -269,6 +276,11 @@ export function DashboardShell({
                   <p className="mt-1 max-w-2xl text-xs font-semibold leading-4 text-white/70 sm:mt-1.5 sm:text-sm sm:leading-5">
                     Review operational events, security actions, SSH access, and
                     job activity.
+                  </p>
+                ) : null}
+                {activeView === "terminal" ? (
+                  <p className="mt-1 max-w-2xl text-xs font-semibold leading-4 text-white/70 sm:mt-1.5 sm:text-sm sm:leading-5">
+                    {terminalDescription}
                   </p>
                 ) : null}
               </div>

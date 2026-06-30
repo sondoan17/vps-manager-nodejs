@@ -1,0 +1,311 @@
+{
+  "audit": [
+    {
+      "actor": "system",
+      "action": "vps.create",
+      "resourceType": "vps",
+      "resourceId": "vps_5A6CF3y3l7bE",
+      "result": "success",
+      "metadata": {
+        "host": "127.0.0.1"
+      },
+      "id": "audit_7K9b7p5-kkeC",
+      "timestamp": "2026-06-30T18:04:55.434Z"
+    },
+    {
+      "actor": "system",
+      "action": "vps.delete",
+      "resourceType": "vps",
+      "resourceId": "vps_5A6CF3y3l7bE",
+      "result": "success",
+      "id": "audit_vKji6538xRym",
+      "timestamp": "2026-06-30T18:51:23.483Z"
+    },
+    {
+      "actor": "system",
+      "action": "vps.create",
+      "resourceType": "vps",
+      "resourceId": "vps_l4UjLPpvCNNl",
+      "result": "success",
+      "metadata": {
+        "host": "127.0.0.1"
+      },
+      "id": "audit_7ZBxy8U5a-6d",
+      "timestamp": "2026-06-30T18:52:01.003Z"
+    },
+    {
+      "actor": "system",
+      "action": "ssh.host.blocked",
+      "resourceType": "vps",
+      "resourceId": "vps_l4UjLPpvCNNl",
+      "result": "blocked",
+      "metadata": {
+        "host": "127.0.0.1",
+        "error": {}
+      },
+      "id": "audit_Jgm2ahph5ASG",
+      "timestamp": "2026-06-30T18:52:01.021Z"
+    },
+    {
+      "actor": "system",
+      "action": "vps.key.provision",
+      "resourceType": "vps",
+      "resourceId": "vps_l4UjLPpvCNNl",
+      "result": "failure",
+      "metadata": {
+        "error": {}
+      },
+      "id": "audit_o51gSfD6fspf",
+      "timestamp": "2026-06-30T18:52:01.031Z"
+    },
+    {
+      "actor": "system",
+      "action": "vps.create",
+      "resourceType": "vps",
+      "resourceId": "vps_3dRHxSwzGMov",
+      "result": "success",
+      "metadata": {
+        "host": "127.0.0.1"
+      },
+      "id": "audit_Bc-mVMHmz76O",
+      "timestamp": "2026-06-30T18:52:19.192Z"
+    },
+    {
+      "actor": "system",
+      "action": "vps.delete",
+      "resourceType": "vps",
+      "resourceId": "vps_3dRHxSwzGMov",
+      "result": "success",
+      "id": "audit_tOwp3gsV--QY",
+      "timestamp": "2026-06-30T18:52:27.531Z"
+    },
+    {
+      "actor": "system",
+      "action": "ssh.host.blocked",
+      "resourceType": "vps",
+      "resourceId": "vps_l4UjLPpvCNNl",
+      "result": "blocked",
+      "metadata": {
+        "host": "127.0.0.1",
+        "error": {}
+      },
+      "id": "audit_JQxO7GicVT9V",
+      "timestamp": "2026-06-30T18:52:29.999Z"
+    },
+    {
+      "actor": "system",
+      "action": "vps.key.verify",
+      "resourceType": "vps",
+      "resourceId": "vps_l4UjLPpvCNNl",
+      "result": "failure",
+      "metadata": {
+        "error": {}
+      },
+      "id": "audit_xM1UgqeLXECR",
+      "timestamp": "2026-06-30T18:52:30.011Z"
+    },
+    {
+      "actor": "system",
+      "action": "vps.delete",
+      "resourceType": "vps",
+      "resourceId": "vps_l4UjLPpvCNNl",
+      "result": "success",
+      "id": "audit_efv3qtzmSkqQ",
+      "timestamp": "2026-06-30T19:09:24.178Z"
+    },
+    {
+      "actor": "system",
+      "action": "vps.create",
+      "resourceType": "vps",
+      "resourceId": "vps_viZYdwMQGbJ5",
+      "result": "success",
+      "metadata": {
+        "host": "192.168.0.195"
+      },
+      "id": "audit_aM-zTM1-Mt6k",
+      "timestamp": "2026-06-30T19:09:42.097Z"
+    },
+    {
+      "actor": "system",
+      "action": "ssh.host.blocked",
+      "resourceType": "vps",
+      "resourceId": "vps_viZYdwMQGbJ5",
+      "result": "blocked",
+      "metadata": {
+        "host": "192.168.0.195",
+        "error": {}
+      },
+      "id": "audit_btodcySn-ayT",
+      "timestamp": "2026-06-30T19:09:42.115Z"
+    },
+    {
+      "actor": "system",
+      "action": "vps.key.provision",
+      "resourceType": "vps",
+      "resourceId": "vps_viZYdwMQGbJ5",
+      "result": "failure",
+      "metadata": {
+        "error": {}
+      },
+      "id": "audit_G3hAQu60YNqi",
+      "timestamp": "2026-06-30T19:09:42.125Z"
+    },
+    {
+      "actor": "system",
+      "action": "vps.delete",
+      "resourceType": "vps",
+      "resourceId": "vps_viZYdwMQGbJ5",
+      "result": "success",
+      "id": "audit_Xj89zia3J4h3",
+      "timestamp": "2026-06-30T19:13:38.034Z"
+    },
+    {
+      "actor": "system",
+      "action": "vps.create",
+      "resourceType": "vps",
+      "resourceId": "vps_wWn229WPFTar",
+      "result": "success",
+      "metadata": {
+        "host": "192.168.0.195"
+      },
+      "id": "audit_5l3cxt4d9avB",
+      "timestamp": "2026-06-30T19:13:55.888Z"
+    },
+    {
+      "actor": "system",
+      "action": "vps.key.provision",
+      "resourceType": "vps",
+      "resourceId": "vps_wWn229WPFTar",
+      "result": "failure",
+      "metadata": {
+        "error": {
+          "errno": -4078,
+          "code": "ECONNREFUSED",
+          "syscall": "connect",
+          "address": "192.168.0.195",
+          "port": 2222,
+          "level": "client-socket"
+        }
+      },
+      "id": "audit_kzBUCope3_NZ",
+      "timestamp": "2026-06-30T19:13:57.915Z"
+    },
+    {
+      "actor": "system",
+      "action": "vps.delete",
+      "resourceType": "vps",
+      "resourceId": "vps_wWn229WPFTar",
+      "result": "success",
+      "id": "audit_U8yY0vnvYMxN",
+      "timestamp": "2026-06-30T19:21:28.344Z"
+    },
+    {
+      "actor": "system",
+      "action": "vps.create",
+      "resourceType": "vps",
+      "resourceId": "vps_ZF8Db4C12CUC",
+      "result": "success",
+      "metadata": {
+        "host": "192.168.0.195"
+      },
+      "id": "audit_PTGrw-k0Mf2s",
+      "timestamp": "2026-06-30T19:22:07.713Z"
+    },
+    {
+      "actor": "system",
+      "action": "vps.key.provision",
+      "resourceType": "vps",
+      "resourceId": "vps_ZF8Db4C12CUC",
+      "result": "failure",
+      "metadata": {
+        "error": {}
+      },
+      "id": "audit_PnTiXvJuh-so",
+      "timestamp": "2026-06-30T19:22:09.739Z"
+    },
+    {
+      "actor": "system",
+      "action": "vps.delete",
+      "resourceType": "vps",
+      "resourceId": "vps_ZF8Db4C12CUC",
+      "result": "success",
+      "id": "audit_oxy2376BnZVF",
+      "timestamp": "2026-06-30T19:25:42.379Z"
+    },
+    {
+      "actor": "system",
+      "action": "vps.create",
+      "resourceType": "vps",
+      "resourceId": "vps_JHRaDSvEMkb2",
+      "result": "success",
+      "metadata": {
+        "host": "192.168.0.195"
+      },
+      "id": "audit_1Ze-6_HyirUv",
+      "timestamp": "2026-06-30T19:25:56.442Z"
+    },
+    {
+      "actor": "system",
+      "action": "vps.delete",
+      "resourceType": "vps",
+      "resourceId": "vps_JHRaDSvEMkb2",
+      "result": "success",
+      "id": "audit_0HfIM7VIwh36",
+      "timestamp": "2026-06-30T19:34:45.371Z"
+    },
+    {
+      "actor": "system",
+      "action": "vps.create",
+      "resourceType": "vps",
+      "resourceId": "vps_HzoJR56umZf8",
+      "result": "success",
+      "metadata": {
+        "host": "192.168.0.195"
+      },
+      "id": "audit_sdIYinEqhQV9",
+      "timestamp": "2026-06-30T19:35:05.461Z"
+    },
+    {
+      "actor": "system",
+      "action": "vps.key.provision",
+      "resourceType": "vps",
+      "resourceId": "vps_HzoJR56umZf8",
+      "result": "failure",
+      "metadata": {
+        "error": {}
+      },
+      "id": "audit_bAMz62EByPxI",
+      "timestamp": "2026-06-30T19:35:25.981Z"
+    },
+    {
+      "actor": "system",
+      "action": "vps.delete",
+      "resourceType": "vps",
+      "resourceId": "vps_HzoJR56umZf8",
+      "result": "success",
+      "id": "audit_aBg2UZt8RvQw",
+      "timestamp": "2026-06-30T19:43:10.947Z"
+    },
+    {
+      "actor": "system",
+      "action": "vps.create",
+      "resourceType": "vps",
+      "resourceId": "vps_boj9jWUbLvUN",
+      "result": "success",
+      "metadata": {
+        "host": "192.168.0.195"
+      },
+      "id": "audit_MW9E8Aaw57LW",
+      "timestamp": "2026-06-30T19:43:34.250Z"
+    },
+    {
+      "actor": "system",
+      "action": "vps.key.provision",
+      "resourceType": "vps",
+      "resourceId": "vps_boj9jWUbLvUN",
+      "result": "success",
+      "id": "audit_daA3Br-QP_4J",
+      "timestamp": "2026-06-30T19:43:35.331Z"
+    }
+  ]
+}

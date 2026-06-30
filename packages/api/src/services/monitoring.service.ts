@@ -150,6 +150,17 @@ function sendEvent(res: Response, type: string, data: unknown): void {
   res.write(`event: ${type}\ndata: ${JSON.stringify(envelope)}\n\n`);
 }
 
+// ── Freshness helpers ─────────────────────────────────────────────────
+// Agent metrics prefer receivedAt (server clock) over collectedAt (VPS clock)
+// since VPS clocks may be skewed.
+
+/** 2 minutes in ms — samples older than this are considered stale. */
+export const STALE_THRESHOLD_MS = 120_000;
+
+export function isFreshTimestamp(timestamp: string, thresholdMs = STALE_THRESHOLD_MS): boolean {
+  return Date.now() - new Date(timestamp).getTime() < thresholdMs;
+}
+
 // ── Service ───────────────────────────────────────────────────────────
 
 @Injectable()
@@ -283,7 +294,7 @@ export class MonitoringService {
         const metrics = await this.metricService.list();
         const updatedMetrics: DashboardMetricSample[] = metrics.map((m) => ({
           ...m,
-          freshness: this.isFresh(m.collectedAt) ? "fresh" : "stale",
+          freshness: isFreshTimestamp(m.receivedAt ?? m.collectedAt, this.staleThresholdMs) ? "fresh" : "stale",
         }));
 
         if (updatedMetrics.length > 0) {
@@ -311,9 +322,5 @@ export class MonitoringService {
     res.on("close", () => {
       clearInterval(keepAlive);
     });
-  }
-
-  private isFresh(collectedAt: string): boolean {
-    return Date.now() - new Date(collectedAt).getTime() < this.staleThresholdMs;
   }
 }

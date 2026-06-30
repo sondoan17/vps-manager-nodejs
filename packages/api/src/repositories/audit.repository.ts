@@ -1,7 +1,7 @@
 import { nanoid } from "nanoid";
 import type { AuditEvent } from "../models/audit.js";
 import { redactValue } from "../common/redaction.js";
-import { readJsonFile, writeJsonFile } from "./json-file.js";
+import { readJsonFile, writeJsonFile, withFileLock } from "./json-file.js";
 
 type AuditFile = { audit: AuditEvent[] };
 
@@ -23,18 +23,20 @@ export function createJsonAuditRepository(
       return (await readJsonFile<AuditFile>(filePath, { audit: [] })).audit;
     },
     async append(input) {
-      const data = await readJsonFile<AuditFile>(filePath, { audit: [] });
-      const event: AuditEvent = {
-        ...input,
-        id: input.id ?? `audit_${nanoid(12)}`,
-        timestamp: input.timestamp ?? new Date().toISOString(),
-        metadata: redactValue(input.metadata) as
-          | Record<string, unknown>
-          | undefined,
-      };
-      data.audit.push(event);
-      await writeJsonFile(filePath, data);
-      return event;
+      return withFileLock(filePath, async () => {
+        const data = await readJsonFile<AuditFile>(filePath, { audit: [] });
+        const event: AuditEvent = {
+          ...input,
+          id: input.id ?? `audit_${nanoid(12)}`,
+          timestamp: input.timestamp ?? new Date().toISOString(),
+          metadata: redactValue(input.metadata) as
+            | Record<string, unknown>
+            | undefined,
+        };
+        data.audit.push(event);
+        await writeJsonFile(filePath, data);
+        return event;
+      });
     },
   };
 }

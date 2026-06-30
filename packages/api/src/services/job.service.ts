@@ -18,4 +18,23 @@ export class JobService {
     }
     return this.jobRepository.list();
   }
+
+  async get(id: string): Promise<CommandJob | undefined> {
+    if (this.config.mode === "demo") {
+      return getDemoJobs().find((j) => j.id === id);
+    }
+    return this.jobRepository.get(id);
+  }
+
+  async create(input: Omit<CommandJob, "id"> & { id?: string }): Promise<CommandJob> {
+    return this.jobRepository.create(input);
+  }
+
+  async update(id: string, patch: Partial<Omit<CommandJob, "id">>): Promise<CommandJob | undefined> {
+    return this.jobRepository.update(id, patch);
+  }
+
+  async append(input: Omit<CommandJob, "id"> & { id?: string }): Promise<CommandJob> {
+    return this.jobRepository.append(input);
+  }
 }

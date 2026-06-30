@@ -1,3 +1,5 @@
+import { getLocalAuthToken } from "./auth-token";
+
 export type VpsRecord = {
   id: string;
   name: string;
@@ -82,7 +84,7 @@ export type DashboardOverview = {
     reason?: string;
   }>;
   terminal: {
-    label: "Demo terminal";
+    label: string;
     networkAccess: "disabled";
     commands: string[];
     sessions: Array<{ command: string; output: string }>;
@@ -107,12 +109,34 @@ export type CreateVpsPayload = {
 };
 
 type ApiResponse<T> = { data?: T; error?: { message?: string } };
+const REQUEST_TIMEOUT_MS = 45_000;
 
 async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
-  const response = await fetch(path, {
-    headers: { "Content-Type": "application/json", ...options.headers },
-    ...options,
-  });
+  const localAuthToken = getLocalAuthToken();
+  const headers = new Headers(options.headers);
+  headers.set("Content-Type", "application/json");
+  if (localAuthToken && !headers.has("Authorization")) {
+    headers.set("Authorization", `Bearer ${localAuthToken}`);
+  }
+
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
+
+  let response: Response;
+  try {
+    response = await fetch(path, {
+      ...options,
+      headers,
+      signal: options.signal || controller.signal,
+    });
+  } catch (error) {
+    if (error instanceof DOMException && error.name === "AbortError") {
+      throw new Error("Request timed out. Check backend connectivity and retry.");
+    }
+    throw error;
+  } finally {
+    clearTimeout(timeout);
+  }
 
   if (response.status === 204) return null as T;
   const payload = (await response.json().catch(() => ({}))) as ApiResponse<T>;

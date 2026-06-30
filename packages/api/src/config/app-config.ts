@@ -1,4 +1,7 @@
 import { config as loadDotenv } from "dotenv";
+import { existsSync, readFileSync } from "node:fs";
+import { dirname, join } from "node:path";
+import { fileURLToPath } from "node:url";
 import { z } from "zod";
 
 export type AppMode = "demo" | "local";
@@ -12,6 +15,10 @@ export type AppConfig = {
   privateDir: string;
   rateLimitWindowMs: number;
   rateLimitMax: number;
+  agentPublicBaseUrl?: string;
+  agentBinaryPath?: string;
+  agentInstallIntervalSeconds: number;
+  allowInsecureAgentHttp: boolean;
 };
 
 const booleanSchema = z
@@ -27,7 +34,11 @@ const envSchema = z.object({
   DATA_DIR: z.string().trim().min(1).default("data"),
   PRIVATE_DIR: z.string().trim().min(1).default("private"),
   RATE_LIMIT_WINDOW_MS: z.coerce.number().int().positive().default(60_000),
-  RATE_LIMIT_MAX: z.coerce.number().int().positive().default(120)
+  RATE_LIMIT_MAX: z.coerce.number().int().positive().default(120),
+  AGENT_PUBLIC_BASE_URL: z.preprocess((value) => (value === "" ? undefined : value), z.string().trim().url().optional()),
+  AGENT_BINARY_PATH: z.preprocess((value) => (value === "" ? undefined : value), z.string().trim().optional()),
+  AGENT_INSTALL_INTERVAL_SECONDS: z.coerce.number().int().min(1).default(1),
+  ALLOW_INSECURE_AGENT_HTTP: booleanSchema.default("false")
 });
 
 export function parseAppConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
@@ -49,11 +60,46 @@ export function parseAppConfig(env: NodeJS.ProcessEnv = process.env): AppConfig 
     dataDir: parsed.DATA_DIR,
     privateDir: parsed.PRIVATE_DIR,
     rateLimitWindowMs: parsed.RATE_LIMIT_WINDOW_MS,
-    rateLimitMax: parsed.RATE_LIMIT_MAX
+    rateLimitMax: parsed.RATE_LIMIT_MAX,
+    agentPublicBaseUrl: parsed.AGENT_PUBLIC_BASE_URL,
+    agentBinaryPath: parsed.AGENT_BINARY_PATH,
+    agentInstallIntervalSeconds: parsed.AGENT_INSTALL_INTERVAL_SECONDS,
+    allowInsecureAgentHttp: parsed.ALLOW_INSECURE_AGENT_HTTP
   };
 }
 
 export function loadAppConfig(): AppConfig {
-  loadDotenv();
+  loadDotenv({ path: findProjectRootEnvPath() });
   return parseAppConfig();
+}
+
+function findProjectRootEnvPath(): string {
+  const startDirectories = [process.cwd(), dirname(fileURLToPath(import.meta.url))];
+
+  for (const startDirectory of startDirectories) {
+    const projectRoot = findProjectRoot(startDirectory);
+    if (projectRoot) return join(projectRoot, ".env");
+  }
+
+  return join(process.cwd(), ".env");
+}
+
+function findProjectRoot(startDirectory: string): string | undefined {
+  let currentDirectory = startDirectory;
+
+  while (true) {
+    const packageJsonPath = join(currentDirectory, "package.json");
+    if (existsSync(packageJsonPath)) {
+      try {
+        const packageJson = JSON.parse(readFileSync(packageJsonPath, "utf8")) as { workspaces?: unknown };
+        if (Array.isArray(packageJson.workspaces)) return currentDirectory;
+      } catch {
+        // Keep walking upward if package.json is not readable or parseable.
+      }
+    }
+
+    const parentDirectory = dirname(currentDirectory);
+    if (parentDirectory === currentDirectory) return undefined;
+    currentDirectory = parentDirectory;
+  }
 }

@@ -15,3 +15,21 @@ export class SshHostBlockedError extends Error {
     super(message);
   }
 }
+
+export class SshOperationError extends Error {
+  constructor(message = "SSH operation failed") {
+    super(message);
+  }
+}
+
+export class AgentAuthError extends Error {
+  constructor(message = "Agent authentication failed") {
+    super(message);
+  }
+}
+
+export class AgentTokenRevokedError extends AgentAuthError {
+  constructor() {
+    super("Agent token has been revoked");
+  }
+}
