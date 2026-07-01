@@ -4,7 +4,7 @@ import type { AppConfig } from "../config/app-config.js";
 import { DemoSshDisabledError } from "../errors.js";
 import type { VpsRecord } from "../models/vps.js";
 import { assertSshHostAllowed } from "../security/ssh-host-policy.js";
-import { provisionPublicKey, verifyPrivateKey } from "./sshService.js";
+import { execCommand, makeDirectory, provisionPublicKey, uploadFile, verifyPrivateKey } from "./sshService.js";
 
 @Injectable()
 export class SshService {
@@ -38,5 +38,36 @@ export class SshService {
   async verifyPrivateKey(vps: VpsRecord, privateKey: string) {
     await this.assertRealSshAllowed(vps);
     return verifyPrivateKey(vps, privateKey);
+  }
+
+  async makeDirectory(
+    vps: VpsRecord,
+    remotePath: string,
+    mode: number,
+    auth: { password?: string; privateKey?: string },
+  ) {
+    await this.assertRealSshAllowed(vps);
+    return makeDirectory(vps, remotePath, mode, auth);
+  }
+
+  async uploadFile(
+    vps: VpsRecord,
+    remotePath: string,
+    content: Buffer,
+    mode: number,
+    auth: { password?: string; privateKey?: string },
+  ) {
+    await this.assertRealSshAllowed(vps);
+    return uploadFile(vps, remotePath, content, mode, auth);
+  }
+
+  async execCommand(
+    vps: VpsRecord,
+    command: string,
+    auth: { password?: string; privateKey?: string },
+    timeoutMs = 30_000,
+  ): Promise<{ stdout: string; stderr: string }> {
+    await this.assertRealSshAllowed(vps);
+    return execCommand(vps, command, auth, timeoutMs);
   }
 }

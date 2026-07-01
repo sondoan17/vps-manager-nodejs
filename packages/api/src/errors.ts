@@ -33,3 +33,21 @@ export class AgentTokenRevokedError extends AgentAuthError {
     super("Agent token has been revoked");
   }
 }
+
+export class DuplicateAgentInstallError extends Error {
+  constructor() {
+    super("Agent install is already in progress for this VPS");
+  }
+}
+
+export class AgentInstallError extends Error {
+  constructor(message = "Agent installation failed") {
+    super(message);
+  }
+}
+
+export class AgentConfigError extends Error {
+  constructor(message = "Agent configuration error") {
+    super(message);
+  }
+}

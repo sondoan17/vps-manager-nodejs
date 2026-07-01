@@ -18,3 +18,7 @@ export const updateVpsSchema = createVpsSchema.omit({ password: true }).partial(
 export const provisionKeySchema = z.object({
   password: z.string().min(1).max(4096)
 });
+
+export const installAgentSchema = z.object({
+  password: z.string().min(1).max(4096).optional()
+});

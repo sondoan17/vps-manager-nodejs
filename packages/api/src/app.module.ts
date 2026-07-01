@@ -17,6 +17,7 @@ import { createJsonJobRepository, type JobRepository } from "./repositories/job.
 import { createJsonMetricRepository, type MetricRepository } from "./repositories/metric.repository.js";
 import { createKeyService, type KeyService } from "./services/keyService.js";
 import { SshService } from "./services/ssh.service.js";
+import { AgentInstallerService } from "./services/agent-installer.service.js";
 import { AgentService } from "./services/agent.service.js";
 import { DashboardService } from "./dashboard/dashboard.service.js";
 import { JobRunnerService } from "./services/job-runner.service.js";
@@ -58,7 +59,7 @@ export function createAppModule(deps: AppDependencies = {}): DynamicModule {
       { provide: JOB_REPOSITORY, useValue: deps.jobs ?? createJsonJobRepository(join(config.dataDir, "jobs.json")) },
       { provide: METRIC_REPOSITORY, useValue: deps.metrics ?? createJsonMetricRepository(join(config.dataDir, "metrics.json")) },
       { provide: AGENT_REPOSITORY, useValue: deps.agent ?? createJsonAgentRepository(join(config.dataDir, "agents.json")) },
-      LocalAuthGuard,
+      AgentInstallerService,
       AgentService,
       AuditService,
       DashboardService,
@@ -73,8 +74,8 @@ export function createAppModule(deps: AppDependencies = {}): DynamicModule {
       },
       {
         provide: VpsService,
-        inject: [VPS_REPOSITORY, KEY_SERVICE, SshService, AuditService, APP_CONFIG],
-        useFactory: (store: VpsRepository, keys: KeyService, ssh: SshService, audit: AuditService, appConfig: AppConfig) => new VpsService(store, keys, ssh, audit, appConfig)
+        inject: [VPS_REPOSITORY, KEY_SERVICE, SshService, AuditService, APP_CONFIG, AgentInstallerService],
+        useFactory: (store: VpsRepository, keys: KeyService, ssh: SshService, audit: AuditService, appConfig: AppConfig, installer: AgentInstallerService) => new VpsService(store, keys, ssh, audit, appConfig, installer)
       }
     ]
   };

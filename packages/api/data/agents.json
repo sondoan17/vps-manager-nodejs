@@ -1,0 +1,21 @@
+{
+  "credentials": [
+    {
+      "vpsId": "vps_CKBgjsR4BdLb",
+      "secretHash": "76bca9743ba3ffc929cfa8daf62325246643ff0179ee002f747bdfcab19b4a02",
+      "status": "active",
+      "id": "cred_PBK--Kl7gY56",
+      "createdAt": "2026-07-01T16:50:37.571Z",
+      "lastUsedAt": "2026-07-01T16:50:38.942Z",
+      "lastUsedIp": "::ffff:192.168.0.198"
+    }
+  ],
+  "states": {
+    "vps_CKBgjsR4BdLb": {
+      "vpsId": "vps_CKBgjsR4BdLb",
+      "status": "online",
+      "version": "0.1.0",
+      "lastSeenAt": "2026-07-01T16:50:38.942Z"
+    }
+  }
+}

@@ -3,6 +3,7 @@ import {
   Activity,
   AlertTriangle,
   Clock3,
+  DownloadCloud,
   Edit3,
   KeyRound,
   MapPin,
@@ -78,6 +79,7 @@ type ServersPanelProps = {
   onPasswordChange: (id: string, value: string) => void;
   onProvision: (vps: VpsRecord) => void;
   onVerify: (vps: VpsRecord) => void;
+  onInstallAgent: (vps: VpsRecord) => void;
   onDelete: (vps: VpsRecord) => void;
 };
 
@@ -140,6 +142,7 @@ export function ServersPanel(props: ServersPanelProps) {
                     onPasswordChange={props.onPasswordChange}
                     onProvision={props.onProvision}
                     onVerify={props.onVerify}
+                    onInstallAgent={props.onInstallAgent}
                     onDelete={props.onDelete}
                   />
                 ))}
@@ -290,6 +293,7 @@ function ServerCard({
   onPasswordChange,
   onProvision,
   onVerify,
+  onInstallAgent,
   onDelete,
 }: {
   vps: VpsRecord;
@@ -300,6 +304,7 @@ function ServerCard({
   onPasswordChange: (id: string, value: string) => void;
   onProvision: ServersPanelProps["onProvision"];
   onVerify: ServersPanelProps["onVerify"];
+  onInstallAgent: ServersPanelProps["onInstallAgent"];
   onDelete: ServersPanelProps["onDelete"];
 }) {
   const isReady = Boolean(vps.keyProvisionedAt);
@@ -351,6 +356,9 @@ function ServerCard({
           <p className="mt-1 break-all text-sm font-semibold leading-6 text-slate-600">
             {vps.username}@{vps.host}:{vps.port}
           </p>
+          <p className="mt-1 break-all font-mono text-xs font-bold text-slate-500">
+            ID: {vps.id}
+          </p>
           <div className="mt-2 flex flex-wrap items-center gap-x-2 gap-y-1.5 text-[13px] font-bold text-slate-500">
             <span className="flex items-center gap-1.5">
               <ServerCog size={14} />
@@ -398,6 +406,26 @@ function ServerCard({
               >
                 <ShieldCheck size={16} />
                 Verify access
+              </Button>
+              <Button
+                type="button"
+                size="sm"
+                variant="secondary"
+                disabled={busy}
+                onClick={() => setShowPassword((value) => !value)}
+              >
+                <KeyRound size={16} />
+                Reinstall key
+              </Button>
+              <Button
+                type="button"
+                size="sm"
+                variant="default"
+                disabled={busy}
+                onClick={() => onInstallAgent(vps)}
+              >
+                <DownloadCloud size={16} />
+                Install agent
               </Button>
               <Button
                 type="button"

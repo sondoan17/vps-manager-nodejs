@@ -20,7 +20,8 @@
     "test:agent": "cd packages/agent && go test ./...",
     "create-agent-token": "tsx scripts/create-agent-token.ts",
     "import-vps-env": "node scripts/import-vps-env.mjs",
-    "add-vps-env": "node scripts/add-vps-from-env.mjs"
+    "add-vps-env": "node scripts/add-vps-from-env.mjs",
+    "install-agent-env": "tsx scripts/install-agent-from-env.ts"
   },
   "dependencies": {
     "@nestjs/common": "^10.4.15",

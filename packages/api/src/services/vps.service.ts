@@ -6,7 +6,8 @@ import { VpsNotFoundError } from "../errors.js";
 import type { KeyService } from "./keyService.js";
 import { SshService } from "./ssh.service.js";
 import type { VpsRepository } from "../repositories/vps.repository.js";
-import { createVpsSchema, provisionKeySchema, updateVpsSchema } from "../validation/vpsSchemas.js";
+import { createVpsSchema, installAgentSchema, provisionKeySchema, updateVpsSchema } from "../validation/vpsSchemas.js";
+import { AgentInstallerService } from "./agent-installer.service.js";
 
 @Injectable()
 export class VpsService {
@@ -15,7 +16,8 @@ export class VpsService {
     private readonly keys: KeyService,
     private readonly ssh: SshService,
     private readonly audit: AuditService,
-    private readonly config: AppConfig
+    private readonly config: AppConfig,
+    private readonly agentInstaller: AgentInstallerService,
   ) {}
 
   async list() {
@@ -71,6 +73,19 @@ export class VpsService {
       await this.audit.record({ actor: "system", action: "vps.key.verify", resourceType: "vps", resourceId: vps.id, result: "success" });
     } catch (error: unknown) {
       await this.audit.record({ actor: "system", action: "vps.key.verify", resourceType: "vps", resourceId: vps.id, result: "failure", metadata: { error } });
+      throw error;
+    }
+  }
+
+  async installAgent(id: string, body: unknown, requestHost?: string) {
+    const vps = await this.get(id);
+    const { password } = installAgentSchema.parse(body);
+    try {
+      const result = await this.agentInstaller.install(vps.id, password, requestHost);
+      await this.audit.record({ actor: "system", action: "agent.install", resourceType: "vps", resourceId: vps.id, result: "success", metadata: { jobId: result.jobId } });
+      return result;
+    } catch (error: unknown) {
+      await this.audit.record({ actor: "system", action: "agent.install", resourceType: "vps", resourceId: vps.id, result: "failure", metadata: { error: error instanceof Error ? error.message : "Unknown error" } });
       throw error;
     }
   }

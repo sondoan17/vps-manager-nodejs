@@ -1,4 +1,5 @@
-import { Body, Controller, Delete, Get, HttpCode, Inject, Param, Patch, Post, UseGuards } from "@nestjs/common";
+import { Body, Controller, Delete, Get, HttpCode, Inject, Param, Patch, Post, Req, UseGuards } from "@nestjs/common";
+import type { Request } from "express";
 import { LocalAuthGuard } from "../auth/local-auth.guard.js";
 import { VpsService } from "../services/vps.service.js";
 
@@ -47,5 +48,13 @@ export class VpsController {
   async verifyKey(@Param("id") id: string) {
     await this.vps.verifyKey(id);
     return { data: { ok: true } };
+  }
+
+  @Post(":id/install-agent")
+  @UseGuards(LocalAuthGuard)
+  async installAgent(@Param("id") id: string, @Body() body: unknown, @Req() req: Request) {
+    const requestHost = req.get("host");
+    const result = await this.vps.installAgent(id, body, requestHost);
+    return { data: { jobId: result.jobId, state: { status: result.state.status, lastInstallJobId: result.state.lastInstallJobId } } };
   }
 }

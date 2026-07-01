@@ -182,6 +182,13 @@ export function verifyKey(id: string) {
   return request<{ ok: true }>(`/api/vps/${id}/verify-key`, { method: "POST" });
 }
 
+export function installAgent(id: string, password?: string) {
+  return request<{ jobId: string; state: { status: string; lastInstallJobId?: string } }>(`/api/vps/${id}/install-agent`, {
+    method: "POST",
+    body: JSON.stringify(password ? { password } : {}),
+  });
+}
+
 export function deleteVps(id: string) {
   return request<null>(`/api/vps/${id}`, { method: "DELETE" });
 }

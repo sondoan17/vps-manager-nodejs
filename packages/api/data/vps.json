@@ -4,14 +4,14 @@
       "provider": "unknown",
       "tags": [],
       "status": "unknown",
-      "id": "vps_boj9jWUbLvUN",
-      "name": "test",
-      "host": "192.168.0.195",
+      "id": "vps_CKBgjsR4BdLb",
+      "name": "test vps",
+      "host": "192.168.0.198",
       "port": 22,
       "username": "admin",
-      "createdAt": "2026-06-30T19:43:34.247Z",
-      "updatedAt": "2026-06-30T19:43:35.329Z",
-      "keyProvisionedAt": "2026-06-30T19:43:35.329Z"
+      "createdAt": "2026-07-01T14:45:29.906Z",
+      "updatedAt": "2026-07-01T18:01:23.776Z",
+      "keyProvisionedAt": "2026-07-01T18:01:23.776Z"
     }
   ]
 }

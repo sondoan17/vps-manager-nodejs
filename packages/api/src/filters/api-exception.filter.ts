@@ -1,7 +1,7 @@
 import { Catch, HttpException, type ArgumentsHost, type ExceptionFilter } from "@nestjs/common";
 import type { Request, Response } from "express";
 import { ZodError } from "zod";
-import { AgentAuthError, DemoSshDisabledError, SshHostBlockedError, SshOperationError, VpsNotFoundError } from "../errors.js";
+import { AgentAuthError, DemoSshDisabledError, DuplicateAgentInstallError, SshHostBlockedError, SshOperationError, VpsNotFoundError } from "../errors.js";
 import { safeErrorMessage } from "../common/redaction.js";
 
 function errorBody(message: string, _requestId?: string) {
@@ -32,6 +32,10 @@ export class ApiExceptionFilter implements ExceptionFilter {
 
     if (error instanceof AgentAuthError) {
       return response.status(401).json(errorBody(safeErrorMessage(error), requestId));
+    }
+
+    if (error instanceof DuplicateAgentInstallError) {
+      return response.status(409).json(errorBody(safeErrorMessage(error), requestId));
     }
 
     if ((error as NodeJS.ErrnoException).code === "ENOENT") {

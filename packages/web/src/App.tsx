@@ -22,6 +22,7 @@ import {
   listJobs,
   listMetrics,
   listVps,
+  installAgent,
   provisionKey,
   verifyKey,
   type DashboardOverview,
@@ -316,6 +317,20 @@ export function App() {
     });
   }
 
+  async function handleInstallAgent(vps: VpsRecord) {
+    const password = provisionPasswords[vps.id] || "";
+    await runAction(`Starting agent install for ${vps.name}...`, async () => {
+      const result = await installAgent(vps.id, password || undefined);
+      if (password) {
+        setProvisionPasswords((current) => ({ ...current, [vps.id]: "" }));
+      }
+      setStatus({
+        message: `Agent install queued for ${vps.name}. Job ${result.jobId} is running in the background.`,
+        kind: "success",
+      });
+    });
+  }
+
   async function handleDelete(vps: VpsRecord) {
     await runAction(`Deleting ${vps.name}...`, async () => {
       await deleteVps(vps.id);
@@ -386,6 +401,7 @@ export function App() {
           }
           onProvision={handleProvision}
           onVerify={handleVerify}
+          onInstallAgent={handleInstallAgent}
           onDelete={handleDelete}
         />
       ) : null}

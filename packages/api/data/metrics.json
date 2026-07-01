@@ -1,0 +1,36 @@
+{
+  "latest": {
+    "vps_CKBgjsR4BdLb": {
+      "vpsId": "vps_CKBgjsR4BdLb",
+      "cpu": 0,
+      "memory": 10.68,
+      "disk": 4.67,
+      "loadAverage": 0,
+      "networkRx": 0,
+      "networkTx": 0,
+      "uptime": 10740.18,
+      "collectedAt": "2026-07-01T16:50:38Z",
+      "receivedAt": "2026-07-01T16:50:38.942Z",
+      "source": "agent",
+      "agentVersion": "0.1.0"
+    }
+  },
+  "windows": {
+    "vps_CKBgjsR4BdLb": [
+      {
+        "vpsId": "vps_CKBgjsR4BdLb",
+        "cpu": 0,
+        "memory": 10.68,
+        "disk": 4.67,
+        "loadAverage": 0,
+        "networkRx": 0,
+        "networkTx": 0,
+        "uptime": 10740.18,
+        "collectedAt": "2026-07-01T16:50:38Z",
+        "receivedAt": "2026-07-01T16:50:38.942Z",
+        "source": "agent",
+        "agentVersion": "0.1.0"
+      }
+    ]
+  }
+}

@@ -2,9 +2,7 @@ import { Client, type SFTPWrapper } from "ssh2";
 import { SshOperationError } from "../errors.js";
 import type { VpsRecord } from "../models/vps.js";
 
-const VERIFY_COMMAND = "true";
 const SSH_READY_TIMEOUT_MS = 15_000;
-const SSH_COMMAND_TIMEOUT_MS = 20_000;
 const SSH_DIR_PATH = ".ssh";
 const AUTHORIZED_KEYS_PATH = `${SSH_DIR_PATH}/authorized_keys`;
 
@@ -50,6 +48,10 @@ function toSshOperationError(error: unknown) {
     return new SshOperationError("SSH authentication failed. Check username, password, and whether password login is enabled on the VPS.");
   }
 
+  if (/unsupported key format/i.test(message)) {
+    return new SshOperationError("SSH private key format is unsupported. Reinstall the VPS key to regenerate a compatible key pair.");
+  }
+
   if (code === "ECONNREFUSED") {
     return new SshOperationError("SSH connection refused. Check the VPS host, SSH port, and whether sshd is running.");
   }
@@ -67,38 +69,6 @@ function toSshOperationError(error: unknown) {
   }
 
   return new SshOperationError("SSH operation failed. Check host, port, credentials, and server SSH configuration.");
-}
-
-function exec(client: Client, command: string) {
-  return new Promise<void>((resolve, reject) => {
-    client.exec(command, (error, stream) => {
-      if (error) return reject(toSshOperationError(error));
-      let settled = false;
-      let stderr = "";
-      const timeout = setTimeout(() => {
-        if (settled) return;
-        settled = true;
-        stream.close();
-        reject(new SshOperationError("Remote SSH command timed out."));
-      }, SSH_COMMAND_TIMEOUT_MS);
-      stream.stderr.on("data", (chunk: Buffer) => {
-        stderr += chunk.toString("utf8");
-      });
-      stream.on("close", (code: number) => {
-        if (settled) return;
-        settled = true;
-        clearTimeout(timeout);
-        if (code === 0) resolve();
-        else reject(new SshOperationError(stderr.trim() || "Remote SSH command failed"));
-      });
-      stream.on("error", (streamError: unknown) => {
-        if (settled) return;
-        settled = true;
-        clearTimeout(timeout);
-        reject(toSshOperationError(streamError));
-      });
-    });
-  });
 }
 
 function openSftp(client: Client) {
@@ -179,8 +149,84 @@ export async function provisionPublicKey(vps: VpsRecord, password: string, publi
 
 export async function verifyPrivateKey(vps: VpsRecord, privateKey: string) {
   const client = await connect({ host: vps.host, port: vps.port, username: vps.username, privateKey });
+  client.end();
+}
+
+function sftpWriteBuffer(sftp: SFTPWrapper, path: string, data: Buffer, mode: number) {
+  return new Promise<void>((resolve, reject) => {
+    sftp.writeFile(path, data, { mode }, (error) => {
+      if (error) return reject(toSshOperationError(error));
+      resolve();
+    });
+  });
+}
+
+export async function uploadFile(
+  vps: VpsRecord,
+  remotePath: string,
+  content: Buffer,
+  mode: number,
+  auth: { password?: string; privateKey?: string },
+) {
+  const client = await connect({ host: vps.host, port: vps.port, username: vps.username, ...auth });
   try {
-    await exec(client, VERIFY_COMMAND);
+    const sftp = await openSftp(client);
+    await sftpWriteBuffer(sftp, remotePath, content, mode);
+  } finally {
+    client.end();
+  }
+}
+
+export async function makeDirectory(
+  vps: VpsRecord,
+  remotePath: string,
+  mode: number,
+  auth: { password?: string; privateKey?: string },
+) {
+  const client = await connect({ host: vps.host, port: vps.port, username: vps.username, ...auth });
+  try {
+    const sftp = await openSftp(client);
+    await sftpMkdir(sftp, remotePath, mode);
+  } finally {
+    client.end();
+  }
+}
+
+export async function execCommand(
+  vps: VpsRecord,
+  command: string,
+  auth: { password?: string; privateKey?: string },
+  timeoutMs = 30_000,
+): Promise<{ stdout: string; stderr: string }> {
+  const client = await connect({ host: vps.host, port: vps.port, username: vps.username, ...auth });
+  try {
+    return await new Promise<{ stdout: string; stderr: string }>((resolve, reject) => {
+      client.exec(command, (error, stream) => {
+        if (error) return reject(toSshOperationError(error));
+        let stdout = "";
+        let stderr = "";
+        let settled = false;
+        const timeout = setTimeout(() => {
+          if (settled) return;
+          settled = true;
+          stream.close();
+          reject(new SshOperationError("Remote command timed out"));
+        }, timeoutMs);
+        stream.on("data", (chunk: Buffer) => {
+          stdout += chunk.toString("utf8");
+        });
+        stream.stderr.on("data", (chunk: Buffer) => {
+          stderr += chunk.toString("utf8");
+        });
+        stream.on("close", (code: number) => {
+          if (settled) return;
+          settled = true;
+          clearTimeout(timeout);
+          if (code === 0) resolve({ stdout, stderr });
+          else reject(new SshOperationError(stderr.trim() || stdout.trim() || `Remote command failed with code ${code}`));
+        });
+      });
+    });
   } finally {
     client.end();
   }
