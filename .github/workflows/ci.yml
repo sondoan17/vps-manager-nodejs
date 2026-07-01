@@ -158,6 +158,7 @@ jobs:
           VPS_PORT: ${{ secrets.VPS_PORT }}
           DEPLOY_PATH: ${{ steps.config.outputs.deploy_path }}
           IMAGE: ${{ needs.publish.outputs.sha_tag }}
+          LOCAL_AUTH_TOKEN: ${{ secrets.LOCAL_AUTH_TOKEN }}
           GHCR_USER: ${{ github.actor }}
           GHCR_TOKEN: ${{ github.token }}
         run: |
@@ -174,6 +175,7 @@ jobs:
               environment:
                 PORT: "3000"
                 APP_MODE: "local"
+                LOCAL_AUTH_TOKEN: "$LOCAL_AUTH_TOKEN"
                 DATA_DIR: /app/data
                 PRIVATE_DIR: /app/private
                 ENABLE_WEB_TERMINAL: "false"
