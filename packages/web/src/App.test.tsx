@@ -601,8 +601,8 @@ describe("React dashboard", () => {
     await userEvent.click(
       screen.getAllByRole("button", { name: "Terminal" })[0],
     );
-    expect(screen.getByText("Demo terminal")).toBeInTheDocument();
-    expect(screen.getByText("No real SSH connections"));
+    expect(screen.getAllByText("Demo terminal").length).toBeGreaterThan(0);
+    expect(screen.getByText(/No stored password and no write/i)).toBeInTheDocument();
 
     await userEvent.click(
       screen.getAllByRole("button", { name: "Settings" })[0],

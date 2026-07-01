@@ -4,6 +4,7 @@ import (
 	"math"
 	"os"
 	"path/filepath"
+	"runtime"
 	"testing"
 	"time"
 )
@@ -350,7 +351,7 @@ func TestCollector_UnsupportedOnNonLinux(t *testing.T) {
 
 // isLinux returns true if the current GOOS is linux.
 func isLinux() bool {
-	return osName() == "linux"
+	return runtime.GOOS == "linux"
 }
 
 // osName is overridable for testing.
@@ -372,11 +373,11 @@ func TestCollectWithFixtureData(t *testing.T) {
 	defer func() { readProcFile = origRead }()
 
 	fixtures := map[string]string{
-		"/proc/stat":     fixtureProcStat,
-		"/proc/meminfo":  fixtureMemInfo,
-		"/proc/loadavg":  fixtureLoadAvg,
-		"/proc/uptime":   fixtureUptime,
-		"/proc/net/dev":  fixtureNetDev,
+		"/proc/stat":    fixtureProcStat,
+		"/proc/meminfo": fixtureMemInfo,
+		"/proc/loadavg": fixtureLoadAvg,
+		"/proc/uptime":  fixtureUptime,
+		"/proc/net/dev": fixtureNetDev,
 	}
 
 	readProcFile = func(path string) (string, error) {

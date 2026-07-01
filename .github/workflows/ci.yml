@@ -1,21 +1,192 @@
-name: CI
+name: CI/CD
 
 on:
   push:
     branches: [main]
   pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  packages: write
+
+concurrency:
+  group: ci-cd-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  IMAGE_NAME: ghcr.io/${{ github.repository }}
 
 jobs:
   verify:
+    name: Verify
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
         with:
           node-version: 22
           cache: npm
-      - run: npm ci
-      - run: npm test
-      - run: npm run typecheck
-      - run: npm run build
-      - run: docker build -t vps-manager-nodejs:ci .
+
+      - name: Install Node dependencies
+        run: npm ci
+
+      - name: Run Node tests
+        run: npm test
+
+      - name: Typecheck Node workspaces
+        run: npm run typecheck
+
+      - name: Build Node app
+        run: npm run build
+
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.23.x'
+          cache-dependency-path: packages/agent/go.mod
+
+      - name: Test Go agent
+        run: npm run test:agent
+
+      - name: Build Docker image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          push: false
+          tags: vps-manager-nodejs:ci
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+  publish:
+    name: Publish Docker image
+    needs: verify
+    runs-on: ubuntu-latest
+    if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
+    outputs:
+      image: ${{ steps.meta.outputs.image }}
+      sha_tag: ${{ steps.meta.outputs.sha_tag }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Docker metadata
+        id: meta
+        run: |
+          IMAGE="${IMAGE_NAME,,}"
+          SHA_TAG="$IMAGE:${GITHUB_SHA}"
+          echo "image=$IMAGE" >> "$GITHUB_OUTPUT"
+          echo "sha_tag=$SHA_TAG" >> "$GITHUB_OUTPUT"
+          echo "IMAGE=$IMAGE" >> "$GITHUB_ENV"
+          echo "SHA_TAG=$SHA_TAG" >> "$GITHUB_ENV"
+
+      - name: Setup Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Login to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ github.token }}
+
+      - name: Build and push Docker image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          push: true
+          tags: |
+            ${{ env.SHA_TAG }}
+            ${{ env.IMAGE }}:latest
+          labels: |
+            org.opencontainers.image.source=${{ github.server_url }}/${{ github.repository }}
+            org.opencontainers.image.revision=${{ github.sha }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+  deploy:
+    name: Deploy over SSH
+    needs: publish
+    runs-on: ubuntu-latest
+    if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
+    environment: production
+    steps:
+      - name: Check deploy configuration
+        id: config
+        env:
+          VPS_HOST: ${{ secrets.VPS_HOST }}
+          VPS_USER: ${{ secrets.VPS_USER }}
+          VPS_SSH_KEY: ${{ secrets.VPS_SSH_KEY }}
+          DEPLOY_PATH: ${{ secrets.DEPLOY_PATH }}
+        run: |
+          if [ -n "$VPS_HOST" ] && [ -n "$VPS_USER" ] && [ -n "$VPS_SSH_KEY" ]; then
+            echo "enabled=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "enabled=false" >> "$GITHUB_OUTPUT"
+            echo "Deploy skipped: set VPS_HOST, VPS_USER and VPS_SSH_KEY repository secrets to enable SSH deployment."
+          fi
+          echo "deploy_path=${DEPLOY_PATH:-/opt/vps-manager-nodejs}" >> "$GITHUB_OUTPUT"
+
+      - name: Prepare SSH key
+        if: steps.config.outputs.enabled == 'true'
+        env:
+          VPS_SSH_KEY: ${{ secrets.VPS_SSH_KEY }}
+        run: |
+          install -m 700 -d ~/.ssh
+          printf '%s\n' "$VPS_SSH_KEY" > ~/.ssh/deploy_key
+          chmod 600 ~/.ssh/deploy_key
+
+      - name: Add server host key
+        if: steps.config.outputs.enabled == 'true'
+        env:
+          VPS_HOST: ${{ secrets.VPS_HOST }}
+          VPS_PORT: ${{ secrets.VPS_PORT }}
+        run: |
+          ssh-keyscan -p "${VPS_PORT:-22}" -H "$VPS_HOST" >> ~/.ssh/known_hosts
+
+      - name: Deploy container
+        if: steps.config.outputs.enabled == 'true'
+        env:
+          VPS_HOST: ${{ secrets.VPS_HOST }}
+          VPS_USER: ${{ secrets.VPS_USER }}
+          VPS_PORT: ${{ secrets.VPS_PORT }}
+          DEPLOY_PATH: ${{ steps.config.outputs.deploy_path }}
+          IMAGE: ${{ needs.publish.outputs.sha_tag }}
+          GHCR_USER: ${{ github.actor }}
+          GHCR_TOKEN: ${{ github.token }}
+        run: |
+          SSH="ssh -i ~/.ssh/deploy_key -p ${VPS_PORT:-22} ${VPS_USER}@${VPS_HOST}"
+          printf '%s' "$GHCR_TOKEN" | $SSH "docker login ghcr.io -u '$GHCR_USER' --password-stdin"
+          $SSH "mkdir -p '$DEPLOY_PATH'"
+          $SSH "cat > '$DEPLOY_PATH/docker-compose.yml'" <<EOF
+          services:
+            vps-manager:
+              image: $IMAGE
+              restart: unless-stopped
+              ports:
+                - "3000:3000"
+              environment:
+                PORT: "3000"
+                APP_MODE: "production"
+                DATA_DIR: /app/data
+                PRIVATE_DIR: /app/private
+                ENABLE_WEB_TERMINAL: "false"
+                ALLOW_PRIVATE_NETWORK_TARGETS: "false"
+              volumes:
+                - vps-manager-data:/app/data
+                - vps-manager-private:/app/private
+              healthcheck:
+                test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:3000/api/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
+                interval: 30s
+                timeout: 5s
+                retries: 3
+                start_period: 10s
+          volumes:
+            vps-manager-data:
+            vps-manager-private:
+          EOF
+          $SSH "cd '$DEPLOY_PATH' && docker compose pull && docker compose up -d --remove-orphans"
+          $SSH "cd '$DEPLOY_PATH' && docker compose ps"
