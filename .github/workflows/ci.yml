@@ -55,12 +55,23 @@ jobs:
       - name: Setup Docker Buildx
         uses: docker/setup-buildx-action@v3
 
-      - name: Build Docker image
+      - name: Build API Docker image
         uses: docker/build-push-action@v6
         with:
           context: .
+          target: api-runtime
           push: false
-          tags: vps-manager-nodejs:ci
+          tags: vps-manager-nodejs-api:ci
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Build web Docker image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          target: web-runtime
+          push: false
+          tags: vps-manager-nodejs-web:ci
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
@@ -70,8 +81,10 @@ jobs:
     runs-on: ubuntu-latest
     if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
     outputs:
-      image: ${{ steps.meta.outputs.image }}
-      sha_tag: ${{ steps.meta.outputs.sha_tag }}
+      api_image: ${{ steps.meta.outputs.api_image }}
+      api_sha_tag: ${{ steps.meta.outputs.api_sha_tag }}
+      web_image: ${{ steps.meta.outputs.web_image }}
+      web_sha_tag: ${{ steps.meta.outputs.web_sha_tag }}
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -79,12 +92,23 @@ jobs:
       - name: Docker metadata
         id: meta
         run: |
-          IMAGE="${IMAGE_NAME,,}"
-          SHA_TAG="$IMAGE:${GITHUB_SHA}"
-          echo "image=$IMAGE" >> "$GITHUB_OUTPUT"
-          echo "sha_tag=$SHA_TAG" >> "$GITHUB_OUTPUT"
-          echo "IMAGE=$IMAGE" >> "$GITHUB_ENV"
-          echo "SHA_TAG=$SHA_TAG" >> "$GITHUB_ENV"
+          BASE_IMAGE="${IMAGE_NAME,,}"
+          API_IMAGE="${BASE_IMAGE}-api"
+          WEB_IMAGE="${BASE_IMAGE}-web"
+          API_SHA_TAG="$API_IMAGE:${GITHUB_SHA}"
+          WEB_SHA_TAG="$WEB_IMAGE:${GITHUB_SHA}"
+          {
+            echo "api_image=$API_IMAGE"
+            echo "api_sha_tag=$API_SHA_TAG"
+            echo "web_image=$WEB_IMAGE"
+            echo "web_sha_tag=$WEB_SHA_TAG"
+          } >> "$GITHUB_OUTPUT"
+          {
+            echo "API_IMAGE=$API_IMAGE"
+            echo "API_SHA_TAG=$API_SHA_TAG"
+            echo "WEB_IMAGE=$WEB_IMAGE"
+            echo "WEB_SHA_TAG=$WEB_SHA_TAG"
+          } >> "$GITHUB_ENV"
 
       - name: Setup Docker Buildx
         uses: docker/setup-buildx-action@v3
@@ -96,17 +120,35 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ github.token }}
 
-      - name: Build and push Docker image
+      - name: Build and push API Docker image
         uses: docker/build-push-action@v6
         with:
           context: .
+          target: api-runtime
           push: true
           tags: |
-            ${{ env.SHA_TAG }}
-            ${{ env.IMAGE }}:latest
+            ${{ env.API_SHA_TAG }}
+            ${{ env.API_IMAGE }}:latest
           labels: |
             org.opencontainers.image.source=${{ github.server_url }}/${{ github.repository }}
             org.opencontainers.image.revision=${{ github.sha }}
+            org.opencontainers.image.title=vps-manager-nodejs-api
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Build and push web Docker image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          target: web-runtime
+          push: true
+          tags: |
+            ${{ env.WEB_SHA_TAG }}
+            ${{ env.WEB_IMAGE }}:latest
+          labels: |
+            org.opencontainers.image.source=${{ github.server_url }}/${{ github.repository }}
+            org.opencontainers.image.revision=${{ github.sha }}
+            org.opencontainers.image.title=vps-manager-nodejs-web
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
@@ -157,7 +199,8 @@ jobs:
           VPS_USER: ${{ secrets.VPS_USER }}
           VPS_PORT: ${{ secrets.VPS_PORT }}
           DEPLOY_PATH: ${{ steps.config.outputs.deploy_path }}
-          IMAGE: ${{ needs.publish.outputs.sha_tag }}
+          API_IMAGE: ${{ needs.publish.outputs.api_sha_tag }}
+          WEB_IMAGE: ${{ needs.publish.outputs.web_sha_tag }}
           LOCAL_AUTH_TOKEN: ${{ secrets.LOCAL_AUTH_TOKEN }}
           GHCR_USER: ${{ github.actor }}
           GHCR_TOKEN: ${{ github.token }}
@@ -167,11 +210,9 @@ jobs:
           $SSH "mkdir -p '$DEPLOY_PATH'"
           $SSH "cat > '$DEPLOY_PATH/docker-compose.yml'" <<EOF
           services:
-            vps-manager:
-              image: $IMAGE
+            api:
+              image: $API_IMAGE
               restart: unless-stopped
-              ports:
-                - "3000:3000"
               environment:
                 PORT: "3000"
                 APP_MODE: "local"
@@ -189,9 +230,25 @@ jobs:
                 timeout: 5s
                 retries: 3
                 start_period: 10s
+            web:
+              image: $WEB_IMAGE
+              restart: unless-stopped
+              ports:
+                - "3000:80"
+              depends_on:
+                api:
+                  condition: service_healthy
+              healthcheck:
+                test: ["CMD", "wget", "-qO-", "http://127.0.0.1/"]
+                interval: 30s
+                timeout: 5s
+                retries: 3
+                start_period: 5s
           volumes:
             vps-manager-data:
             vps-manager-private:
           EOF
           $SSH "cd '$DEPLOY_PATH' && docker compose pull && docker compose up -d --remove-orphans"
           $SSH "cd '$DEPLOY_PATH' && docker compose ps"
+          $SSH "for i in \$(seq 1 30); do curl -fsS http://127.0.0.1:3000/api/health && exit 0; sleep 2; done; docker compose -f '$DEPLOY_PATH/docker-compose.yml' logs --tail=80; exit 1"
+
