@@ -173,7 +173,7 @@ jobs:
                 - "3000:3000"
               environment:
                 PORT: "3000"
-                APP_MODE: "production"
+                APP_MODE: "local"
                 DATA_DIR: /app/data
                 PRIVATE_DIR: /app/private
                 ENABLE_WEB_TERMINAL: "false"
