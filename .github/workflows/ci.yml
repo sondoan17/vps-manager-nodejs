@@ -61,9 +61,19 @@ jobs:
           context: .
           target: api-runtime
           push: false
+          load: true
           tags: vps-manager-nodejs-api:ci
           cache-from: type=gha
           cache-to: type=gha,mode=max
+
+      - name: Smoke test API runtime migration assets
+        run: |
+          docker run --rm --entrypoint sh vps-manager-nodejs-api:ci -lc '
+            test -f /app/dist/db/migrate.js
+            test -f /app/db/migrations/001_core_schema.sql
+            test -f /app/db/migrations/002_metric_indexes.sql
+            test -f /app/db/migrations/003_timescale_optional.sql
+          '
 
       - name: Build web Docker image
         uses: docker/build-push-action@v6
@@ -202,23 +212,49 @@ jobs:
           API_IMAGE: ${{ needs.publish.outputs.api_sha_tag }}
           WEB_IMAGE: ${{ needs.publish.outputs.web_sha_tag }}
           LOCAL_AUTH_TOKEN: ${{ secrets.LOCAL_AUTH_TOKEN }}
+          POSTGRES_PASSWORD: ${{ secrets.POSTGRES_PASSWORD }}
+          ENABLE_TIMESCALE_MIGRATION: ${{ vars.ENABLE_TIMESCALE_MIGRATION }}
           GHCR_USER: ${{ github.actor }}
           GHCR_TOKEN: ${{ github.token }}
         run: |
+          if [ -z "$POSTGRES_PASSWORD" ]; then
+            echo "POSTGRES_PASSWORD repository secret is required for production deployment."
+            exit 1
+          fi
           SSH="ssh -i ~/.ssh/deploy_key -p ${VPS_PORT:-22} ${VPS_USER}@${VPS_HOST}"
           printf '%s' "$GHCR_TOKEN" | $SSH "docker login ghcr.io -u '$GHCR_USER' --password-stdin"
           $SSH "mkdir -p '$DEPLOY_PATH'"
           $SSH "cat > '$DEPLOY_PATH/docker-compose.yml'" <<EOF
           services:
+            postgres:
+              image: timescale/timescaledb:2.17.2-pg16
+              restart: unless-stopped
+              environment:
+                POSTGRES_DB: vps_manager
+                POSTGRES_USER: vps_manager
+                POSTGRES_PASSWORD: "$POSTGRES_PASSWORD"
+              volumes:
+                - vps-manager-postgres:/var/lib/postgresql/data
+              healthcheck:
+                test: ["CMD-SHELL", "pg_isready -U vps_manager -d vps_manager"]
+                interval: 10s
+                timeout: 5s
+                retries: 5
+                start_period: 10s
             api:
               image: $API_IMAGE
               restart: unless-stopped
+              depends_on:
+                postgres:
+                  condition: service_healthy
               environment:
                 PORT: "3000"
                 APP_MODE: "local"
                 LOCAL_AUTH_TOKEN: "$LOCAL_AUTH_TOKEN"
                 DATA_DIR: /app/data
                 PRIVATE_DIR: /app/private
+                STORAGE_DRIVER: "postgres"
+                DATABASE_URL: "postgres://vps_manager:$POSTGRES_PASSWORD@postgres:5432/vps_manager"
                 ENABLE_WEB_TERMINAL: "false"
                 ALLOW_PRIVATE_NETWORK_TARGETS: "false"
               volumes:
@@ -247,8 +283,17 @@ jobs:
           volumes:
             vps-manager-data:
             vps-manager-private:
+            vps-manager-postgres:
           EOF
-          $SSH "cd '$DEPLOY_PATH' && docker compose pull && docker compose up -d --remove-orphans"
+          $SSH "cd '$DEPLOY_PATH' && docker compose pull"
+          $SSH "cd '$DEPLOY_PATH' && docker compose up -d postgres"
+          $SSH "cd '$DEPLOY_PATH' && docker compose run --rm api node dist/db/migrate.js"
+          if [ "${ENABLE_TIMESCALE_MIGRATION:-false}" = "true" ]; then
+            $SSH "cd '$DEPLOY_PATH' && docker compose run --rm api node dist/db/migrate.js --include-optional"
+          else
+            echo "Skipping optional Timescale migration. Set repository variable ENABLE_TIMESCALE_MIGRATION=true to run it during deploy."
+          fi
+          $SSH "cd '$DEPLOY_PATH' && docker compose up -d --remove-orphans"
           $SSH "cd '$DEPLOY_PATH' && docker compose ps"
           $SSH "for i in \$(seq 1 30); do curl -fsS http://127.0.0.1:3000/api/health && exit 0; sleep 2; done; docker compose -f '$DEPLOY_PATH/docker-compose.yml' logs --tail=80; exit 1"
 

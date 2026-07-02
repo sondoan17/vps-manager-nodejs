@@ -16,6 +16,7 @@ RUN addgroup -S app && adduser -S app -G app
 COPY --from=deps --chown=app:app /app/node_modules ./node_modules
 COPY --from=build --chown=app:app /app/package.json ./package.json
 COPY --from=build --chown=app:app /app/dist ./dist
+COPY --from=build --chown=app:app /app/packages/api/db ./db
 RUN mkdir -p /app/data /app/private && chown -R app:app /app/data /app/private
 USER app
 EXPOSE 3000

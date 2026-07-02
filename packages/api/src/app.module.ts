@@ -1,5 +1,6 @@
-import { Module, type DynamicModule } from "@nestjs/common";
+import { Inject, Module, Optional, type DynamicModule, type OnApplicationShutdown } from "@nestjs/common";
 import { join } from "node:path";
+import type { Pool } from "pg";
 import { AuditService } from "./audit/audit.service.js";
 import { loadAppConfig, type AppConfig } from "./config/app-config.js";
 import { AgentController } from "./controllers/agent.controller.js";
@@ -11,10 +12,11 @@ import { MetricsController } from "./controllers/metrics.controller.js";
 import { MonitoringController } from "./controllers/monitoring.controller.js";
 import { VpsController } from "./controllers/vps.controller.js";
 import { LocalAuthGuard } from "./auth/local-auth.guard.js";
-import { createJsonAgentRepository, type AgentRepository } from "./repositories/agent.repository.js";
-import { createJsonAuditRepository, type AuditRepository } from "./repositories/audit.repository.js";
-import { createJsonJobRepository, type JobRepository } from "./repositories/job.repository.js";
-import { createJsonMetricRepository, type MetricRepository } from "./repositories/metric.repository.js";
+import type { AgentRepository } from "./repositories/agent.repository.js";
+import type { AuditRepository } from "./repositories/audit.repository.js";
+import { createRepositories } from "./repositories/create-repositories.js";
+import type { JobRepository } from "./repositories/job.repository.js";
+import type { MetricRepository } from "./repositories/metric.repository.js";
 import { createKeyService, type KeyService } from "./services/keyService.js";
 import { SshService } from "./services/ssh.service.js";
 import { AgentInstallerService } from "./services/agent-installer.service.js";
@@ -25,11 +27,10 @@ import { JobService } from "./services/job.service.js";
 import { MetricService } from "./services/metric.service.js";
 import { MonitoringService } from "./services/monitoring.service.js";
 import { VpsService } from "./services/vps.service.js";
-import { createVpsStore } from "./store/vpsStore.js";
 import type { VpsRepository } from "./repositories/vps.repository.js";
-import { AGENT_REPOSITORY, APP_CONFIG, AUDIT_REPOSITORY, JOB_REPOSITORY, KEY_SERVICE, METRIC_REPOSITORY, VPS_REPOSITORY } from "./tokens.js";
+import { AGENT_REPOSITORY, APP_CONFIG, AUDIT_REPOSITORY, DATABASE_POOL, JOB_REPOSITORY, KEY_SERVICE, METRIC_REPOSITORY, VPS_REPOSITORY } from "./tokens.js";
 
-export { AGENT_REPOSITORY, APP_CONFIG, AUDIT_REPOSITORY, JOB_REPOSITORY, KEY_SERVICE, METRIC_REPOSITORY, VPS_REPOSITORY };
+export { AGENT_REPOSITORY, APP_CONFIG, AUDIT_REPOSITORY, DATABASE_POOL, JOB_REPOSITORY, KEY_SERVICE, METRIC_REPOSITORY, VPS_REPOSITORY };
 
 export type AppDependencies = {
   config?: AppConfig;
@@ -45,20 +46,32 @@ export class AppModule {}
 
 Module({})(AppModule);
 
+class DatabasePoolShutdown implements OnApplicationShutdown {
+  constructor(@Optional() @Inject(DATABASE_POOL) private readonly pool?: Pool) {}
+
+  async onApplicationShutdown() {
+    await this.pool?.end();
+  }
+}
+
 export function createAppModule(deps: AppDependencies = {}): DynamicModule {
   const config = deps.config ?? loadAppConfig();
+  const needsRepositories = !deps.store || !deps.audit || !deps.jobs || !deps.metrics || !deps.agent;
+  const repositories = needsRepositories ? createRepositories(config) : undefined;
 
   return {
     module: AppModule,
     controllers: [HealthController, DashboardController, VpsController, JobsController, MetricsController, AuditController, MonitoringController, AgentController],
     providers: [
       { provide: APP_CONFIG, useValue: config },
-      { provide: VPS_REPOSITORY, useValue: deps.store ?? createVpsStore(join(config.dataDir, "vps.json")) },
+      { provide: DATABASE_POOL, useValue: repositories?.pool },
+      DatabasePoolShutdown,
+      { provide: VPS_REPOSITORY, useValue: deps.store ?? repositories!.vps },
       { provide: KEY_SERVICE, useValue: deps.keys ?? createKeyService(join(config.privateDir, "keys")) },
-      { provide: AUDIT_REPOSITORY, useValue: deps.audit ?? createJsonAuditRepository(join(config.dataDir, "audit.json")) },
-      { provide: JOB_REPOSITORY, useValue: deps.jobs ?? createJsonJobRepository(join(config.dataDir, "jobs.json")) },
-      { provide: METRIC_REPOSITORY, useValue: deps.metrics ?? createJsonMetricRepository(join(config.dataDir, "metrics.json")) },
-      { provide: AGENT_REPOSITORY, useValue: deps.agent ?? createJsonAgentRepository(join(config.dataDir, "agents.json")) },
+      { provide: AUDIT_REPOSITORY, useValue: deps.audit ?? repositories!.audit },
+      { provide: JOB_REPOSITORY, useValue: deps.jobs ?? repositories!.jobs },
+      { provide: METRIC_REPOSITORY, useValue: deps.metrics ?? repositories!.metrics },
+      { provide: AGENT_REPOSITORY, useValue: deps.agent ?? repositories!.agent },
       AgentInstallerService,
       AgentService,
       AuditService,

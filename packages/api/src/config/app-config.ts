@@ -5,6 +5,7 @@ import { fileURLToPath } from "node:url";
 import { z } from "zod";
 
 export type AppMode = "demo" | "local";
+export type StorageDriver = "json" | "postgres";
 
 export type AppConfig = {
   mode: AppMode;
@@ -19,6 +20,10 @@ export type AppConfig = {
   agentBinaryPath?: string;
   agentInstallIntervalSeconds: number;
   allowInsecureAgentHttp: boolean;
+  storageDriver: StorageDriver;
+  databaseUrl?: string;
+  dbSsl: boolean;
+  dbPoolMax: number;
 };
 
 const booleanSchema = z
@@ -38,7 +43,11 @@ const envSchema = z.object({
   AGENT_PUBLIC_BASE_URL: z.preprocess((value) => (value === "" ? undefined : value), z.string().trim().url().optional()),
   AGENT_BINARY_PATH: z.preprocess((value) => (value === "" ? undefined : value), z.string().trim().optional()),
   AGENT_INSTALL_INTERVAL_SECONDS: z.coerce.number().int().min(1).default(1),
-  ALLOW_INSECURE_AGENT_HTTP: booleanSchema.default("false")
+  ALLOW_INSECURE_AGENT_HTTP: booleanSchema.default("false"),
+  STORAGE_DRIVER: z.enum(["json", "postgres"]).default("json"),
+  DATABASE_URL: z.preprocess((value) => (value === "" ? undefined : value), z.string().trim().min(1).optional()),
+  DB_SSL: booleanSchema.default("false"),
+  DB_POOL_MAX: z.coerce.number().int().positive().default(10)
 });
 
 export function parseAppConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
@@ -50,6 +59,10 @@ export function parseAppConfig(env: NodeJS.ProcessEnv = process.env): AppConfig 
 
   if (parsed.ENABLE_WEB_TERMINAL && parsed.APP_MODE !== "local") {
     throw new Error("ENABLE_WEB_TERMINAL requires APP_MODE=local");
+  }
+
+  if (parsed.STORAGE_DRIVER === "postgres" && !parsed.DATABASE_URL) {
+    throw new Error("DATABASE_URL is required when STORAGE_DRIVER=postgres");
   }
 
   return {
@@ -64,7 +77,11 @@ export function parseAppConfig(env: NodeJS.ProcessEnv = process.env): AppConfig 
     agentPublicBaseUrl: parsed.AGENT_PUBLIC_BASE_URL,
     agentBinaryPath: parsed.AGENT_BINARY_PATH,
     agentInstallIntervalSeconds: parsed.AGENT_INSTALL_INTERVAL_SECONDS,
-    allowInsecureAgentHttp: parsed.ALLOW_INSECURE_AGENT_HTTP
+    allowInsecureAgentHttp: parsed.ALLOW_INSECURE_AGENT_HTTP,
+    storageDriver: parsed.STORAGE_DRIVER,
+    databaseUrl: parsed.DATABASE_URL,
+    dbSsl: parsed.DB_SSL,
+    dbPoolMax: parsed.DB_POOL_MAX
   };
 }
 

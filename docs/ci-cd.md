@@ -34,8 +34,9 @@ After publishing, the workflow can deploy over SSH if deployment secrets are con
 
 ## Runtime topology
 
-The production deployment runs two containers:
+The production deployment runs three containers:
 
+- `postgres`: TimescaleDB/PostgreSQL database on the internal Docker network; stores data in a Docker volume.
 - `api`: NestJS API on internal port `3000`; stores data in Docker volumes.
 - `web`: Nginx static web server on host port `3000`; proxies `/api/*` to `api:3000` and serves the SPA fallback.
 
@@ -53,8 +54,15 @@ Set these in GitHub repository settings:
 | `VPS_USER` | Yes | SSH user, for example `root`. |
 | `VPS_SSH_KEY` | Yes | Private SSH key with access to the server. |
 | `LOCAL_AUTH_TOKEN` | Yes | Token required when `APP_MODE=local`. |
+| `POSTGRES_PASSWORD` | Yes | Password for the `vps_manager` PostgreSQL user. Used on first DB volume initialization and by the API `DATABASE_URL`. |
 | `VPS_PORT` | No | SSH port. Defaults to `22`. |
 | `DEPLOY_PATH` | No | Remote app directory. Defaults to `/opt/vps-manager-nodejs`. |
+
+Optional repository variable:
+
+| Variable | Required | Description |
+| --- | --- | --- |
+| `ENABLE_TIMESCALE_MIGRATION` | No | Set to `true` to run the optional TimescaleDB extension/hypertable migration during deploy. Core PostgreSQL migrations always run. |
 
 If the required SSH secrets are missing, the deploy job exits successfully and prints a skip message.
 
@@ -71,9 +79,15 @@ The workflow writes a production `docker-compose.yml` into `DEPLOY_PATH` and run
 
 ```bash
 docker compose pull
+docker compose up -d postgres
+docker compose run --rm api node dist/db/migrate.js
+# Optional, only when ENABLE_TIMESCALE_MIGRATION=true:
+# docker compose run --rm api node dist/db/migrate.js --include-optional
 docker compose up -d --remove-orphans
 docker compose ps
 ```
+
+The database password is written into the server-side compose environment for this single-host deployment. To rotate it after the `vps-manager-postgres` volume exists, update the DB user password with `ALTER USER`, update the GitHub secret, then redeploy.
 
 ## Manual run
 

@@ -3,6 +3,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it, beforeEach, afterEach } from "vitest";
 import { parseAppConfig } from "../src/config/app-config.js";
+import { loadMigrations, selectMigrations } from "../src/db/migrations.js";
 import type { CommandJob } from "../src/models/jobs.js";
 import type { MetricSample } from "../src/models/metrics.js";
 import { createJsonJobRepository } from "../src/repositories/job.repository.js";
@@ -61,6 +62,35 @@ describe("agent app config", () => {
     expect(config.allowInsecureAgentHttp).toBe(true);
   });
 
+  it("defaults storage driver to json", () => {
+    const config = parseAppConfig({} as NodeJS.ProcessEnv);
+    expect(config.storageDriver).toBe("json");
+  });
+
+  it("rejects invalid storage driver", () => {
+    expect(() => parseAppConfig({ STORAGE_DRIVER: "sqlite" } as NodeJS.ProcessEnv)).toThrow();
+  });
+
+  it("requires DATABASE_URL for postgres storage", () => {
+    expect(() => parseAppConfig({ STORAGE_DRIVER: "postgres" } as NodeJS.ProcessEnv)).toThrow(
+      /DATABASE_URL is required/
+    );
+  });
+
+  it("parses postgres storage config", () => {
+    const config = parseAppConfig({
+      STORAGE_DRIVER: "postgres",
+      DATABASE_URL: "postgres://user:pass@localhost:5432/vps_manager",
+      DB_SSL: "true",
+      DB_POOL_MAX: "20"
+    } as NodeJS.ProcessEnv);
+
+    expect(config.storageDriver).toBe("postgres");
+    expect(config.databaseUrl).toBe("postgres://user:pass@localhost:5432/vps_manager");
+    expect(config.dbSsl).toBe(true);
+    expect(config.dbPoolMax).toBe(20);
+  });
+
   it("parses AGENT_PUBLIC_BASE_URL", () => {
     const config = parseAppConfig({ AGENT_PUBLIC_BASE_URL: "https://backend.example.com" } as NodeJS.ProcessEnv);
     expect(config.agentPublicBaseUrl).toBe("https://backend.example.com");
@@ -74,6 +104,34 @@ describe("agent app config", () => {
   it("ignores unknown base URLs gracefully", () => {
     // Invalid URLs are rejected by zod url()
     expect(() => parseAppConfig({ AGENT_PUBLIC_BASE_URL: "not-a-url" } as NodeJS.ProcessEnv)).toThrow();
+  });
+});
+
+describe("database migrations", () => {
+  it("loads core migrations in filename order", async () => {
+    const migrations = await loadMigrations();
+    expect(migrations.map((migration) => migration.id)).toEqual([
+      "001_core_schema.sql",
+      "002_metric_indexes.sql",
+      "003_timescale_optional.sql"
+    ]);
+    expect(migrations[0]?.sql).toContain("CREATE TABLE IF NOT EXISTS vps");
+    expect(migrations[1]?.sql).toContain("metric_samples_vps_effective_idx");
+    expect(migrations[2]?.sql).toContain("create_hypertable");
+  });
+
+  it("excludes optional migrations unless requested", async () => {
+    const migrations = await loadMigrations();
+
+    expect(selectMigrations(migrations, false).map((migration) => migration.id)).toEqual([
+      "001_core_schema.sql",
+      "002_metric_indexes.sql"
+    ]);
+    expect(selectMigrations(migrations, true).map((migration) => migration.id)).toEqual([
+      "001_core_schema.sql",
+      "002_metric_indexes.sql",
+      "003_timescale_optional.sql"
+    ]);
   });
 });
 
