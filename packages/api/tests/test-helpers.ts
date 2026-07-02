@@ -1,6 +1,6 @@
 import { createHash, randomBytes } from "node:crypto";
 import { join } from "node:path";
-import { createJsonSessionRepository } from "../src/repositories/session.repository.js";
+import { createJsonSessionRepository } from "../src/persistence/repositories/session.repository.js";
 import { SESSION_COOKIE_NAME } from "../src/auth/cookies.js";
 
 /**

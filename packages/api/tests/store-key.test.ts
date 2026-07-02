@@ -2,8 +2,8 @@ import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { createVpsStore } from "../src/store/vpsStore.js";
-import { createKeyService } from "../src/services/keyService.js";
+import { createVpsStore } from "../src/persistence/store/vpsStore.js";
+import { createKeyService } from "../src/ssh/keyService.js";
 
 let tempDir: string;
 

@@ -57,7 +57,11 @@ function fromBase64Url(value: string): Buffer {
  */
 export function hashPassword(password: string): string {
   const salt = randomBytes(SALT_BYTES);
-  const hash = scryptSync(password, salt, ID_HASH_BYTES, { N: SCRYPT_N, r: SCRYPT_R, p: SCRYPT_P });
+  const hash = scryptSync(password, salt, ID_HASH_BYTES, {
+    N: SCRYPT_N,
+    r: SCRYPT_R,
+    p: SCRYPT_P,
+  });
   return [
     ALGORITHM,
     encode(SCRYPT_N),
@@ -93,10 +97,19 @@ export function verifyPassword(password: string, stored: string): boolean {
     if (!isPowerOf2(N) || N < N_MIN || N > N_MAX) return false;
     if (r < R_MIN || r > R_MAX) return false;
     if (p < P_MIN || p > P_MAX) return false;
-    if (salt.length < SALT_MIN_BYTES || salt.length > SALT_MAX_BYTES) return false;
-    if (expectedHash.length < HASH_MIN_BYTES || expectedHash.length > HASH_MAX_BYTES) return false;
+    if (salt.length < SALT_MIN_BYTES || salt.length > SALT_MAX_BYTES)
+      return false;
+    if (
+      expectedHash.length < HASH_MIN_BYTES ||
+      expectedHash.length > HASH_MAX_BYTES
+    )
+      return false;
 
-    const actualHash = scryptSync(password, salt, expectedHash.length, { N, r, p });
+    const actualHash = scryptSync(password, salt, expectedHash.length, {
+      N,
+      r,
+      p,
+    });
 
     if (actualHash.length !== expectedHash.length) return false;
     return timingSafeEqual(actualHash, expectedHash);

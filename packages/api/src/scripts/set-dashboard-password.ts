@@ -28,10 +28,10 @@ import { stdin as input } from "node:process";
 import { join } from "node:path";
 import { loadAppConfig } from "../config/app-config.js";
 import { createDatabasePool } from "../db/pool.js";
-import { createJsonAdminCredentialRepository, type AdminCredentialRepository } from "../repositories/admin-credential.repository.js";
-import { createPostgresAdminCredentialRepository } from "../repositories/admin-credential.postgres.repository.js";
-import { createJsonSessionRepository, type SessionRepository } from "../repositories/session.repository.js";
-import { createPostgresSessionRepository } from "../repositories/session.postgres.repository.js";
+import { createJsonAdminCredentialRepository, type AdminCredentialRepository } from "../persistence/repositories/admin-credential.repository.js";
+import { createPostgresAdminCredentialRepository } from "../persistence/repositories/admin-credential.postgres.repository.js";
+import { createJsonSessionRepository, type SessionRepository } from "../persistence/repositories/session.repository.js";
+import { createPostgresSessionRepository } from "../persistence/repositories/session.postgres.repository.js";
 import { hashPassword, verifyPassword, validatePassword } from "../auth/password-hash.js";
 
 export async function setDashboardPasswordFromCli() {

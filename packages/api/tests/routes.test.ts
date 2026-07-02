@@ -5,9 +5,9 @@ import request from "supertest";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { createApp } from "../src/app.js";
 import type { AppConfig } from "../src/config/app-config.js";
-import { createKeyService } from "../src/services/keyService.js";
-import { createJsonAuditRepository } from "../src/repositories/audit.repository.js";
-import { createVpsStore } from "../src/store/vpsStore.js";
+import { createKeyService } from "../src/ssh/keyService.js";
+import { createJsonAuditRepository } from "../src/persistence/repositories/audit.repository.js";
+import { createVpsStore } from "../src/persistence/store/vpsStore.js";
 
 const demoConfig: AppConfig = {
   mode: "demo",

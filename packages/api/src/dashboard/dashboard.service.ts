@@ -1,9 +1,9 @@
 import { Inject, Injectable } from "@nestjs/common";
 import type { AppConfig } from "../config/app-config.js";
 import { DEMO_BANNER, demoAuditEvents, demoServers, demoTerminal, getDemoJobs, getDemoMetrics } from "../demo/demo-fixtures.js";
-import type { DashboardOverview, DashboardSummary } from "../models/dashboard.js";
-import type { VpsRecord } from "../models/vps.js";
-import type { VpsRepository } from "../repositories/vps.repository.js";
+import type { DashboardOverview, DashboardSummary } from "../dashboard/dashboard.models.js";
+import type { VpsRecord } from "../vps/vps.models.js";
+import type { VpsRepository } from "../persistence/repositories/vps.repository.js";
 import { APP_CONFIG, VPS_REPOSITORY } from "../tokens.js";
 
 function summarize(servers: readonly VpsRecord[], runningJobs: number): DashboardSummary {

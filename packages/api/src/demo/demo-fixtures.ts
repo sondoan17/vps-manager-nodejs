@@ -1,6 +1,6 @@
-import type { AuditEvent } from "../models/audit.js";
-import type { DashboardJob, DashboardMetricSample, DemoTerminalOverview } from "../models/dashboard.js";
-import type { VpsRecord } from "../models/vps.js";
+import type { AuditEvent } from "../audit/audit.models.js";
+import type { DashboardJob, DashboardMetricSample, DemoTerminalOverview } from "../dashboard/dashboard.models.js";
+import type { VpsRecord } from "../vps/vps.models.js";
 
 const DEMO_TIME = "2026-06-24T12:00:00.000Z";
 

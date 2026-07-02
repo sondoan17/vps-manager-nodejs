@@ -6,11 +6,11 @@ import request from "supertest";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { createApp } from "../src/app.js";
 import type { AppConfig } from "../src/config/app-config.js";
-import { createVpsStore } from "../src/store/vpsStore.js";
-import { createKeyService } from "../src/services/keyService.js";
-import { createJsonAuditRepository } from "../src/repositories/audit.repository.js";
-import { createJsonSessionRepository } from "../src/repositories/session.repository.js";
-import { createJsonAdminCredentialRepository } from "../src/repositories/admin-credential.repository.js";
+import { createVpsStore } from "../src/persistence/store/vpsStore.js";
+import { createKeyService } from "../src/ssh/keyService.js";
+import { createJsonAuditRepository } from "../src/persistence/repositories/audit.repository.js";
+import { createJsonSessionRepository } from "../src/persistence/repositories/session.repository.js";
+import { createJsonAdminCredentialRepository } from "../src/persistence/repositories/admin-credential.repository.js";
 import { hashPassword, verifyPassword } from "../src/auth/password-hash.js";
 import { SESSION_COOKIE_NAME } from "../src/auth/cookies.js";
 

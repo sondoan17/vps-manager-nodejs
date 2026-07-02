@@ -1,8 +1,8 @@
 import { Inject, Injectable } from "@nestjs/common";
 import type { AppConfig } from "../config/app-config.js";
 import { demoAuditEvents } from "../demo/demo-fixtures.js";
-import type { AuditEvent } from "../models/audit.js";
-import type { AuditRepository } from "../repositories/audit.repository.js";
+import type { AuditEvent } from "../audit/audit.models.js";
+import type { AuditRepository } from "../persistence/repositories/audit.repository.js";
 import { APP_CONFIG, AUDIT_REPOSITORY } from "../tokens.js";
 
 export type AuditFilter = {

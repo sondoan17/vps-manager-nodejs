@@ -1,4 +1,10 @@
-import { CanActivate, ExecutionContext, ForbiddenException, Inject, Injectable } from "@nestjs/common";
+import {
+  CanActivate,
+  ExecutionContext,
+  ForbiddenException,
+  Inject,
+  Injectable,
+} from "@nestjs/common";
 import type { Request } from "express";
 import type { AppConfig } from "../config/app-config.js";
 import { APP_CONFIG } from "../tokens.js";
@@ -38,7 +44,9 @@ export class OriginGuard implements CanActivate {
     // (legacy) are increasingly rare. Non-browser clients must configure
     // DASHBOARD_PUBLIC_ORIGIN or make requests from a same-origin context.
     if (!origin) {
-      throw new ForbiddenException({ error: { message: "Origin header required" } });
+      throw new ForbiddenException({
+        error: { message: "Origin header required" },
+      });
     }
 
     // Same-origin: origin host matches the request host
@@ -51,7 +59,11 @@ export class OriginGuard implements CanActivate {
     }
 
     // Allow configured public origin
-    if (this.config.dashboardPublicOrigin && origin === this.config.dashboardPublicOrigin) return true;
+    if (
+      this.config.dashboardPublicOrigin &&
+      origin === this.config.dashboardPublicOrigin
+    )
+      return true;
 
     throw new ForbiddenException({ error: { message: "Origin not allowed" } });
   }

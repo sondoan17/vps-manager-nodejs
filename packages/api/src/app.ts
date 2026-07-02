@@ -15,7 +15,7 @@ import {
 import { createLoginRateLimit } from "./common/login-rate-limit.middleware.js";
 import { createMutationRateLimit } from "./common/rate-limit.middleware.js";
 import { requestIdMiddleware } from "./common/request-id.middleware.js";
-import { ApiExceptionFilter } from "./filters/api-exception.filter.js";
+import { ApiExceptionFilter } from "./common/filters/api-exception.filter.js";
 import { loadAppConfig } from "./config/app-config.js";
 
 export type Dependencies = AppDependencies;

@@ -7,7 +7,10 @@ export const SESSION_COOKIE_NAME = "vps_dashboard_sid";
  * Parse a named cookie from the Cookie header value.
  * Simple no-dependency parser — splits on "; " and then on first "=".
  */
-export function parseCookie(cookieHeader: string | undefined, name: string): string | undefined {
+export function parseCookie(
+  cookieHeader: string | undefined,
+  name: string,
+): string | undefined {
   if (!cookieHeader) return undefined;
   for (const pair of cookieHeader.split("; ")) {
     const eqIdx = pair.indexOf("=");

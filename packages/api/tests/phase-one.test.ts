@@ -7,11 +7,11 @@ import { createApp } from "../src/app.js";
 import type { AppConfig } from "../src/config/app-config.js";
 import { parseAppConfig } from "../src/config/app-config.js";
 import { redactString, redactValue } from "../src/common/redaction.js";
-import { SshHostBlockedError } from "../src/errors.js";
-import { assertSshHostAllowed } from "../src/security/ssh-host-policy.js";
-import { createKeyService } from "../src/services/keyService.js";
-import { createVpsStore } from "../src/store/vpsStore.js";
-import { createJsonAuditRepository } from "../src/repositories/audit.repository.js";
+import { SshHostBlockedError } from "../src/common/errors.js";
+import { assertSshHostAllowed } from "../src/ssh/ssh-host-policy.js";
+import { createKeyService } from "../src/ssh/keyService.js";
+import { createVpsStore } from "../src/persistence/store/vpsStore.js";
+import { createJsonAuditRepository } from "../src/persistence/repositories/audit.repository.js";
 
 const demoConfig: AppConfig = {
   mode: "demo",

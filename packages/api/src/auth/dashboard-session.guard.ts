@@ -1,8 +1,14 @@
-import { CanActivate, ExecutionContext, Inject, Injectable, UnauthorizedException } from "@nestjs/common";
+import {
+  CanActivate,
+  ExecutionContext,
+  Inject,
+  Injectable,
+  UnauthorizedException,
+} from "@nestjs/common";
 import { createHash } from "node:crypto";
 import type { Request } from "express";
 import type { AppConfig } from "../config/app-config.js";
-import type { SessionRepository } from "../repositories/session.repository.js";
+import type { SessionRepository } from "../persistence/repositories/session.repository.js";
 import { APP_CONFIG, SESSION_REPOSITORY } from "../tokens.js";
 import { SESSION_COOKIE_NAME, parseCookie } from "./cookies.js";
 
@@ -10,7 +16,10 @@ import { SESSION_COOKIE_NAME, parseCookie } from "./cookies.js";
  * Hash a session token (with optional secret pepper) for secure storage.
  */
 function hashToken(token: string, pepper?: string): string {
-  return createHash("sha256").update(token).update(pepper ?? "").digest("hex");
+  return createHash("sha256")
+    .update(token)
+    .update(pepper ?? "")
+    .digest("hex");
 }
 
 /**
@@ -36,20 +45,31 @@ export class DashboardSessionGuard implements CanActivate {
     if (this.config.mode !== "local") return true;
 
     const request = context.switchToHttp().getRequest<Request>();
-    const cookieToken = parseCookie(request.headers.cookie, SESSION_COOKIE_NAME);
+    const cookieToken = parseCookie(
+      request.headers.cookie,
+      SESSION_COOKIE_NAME,
+    );
 
     if (!cookieToken) {
-      throw new UnauthorizedException({ error: { message: "Authentication required" } });
+      throw new UnauthorizedException({
+        error: { message: "Authentication required" },
+      });
     }
 
-    const tokenHash = hashToken(cookieToken, this.config.dashboardSessionSecret);
+    const tokenHash = hashToken(
+      cookieToken,
+      this.config.dashboardSessionSecret,
+    );
     const session = await this.sessions.findByTokenHash(tokenHash);
 
     if (!session) {
-      throw new UnauthorizedException({ error: { message: "Invalid or expired session" } });
+      throw new UnauthorizedException({
+        error: { message: "Invalid or expired session" },
+      });
     }
 
-    (request as Request & { dashboardSessionId?: string }).dashboardSessionId = session.id;
+    (request as Request & { dashboardSessionId?: string }).dashboardSessionId =
+      session.id;
     return true;
   }
 }

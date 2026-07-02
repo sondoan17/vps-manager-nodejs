@@ -4,11 +4,11 @@ import { join } from "node:path";
 import { describe, expect, it, beforeEach, afterEach } from "vitest";
 import { parseAppConfig } from "../src/config/app-config.js";
 import { loadMigrations, selectMigrations } from "../src/db/migrations.js";
-import type { CommandJob } from "../src/models/jobs.js";
-import type { MetricSample } from "../src/models/metrics.js";
-import { createJsonJobRepository } from "../src/repositories/job.repository.js";
-import { createJsonMetricRepository } from "../src/repositories/metric.repository.js";
-import { JobRunnerService } from "../src/services/job-runner.service.js";
+import type { CommandJob } from "../src/jobs/jobs.models.js";
+import type { MetricSample } from "../src/metrics/metrics.models.js";
+import { createJsonJobRepository } from "../src/persistence/repositories/job.repository.js";
+import { createJsonMetricRepository } from "../src/persistence/repositories/metric.repository.js";
+import { JobRunnerService } from "../src/jobs/job-runner.service.js";
 
 // ── Helpers ────────────────────────────────────────────────────────────
 

@@ -5,14 +5,14 @@ import request from "supertest";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { createApp } from "../src/app.js";
 import type { AppConfig } from "../src/config/app-config.js";
-import type { VpsRepository } from "../src/repositories/vps.repository.js";
-import { createJsonAgentRepository } from "../src/repositories/agent.repository.js";
-import { createJsonAuditRepository } from "../src/repositories/audit.repository.js";
-import { createJsonJobRepository } from "../src/repositories/job.repository.js";
-import { createJsonMetricRepository } from "../src/repositories/metric.repository.js";
-import { createKeyService } from "../src/services/keyService.js";
-import { createVpsStore } from "../src/store/vpsStore.js";
-import type { KeyService } from "../src/services/keyService.js";
+import type { VpsRepository } from "../src/persistence/repositories/vps.repository.js";
+import { createJsonAgentRepository } from "../src/persistence/repositories/agent.repository.js";
+import { createJsonAuditRepository } from "../src/persistence/repositories/audit.repository.js";
+import { createJsonJobRepository } from "../src/persistence/repositories/job.repository.js";
+import { createJsonMetricRepository } from "../src/persistence/repositories/metric.repository.js";
+import { createKeyService } from "../src/ssh/keyService.js";
+import { createVpsStore } from "../src/persistence/store/vpsStore.js";
+import type { KeyService } from "../src/ssh/keyService.js";
 
 const localConfig: AppConfig = {
   mode: "local",
