@@ -24,7 +24,7 @@ import {
   listVps,
   installAgent,
   getAuthStatus,
-  loginWithDashboardToken,
+  loginWithDashboardPassword,
   logoutDashboard,
   provisionKey,
   verifyKey,
@@ -150,7 +150,7 @@ export function App() {
     kind: "default",
   });
   const [authState, setAuthState] = useState<AuthState>({ status: "checking" });
-  const [loginToken, setLoginToken] = useState("");
+  const [loginPassword, setLoginPassword] = useState("");
   const [loginBusy, setLoginBusy] = useState(false);
   const [liveState, setLiveState] = useState<LiveState>({ status: "connecting" });
   const unsubscribeRef = useRef<(() => void) | null>(null);
@@ -217,7 +217,7 @@ export function App() {
           return;
         }
         setAuthState({ status: "locked", mode: auth.mode });
-        setStatus({ message: "Dashboard token required.", kind: "default" });
+        setStatus({ message: "Dashboard password required.", kind: "default" });
       })
       .catch((error: unknown) => {
         if (cancelled) return;
@@ -291,22 +291,22 @@ export function App() {
 
   async function handleLogin(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    const token = loginToken.trim();
-    if (!token) {
-      setAuthState({ status: "locked", mode: "local", message: "Enter the dashboard token to continue." });
+    const password = loginPassword.trim();
+    if (!password) {
+      setAuthState({ status: "locked", mode: "local", message: "Enter the dashboard password to continue." });
       return;
     }
     setLoginBusy(true);
     try {
-      const auth = await loginWithDashboardToken(token);
-      setLoginToken("");
+      const auth = await loginWithDashboardPassword(password);
+      setLoginPassword("");
       setAuthState({ status: "open", mode: auth.mode, authRequired: auth.authRequired });
       await loadVps("Access verified. Dashboard loaded.");
     } catch (error) {
       setAuthState({
         status: "locked",
         mode: "local",
-        message: error instanceof Error ? error.message : "Login failed. Check the token and try again.",
+        message: error instanceof Error ? error.message : "Login failed. Check the password and try again.",
       });
     } finally {
       setLoginBusy(false);
@@ -323,7 +323,7 @@ export function App() {
       setRecords([]);
       setOverview(emptyOverview);
       setAuthState({ status: "locked", mode: "local" });
-      setStatus({ message: "Signed out. Enter the dashboard token to return.", kind: "default" });
+      setStatus({ message: "Signed out. Enter the dashboard password to return.", kind: "default" });
     }
   }
 
@@ -443,10 +443,10 @@ export function App() {
   if (authState.status === "locked") {
     return (
       <LoginGate
-        token={loginToken}
+        password={loginPassword}
         busy={loginBusy}
         message={authState.message}
-        onTokenChange={setLoginToken}
+        onPasswordChange={setLoginPassword}
         onSubmit={handleLogin}
       />
     );
@@ -513,7 +513,7 @@ function AuthLoadingScreen() {
   );
 }
 
-function LoginGate({ token, busy, message, onTokenChange, onSubmit }: { token: string; busy: boolean; message?: string; onTokenChange: (value: string) => void; onSubmit: (event: FormEvent<HTMLFormElement>) => void }) {
+function LoginGate({ password, busy, message, onPasswordChange, onSubmit }: { password: string; busy: boolean; message?: string; onPasswordChange: (value: string) => void; onSubmit: (event: FormEvent<HTMLFormElement>) => void }) {
   return (
     <main className="relative grid min-h-screen overflow-hidden bg-gradient-to-br from-slate-950 via-indigo-950 to-cyan-950 px-4 py-8 text-white">
       <div className="absolute inset-0 bg-[radial-gradient(circle_at_15%_10%,rgba(34,211,238,0.24),transparent_26%),radial-gradient(circle_at_90%_4%,rgba(99,102,241,0.32),transparent_28%)]" />
@@ -521,12 +521,12 @@ function LoginGate({ token, busy, message, onTokenChange, onSubmit }: { token: s
         <div className="mb-6">
           <p className="text-xs font-black uppercase tracking-[0.22em] text-cyan-200/80">Secure local console</p>
           <h1 className="mt-2 font-display text-3xl leading-tight">Unlock VPS Ops</h1>
-          <p className="mt-3 text-sm font-semibold leading-6 text-white/70">Enter the dashboard token configured on this server. The token is sent once to create an HttpOnly session and is not stored in browser storage.</p>
+          <p className="mt-3 text-sm font-semibold leading-6 text-white/70">Enter the dashboard password. The password is verified server-side against the stored credential and is never stored in browser storage.</p>
         </div>
         <form className="grid gap-4" onSubmit={onSubmit}>
           <div className="grid gap-2">
-            <Label htmlFor="dashboard-token" className="text-white">Dashboard token</Label>
-            <Input id="dashboard-token" type="password" autoComplete="current-password" value={token} onChange={(event) => onTokenChange(event.target.value)} className="h-12 border-white/15 bg-slate-950/55 text-white placeholder:text-white/40" placeholder="Paste token" autoFocus />
+            <Label htmlFor="dashboard-password" className="text-white">Dashboard password</Label>
+            <Input id="dashboard-password" type="password" autoComplete="current-password" value={password} onChange={(event) => onPasswordChange(event.target.value)} className="h-12 border-white/15 bg-slate-950/55 text-white placeholder:text-white/40" placeholder="Enter password" autoFocus />
           </div>
           {message ? <Alert variant="destructive" className="rounded-xl px-3 py-2 text-sm font-semibold">{message}</Alert> : null}
           <Button type="submit" disabled={busy} className="h-12 rounded-xl bg-cyan-300 font-black text-slate-950 hover:bg-cyan-200">

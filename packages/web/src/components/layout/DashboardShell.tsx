@@ -104,10 +104,10 @@ export function DashboardShell({
 
   return (
     <main className="min-h-screen w-full max-w-full overflow-x-clip bg-background">
-      <div className="grid min-h-screen w-full min-w-0 xl:grid-cols-[17rem_minmax(0,1fr)]">
-        <aside className="hidden min-h-screen w-[17rem] shrink-0 border-r border-slate-200 bg-white px-4 py-5 xl:flex xl:flex-col">
+      <div className="grid min-h-screen w-full min-w-0 xl:grid-cols-[18rem_minmax(0,1fr)]">
+        <aside className="hidden min-h-screen w-[18rem] shrink-0 border-r border-slate-200/80 bg-white/80 px-4 py-5 shadow-[12px_0_50px_rgba(15,23,42,0.04)] backdrop-blur-xl xl:flex xl:flex-col">
           <div className="mb-7 flex items-center gap-3 px-1">
-            <span className="grid h-10 w-10 place-items-center rounded-xl bg-slate-950 text-white shadow-sm">
+            <span className="grid h-11 w-11 place-items-center rounded-2xl bg-gradient-to-br from-slate-950 to-blue-900 text-white shadow-lg shadow-blue-950/20">
               <Server size={19} />
             </span>
             <div className="min-w-0">
@@ -134,7 +134,7 @@ export function DashboardShell({
               </NavButton>
             ))}
           </nav>
-          <div className="mt-auto flex items-start gap-2 border-t border-slate-200 pt-4 text-slate-500">
+          <div className="mt-auto flex items-start gap-2 rounded-2xl border border-slate-200 bg-slate-50/80 p-3 text-slate-500">
             <HelpCircle className="mt-0.5 shrink-0" size={15} />
             <p className="text-[13px] font-semibold leading-5">
               Passwords are sent only for one-time key provisioning and are not
@@ -143,12 +143,13 @@ export function DashboardShell({
           </div>
         </aside>
         <section className="min-w-0 max-w-full overflow-hidden">
-          <div className="relative min-h-[11.75rem] max-w-full overflow-hidden bg-gradient-to-br from-slate-950 via-indigo-950 to-cyan-950 sm:min-h-[13rem] xl:min-h-[14.5rem]">
-            <div className="absolute inset-0 bg-[radial-gradient(circle_at_12%_10%,rgba(34,211,238,0.22),transparent_24%),radial-gradient(circle_at_88%_0%,rgba(99,102,241,0.28),transparent_26%),linear-gradient(135deg,rgba(255,255,255,0.08),transparent_42%)]" />
-            <div className="absolute -right-20 top-2 h-36 w-36 rounded-full bg-cyan-400/25 blur-3xl" />
+          <div className="relative min-h-[12.5rem] max-w-full overflow-hidden bg-[linear-gradient(135deg,#020617_0%,#172554_48%,#0f766e_100%)] sm:min-h-[14rem] xl:min-h-[15.5rem]">
+            <div className="absolute inset-0 bg-[radial-gradient(circle_at_12%_10%,rgba(45,212,191,0.25),transparent_24%),radial-gradient(circle_at_88%_0%,rgba(96,165,250,0.26),transparent_26%),linear-gradient(135deg,rgba(255,255,255,0.10),transparent_42%)]" />
+            <div className="absolute inset-0 opacity-20 [background-image:linear-gradient(120deg,transparent_0%,transparent_48%,rgba(255,255,255,0.28)_49%,transparent_50%)] [background-size:34px_34px]" />
+            <div className="absolute -right-20 top-2 h-40 w-40 rounded-full bg-teal-300/25 blur-3xl" />
             <div className="absolute left-12 top-16 h-24 w-24 rounded-full bg-indigo-300/20 blur-2xl" />
             <div className="relative px-3 py-2 text-white sm:px-4 xl:px-6 xl:py-3">
-              <div className="rounded-2xl border border-white/10 bg-slate-950/20 p-2.5 backdrop-blur-md sm:p-3">
+              <div className="rounded-3xl border border-white/12 bg-slate-950/28 p-2.5 shadow-2xl shadow-slate-950/20 backdrop-blur-md sm:p-3">
                 <div className="flex min-w-0 flex-col gap-3 xl:flex-row xl:items-center xl:justify-between">
                   <label className="relative min-w-0 max-w-full xl:w-80">
                     <Search
@@ -158,7 +159,7 @@ export function DashboardShell({
                     <input
                       aria-label="Global server search"
                       placeholder="Search servers..."
-                      className="h-10 w-full rounded-xl border-0 bg-slate-950/45 pl-11 pr-4 text-sm font-semibold text-white outline-none ring-1 ring-white/20 placeholder:text-white/55 focus:bg-slate-950/60 focus:ring-4 focus:ring-cyan-300/20"
+                      className="h-10 w-full rounded-2xl border-0 bg-slate-950/45 pl-11 pr-4 text-sm font-semibold text-white outline-none ring-1 ring-white/20 placeholder:text-white/55 focus:bg-slate-950/60 focus:ring-4 focus:ring-teal-300/20"
                     />
                   </label>
 
@@ -290,7 +291,7 @@ export function DashboardShell({
           </div>
           <div
             className={cn(
-              "relative min-w-0 max-w-full overflow-hidden px-3 pb-4 sm:px-4 xl:px-6",
+              "relative min-w-0 max-w-full overflow-hidden px-3 pb-5 sm:px-5 xl:px-8",
               activeView === "overview"
                 ? "-mt-10 pt-0 sm:-mt-12"
                 : activeView === "servers"
@@ -452,10 +453,10 @@ function NavButton({
         "inline-flex min-w-0 items-center gap-3 rounded-xl px-3 py-2.5 text-left text-[13px] font-black uppercase tracking-[0.04em] transition",
         mobile ? "w-auto shrink-0 bg-white" : "w-full",
         active
-          ? "bg-slate-900 text-white shadow-sm"
+          ? "bg-slate-950 text-white shadow-lg shadow-slate-950/15"
           : mobile
             ? "text-primary hover:bg-secondary"
-            : "text-muted-foreground hover:bg-muted hover:text-primary",
+            : "text-muted-foreground hover:bg-slate-100 hover:text-primary",
         className,
       )}
       {...props}
@@ -463,7 +464,7 @@ function NavButton({
       <span
         className={cn(
           "grid h-8 w-8 shrink-0 place-items-center rounded-lg",
-          active ? "bg-white/12" : "bg-slate-100 text-slate-600",
+          active ? "bg-white/15" : "bg-slate-100 text-slate-600",
         )}
       >
         <Icon size={16} />

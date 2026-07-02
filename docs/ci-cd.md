@@ -53,8 +53,9 @@ Set these in GitHub repository settings:
 | `VPS_HOST` | Yes | Server IP or hostname. |
 | `VPS_USER` | Yes | SSH user, for example `root`. |
 | `VPS_SSH_KEY` | Yes | Private SSH key with access to the server. |
-| `LOCAL_AUTH_TOKEN` | Yes | Token required when `APP_MODE=local`. |
+| `DASHBOARD_SESSION_SECRET` | Yes | Secret for dashboard session token hashing. Required when `APP_MODE=local`. |
 | `POSTGRES_PASSWORD` | Yes | Password for the `vps_manager` PostgreSQL user. Used on first DB volume initialization and by the API `DATABASE_URL`. |
+| `DASHBOARD_ADMIN_PASSWORD` | No | Plaintext dashboard admin password. If set, the deploy step pipes it to `set-dashboard-password.js --stdin --skip-if-same` after migrations. If unset, the password must be set manually via SSH. |
 | `VPS_PORT` | No | SSH port. Defaults to `22`. |
 | `DEPLOY_PATH` | No | Remote app directory. Defaults to `/opt/vps-manager-nodejs`. |
 
@@ -74,6 +75,10 @@ Optional repository variables can override generated server `.env` values:
 | `RATE_LIMIT_MAX` | `120` | Rate limit max requests per window. |
 | `AGENT_PUBLIC_BASE_URL` | empty | Public callback URL for installed agents. |
 | `ALLOW_INSECURE_AGENT_HTTP` | `false` | Allows HTTP agent callback URLs when explicitly accepted. |
+| `DASHBOARD_SESSION_TTL_SECONDS` | `28800` | Dashboard session TTL in seconds. |
+| `DASHBOARD_PUBLIC_ORIGIN` | empty | Expected Origin header for CSRF protection. |
+| `DASHBOARD_COOKIE_SECURE` | `true` | Set HttpOnly cookie Secure flag. |
+| `DASHBOARD_COOKIE_SAME_SITE` | `lax` | SameSite cookie attribute. |
 
 ## Server requirements
 
@@ -97,6 +102,17 @@ docker compose run --rm api node dist/db/migrate.js --include-optional || true
 docker compose up -d --remove-orphans
 docker compose ps
 ```
+
+After the first deploy (if `DASHBOARD_ADMIN_PASSWORD` was not set), set the dashboard admin password via SSH:
+```bash
+echo 'your-admin-password' | docker compose -f /opt/vps-manager-nodejs/docker-compose.yml run --rm api node dist/scripts/set-dashboard-password.js --stdin
+```
+
+To rotate the password without downtime, pipe the new password with `--skip-if-same`:
+```bash
+echo 'new-admin-password' | docker compose -f /opt/vps-manager-nodejs/docker-compose.yml run --rm api node dist/scripts/set-dashboard-password.js --stdin --skip-if-same
+```
+The `--skip-if-same` flag avoids unnecessary session revocations when the password hasn't changed (e.g., re-running the deploy CI without changing the secret).
 
 The database password is stored in the server-side `.env` file for this single-host deployment. To rotate it after the `vps-manager-postgres` volume exists, update the DB user password with `ALTER USER`, update the GitHub secret, then redeploy.
 

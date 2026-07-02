@@ -54,7 +54,7 @@ See `docs/architecture.md` for module details.
 
 ## Security Model
 
-Demo mode cannot call real SSH. Local mode requires `LOCAL_AUTH_TOKEN` for mutations and real SSH operations remain guarded by host policy and explicit config. Passwords are accepted only for provisioning requests and are never stored in browser storage, JSON files, logs, public assets, or API responses.
+Demo mode cannot call real SSH. Local mode requires a DB-backed admin password for dashboard access (set via `npm run set-dashboard-password`). Real SSH operations remain guarded by host policy and explicit config. Passwords are accepted only for provisioning requests and are never stored in browser storage, JSON files, logs, public assets, or API responses.
 
 See `docs/security.md` for the full model.
 

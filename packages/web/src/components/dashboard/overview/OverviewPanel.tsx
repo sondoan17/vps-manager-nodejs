@@ -62,7 +62,7 @@ export function OverviewPanel({ overview }: { overview: DashboardOverview }) {
   const netTrend = findTrend("network") || findTrend();
 
   return (
-    <div className="min-w-0 space-y-4 overflow-visible">
+    <div className="min-w-0 space-y-5 overflow-visible">
       <section
         className="grid min-w-0 gap-3 xl:grid-cols-3"
         aria-label="Operations overview"
@@ -163,13 +163,13 @@ function HeroStat({
 }) {
   const tones = {
     healthy:
-      "border-emerald-500/30 bg-slate-950 text-white before:bg-emerald-400 text-emerald-200",
-    work: "border-amber-500/30 bg-slate-900 text-white before:bg-amber-400 text-amber-200",
-    load: "border-indigo-500/30 bg-slate-900 text-white before:bg-indigo-400 text-indigo-200",
+      "border-emerald-400/25 bg-[linear-gradient(135deg,#020617,#064e3b)] text-white before:bg-emerald-300 text-emerald-100",
+    work: "border-amber-400/25 bg-[linear-gradient(135deg,#111827,#92400e)] text-white before:bg-amber-300 text-amber-100",
+    load: "border-blue-400/25 bg-[linear-gradient(135deg,#020617,#1e3a8a)] text-white before:bg-blue-300 text-blue-100",
   };
   return (
     <article
-      className={`${tones[tone]} before:absolute before:inset-x-0 before:top-0 before:h-1 relative min-h-28 min-w-0 overflow-hidden rounded-[1.15rem] border p-4 pt-5 shadow-sm shadow-slate-950/10 sm:min-h-32`}
+      className={`${tones[tone]} before:absolute before:inset-x-0 before:top-0 before:h-1 relative min-h-28 min-w-0 overflow-hidden rounded-[1.4rem] border p-4 pt-5 shadow-panel transition duration-300 hover:-translate-y-0.5 sm:min-h-32`}
     >
       <div className="absolute -right-10 -top-12 h-24 w-24 rounded-full bg-current/10 blur-2xl" />
       <div className="relative flex min-w-0 items-start justify-between gap-3">
@@ -235,7 +235,7 @@ function TrendCard({
   const isHot = max != null && threshold != null ? max >= threshold : false;
   return (
     <Card
-      className={`min-w-0 overflow-hidden border-slate-200 bg-white shadow-sm ${isHot ? "ring-2 ring-orange-200" : ""}`}
+      className={`min-w-0 overflow-hidden border-slate-200/80 bg-white/88 shadow-panel backdrop-blur transition duration-300 hover:-translate-y-0.5 hover:shadow-xl ${isHot ? "ring-2 ring-orange-200" : ""}`}
     >
       <CardContent className="p-4">
         <div className="flex min-w-0 items-start justify-between gap-3">
@@ -250,7 +250,7 @@ function TrendCard({
               {detail}
             </p>
           </div>
-          <span className="grid h-10 w-10 shrink-0 place-items-center rounded-xl border border-slate-200 bg-slate-50 text-slate-700">
+          <span className="grid h-10 w-10 shrink-0 place-items-center rounded-2xl border border-slate-200 bg-slate-50 text-slate-700 shadow-sm">
             <Icon size={18} />
           </span>
         </div>

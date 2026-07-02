@@ -16,6 +16,8 @@ export type SessionRepository = {
   create(input: Omit<SessionRecord, "id" | "createdAt">): Promise<SessionRecord>;
   findByTokenHash(tokenHash: string): Promise<SessionRecord | undefined>;
   revoke(id: string): Promise<void>;
+  /** Revoke all non-expired sessions. Used on password rotation. */
+  revokeAll(): Promise<number>;
   cleanup(): Promise<number>;
 };
 
@@ -55,6 +57,22 @@ export function createJsonSessionRepository(filePath = "data/sessions.json"): Se
           session.revokedAt = new Date().toISOString();
         }
         await writeJsonFile(filePath, data);
+      });
+    },
+
+    async revokeAll() {
+      return withFileLock(filePath, async () => {
+        const data = await readJsonFile<SessionFile>(filePath, { sessions: [] });
+        const now = new Date().toISOString();
+        let count = 0;
+        for (const s of data.sessions) {
+          if (!s.revokedAt && s.expiresAt > now) {
+            s.revokedAt = now;
+            count++;
+          }
+        }
+        await writeJsonFile(filePath, data);
+        return count;
       });
     },
 

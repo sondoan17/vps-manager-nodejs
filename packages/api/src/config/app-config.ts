@@ -67,9 +67,8 @@ const envSchema = z.object({
 export function parseAppConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
   const parsed = envSchema.parse(env);
 
-  if (parsed.APP_MODE === "local" && !parsed.LOCAL_AUTH_TOKEN) {
-    throw new Error("LOCAL_AUTH_TOKEN is required when APP_MODE=local");
-  }
+  // LOCAL_AUTH_TOKEN is no longer required — dashboard auth uses DB-backed password.
+  // LOCAL_AUTH_TOKEN may still be present for backward compat or as a server-side secret.
 
   if (parsed.APP_MODE === "local" && !parsed.DASHBOARD_SESSION_SECRET) {
     throw new Error("DASHBOARD_SESSION_SECRET is required when APP_MODE=local");

@@ -23,7 +23,6 @@ services:
     environment:
       PORT: "3000"
       APP_MODE: demo
-      LOCAL_AUTH_TOKEN: ""
       ENABLE_WEB_TERMINAL: "false"
       ALLOW_PRIVATE_NETWORK_TARGETS: "false"
       DATA_DIR: /app/data

@@ -19,6 +19,7 @@ import type { AuditRepository } from "./repositories/audit.repository.js";
 import { createRepositories } from "./repositories/create-repositories.js";
 import type { JobRepository } from "./repositories/job.repository.js";
 import type { MetricRepository } from "./repositories/metric.repository.js";
+import type { AdminCredentialRepository } from "./repositories/admin-credential.repository.js";
 import type { SessionRepository } from "./repositories/session.repository.js";
 import { createKeyService, type KeyService } from "./services/keyService.js";
 import { SshService } from "./services/ssh.service.js";
@@ -31,9 +32,9 @@ import { MetricService } from "./services/metric.service.js";
 import { MonitoringService } from "./services/monitoring.service.js";
 import { VpsService } from "./services/vps.service.js";
 import type { VpsRepository } from "./repositories/vps.repository.js";
-import { AGENT_REPOSITORY, APP_CONFIG, AUDIT_REPOSITORY, DATABASE_POOL, JOB_REPOSITORY, KEY_SERVICE, METRIC_REPOSITORY, SESSION_REPOSITORY, VPS_REPOSITORY } from "./tokens.js";
+import { ADMIN_CREDENTIAL_REPOSITORY, AGENT_REPOSITORY, APP_CONFIG, AUDIT_REPOSITORY, DATABASE_POOL, JOB_REPOSITORY, KEY_SERVICE, METRIC_REPOSITORY, SESSION_REPOSITORY, VPS_REPOSITORY } from "./tokens.js";
 
-export { AGENT_REPOSITORY, APP_CONFIG, AUDIT_REPOSITORY, DATABASE_POOL, JOB_REPOSITORY, KEY_SERVICE, METRIC_REPOSITORY, SESSION_REPOSITORY, VPS_REPOSITORY };
+export { ADMIN_CREDENTIAL_REPOSITORY, AGENT_REPOSITORY, APP_CONFIG, AUDIT_REPOSITORY, DATABASE_POOL, JOB_REPOSITORY, KEY_SERVICE, METRIC_REPOSITORY, SESSION_REPOSITORY, VPS_REPOSITORY };
 
 export type AppDependencies = {
   config?: AppConfig;
@@ -44,6 +45,7 @@ export type AppDependencies = {
   metrics?: MetricRepository;
   agent?: AgentRepository;
   sessions?: SessionRepository;
+  adminCredential?: AdminCredentialRepository;
 };
 
 export class AppModule {}
@@ -60,7 +62,7 @@ class DatabasePoolShutdown implements OnApplicationShutdown {
 
 export function createAppModule(deps: AppDependencies = {}): DynamicModule {
   const config = deps.config ?? loadAppConfig();
-  const needsRepositories = !deps.store || !deps.audit || !deps.jobs || !deps.metrics || !deps.agent || !deps.sessions;
+  const needsRepositories = !deps.store || !deps.audit || !deps.jobs || !deps.metrics || !deps.agent || !deps.sessions || !deps.adminCredential;
   const repositories = needsRepositories ? createRepositories(config) : undefined;
 
   return {
@@ -77,6 +79,7 @@ export function createAppModule(deps: AppDependencies = {}): DynamicModule {
       { provide: METRIC_REPOSITORY, useValue: deps.metrics ?? repositories!.metrics },
       { provide: AGENT_REPOSITORY, useValue: deps.agent ?? repositories!.agent },
       { provide: SESSION_REPOSITORY, useValue: deps.sessions ?? repositories!.sessions },
+      { provide: ADMIN_CREDENTIAL_REPOSITORY, useValue: deps.adminCredential ?? repositories!.adminCredential },
       DashboardSessionGuard,
       OriginGuard,
       AgentInstallerService,

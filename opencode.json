@@ -6,5 +6,20 @@
       "command": ["npx", "shadcn@latest", "mcp"],
       "enabled": true
     }
+  },
+  "agent": {
+    "designer": {
+      "permission": {
+        "skill": {
+          "banner-design": "allow",
+          "brand": "allow",
+          "design": "allow",
+          "design-system": "allow",
+          "slides": "allow",
+          "ui-styling": "allow",
+          "ui-ux-pro-max": "allow"
+        }
+      }
+    }
   }
 }

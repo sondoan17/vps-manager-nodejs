@@ -10,7 +10,7 @@ The backend starts from `packages/api/src/server.ts`, creates an Express server,
 
 ## Backend Modules
 
-- Config: parses `APP_MODE`, `LOCAL_AUTH_TOKEN`, terminal flags, private-network flags, and storage directories.
+- Config: parses `APP_MODE`, `DASHBOARD_SESSION_SECRET`, terminal flags, private-network flags, and storage directories.
 - VPS: stores local VPS metadata in `data/vps.json` and preserves the existing CRUD/provision/verify API.
 - SSH: wraps real `ssh2` helpers with demo-mode and host-policy gates.
 - Dashboard: exposes `GET /api/dashboard` with demo overview data, jobs, metrics, audit, terminal, and settings.

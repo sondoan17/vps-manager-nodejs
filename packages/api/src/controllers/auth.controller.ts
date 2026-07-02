@@ -1,11 +1,11 @@
-import { Body, Controller, Get, Inject, Post, Req, Res, UnauthorizedException, UseGuards } from "@nestjs/common";
-import { timingSafeEqual } from "node:crypto";
-import { randomBytes } from "node:crypto";
-import { createHash } from "node:crypto";
+import { Body, Controller, Get, Inject, Post, Req, Res, ServiceUnavailableException, UnauthorizedException, UseGuards } from "@nestjs/common";
+import { randomBytes, createHash } from "node:crypto";
 import type { Request, Response } from "express";
 import type { AppConfig } from "../config/app-config.js";
+import { verifyPassword } from "../auth/password-hash.js";
+import type { AdminCredentialRepository } from "../repositories/admin-credential.repository.js";
 import type { SessionRepository } from "../repositories/session.repository.js";
-import { APP_CONFIG, SESSION_REPOSITORY } from "../tokens.js";
+import { ADMIN_CREDENTIAL_REPOSITORY, APP_CONFIG, SESSION_REPOSITORY } from "../tokens.js";
 import { DashboardSessionGuard } from "./../auth/dashboard-session.guard.js";
 import { OriginGuard } from "./../auth/origin-guard.js";
 import { SESSION_COOKIE_NAME, parseCookie } from "./../auth/cookies.js";
@@ -18,14 +18,33 @@ function hashToken(token: string, pepper?: string): string {
 }
 
 /**
- * Timing-safe comparison of two strings.
- * Always returns false for mismatched lengths to prevent length oracle attacks.
+ * Create a session for the given request and set the cookie on the response.
  */
-function safeEquals(a: string, b: string): boolean {
-  const bufA = Buffer.from(a);
-  const bufB = Buffer.from(b);
-  if (bufA.length !== bufB.length) return false;
-  return timingSafeEqual(bufA, bufB);
+async function createSessionAndSetCookie(
+  sessions: SessionRepository,
+  config: AppConfig,
+  req: Request,
+  res: Response,
+) {
+  const rawToken = randomBytes(32).toString("hex");
+  const tokenHash = hashToken(rawToken, config.dashboardSessionSecret);
+  const expiresAt = new Date(Date.now() + config.dashboardSessionTtlSeconds * 1000).toISOString();
+
+  const session = await sessions.create({
+    tokenHash,
+    expiresAt,
+    ipAddress: req.ip,
+  });
+
+  res.cookie(SESSION_COOKIE_NAME, rawToken, {
+    httpOnly: true,
+    secure: config.dashboardCookieSecure,
+    sameSite: config.dashboardCookieSameSite,
+    path: "/",
+    maxAge: config.dashboardSessionTtlSeconds * 1000,
+  });
+
+  return session;
 }
 
 @Controller("api/auth")
@@ -33,19 +52,22 @@ export class AuthController {
   constructor(
     @Inject(APP_CONFIG) private readonly config: AppConfig,
     @Inject(SESSION_REPOSITORY) private readonly sessions: SessionRepository,
+    @Inject(ADMIN_CREDENTIAL_REPOSITORY) private readonly adminCredential: AdminCredentialRepository,
   ) {}
 
   /**
    * POST /api/auth/login
    *
-   * Accepts the LOCAL_AUTH_TOKEN as the login secret.
-   * On success, creates a server-side session and sets an HttpOnly cookie.
+   * Accepts `{ password }` and verifies against the DB-backed admin credential.
+   * If no credential is configured, returns a safe "setup required" error.
+   * The LOCAL_AUTH_TOKEN env secret is never accepted as a login credential;
+   * only the DB/JSON-backed password is valid.
    *
-   * Never logs the submitted token.
+   * Never logs the submitted password.
    */
   @Post("login")
   async login(
-    @Body() body: { token?: unknown },
+    @Body() body: { password?: unknown },
     @Req() req: Request,
     @Res({ passthrough: true }) res: Response,
   ) {
@@ -53,33 +75,22 @@ export class AuthController {
       throw new UnauthorizedException({ error: { message: "Auth not available in demo mode" } });
     }
 
-    const submitted = typeof body.token === "string" ? body.token : "";
-    const secret = this.config.localAuthToken;
-
-    if (!secret || !safeEquals(submitted, secret)) {
-      throw new UnauthorizedException({ error: { message: "Invalid authentication token" } });
+    // 1. Check credential exists before accepting any attempt
+    const storedCredential = await this.adminCredential.get();
+    if (!storedCredential) {
+      throw new ServiceUnavailableException({
+        error: { message: "Dashboard password not configured. Run `npm run set-dashboard-password` first." },
+      });
     }
 
-    // Generate opaque session token
-    const rawToken = randomBytes(32).toString("hex");
-    const tokenHash = hashToken(rawToken, this.config.dashboardSessionSecret);
-    const expiresAt = new Date(Date.now() + this.config.dashboardSessionTtlSeconds * 1000).toISOString();
+    // 2. Validate submitted password (if missing or wrong, same generic error)
+    const submittedPassword = typeof body.password === "string" ? body.password : undefined;
+    if (!submittedPassword || !verifyPassword(submittedPassword, storedCredential.passwordHash)) {
+      throw new UnauthorizedException({ error: { message: "Invalid credentials" } });
+    }
 
-    const session = await this.sessions.create({
-      tokenHash,
-      expiresAt,
-      ipAddress: req.ip,
-    });
-
-    // Set HttpOnly session cookie
-    res.cookie(SESSION_COOKIE_NAME, rawToken, {
-      httpOnly: true,
-      secure: this.config.dashboardCookieSecure,
-      sameSite: this.config.dashboardCookieSameSite,
-      path: "/",
-      maxAge: this.config.dashboardSessionTtlSeconds * 1000,
-    });
-
+    // 3. Success — create session
+    const session = await createSessionAndSetCookie(this.sessions, this.config, req, res);
     return {
       data: {
         mode: "local",

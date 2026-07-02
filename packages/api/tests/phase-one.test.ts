@@ -65,7 +65,9 @@ describe("phase one config", () => {
   });
 
   it("fails fast for unsafe local and terminal settings", () => {
-    expect(() => parseAppConfig({ APP_MODE: "local" } as NodeJS.ProcessEnv)).toThrow(/LOCAL_AUTH_TOKEN/);
+    // LOCAL_AUTH_TOKEN no longer required; DASHBOARD_SESSION_SECRET is required instead
+    expect(() => parseAppConfig({ APP_MODE: "local" } as NodeJS.ProcessEnv)).toThrow(/DASHBOARD_SESSION_SECRET/);
+    expect(() => parseAppConfig({ APP_MODE: "local", LOCAL_AUTH_TOKEN: "tok", DASHBOARD_SESSION_SECRET: "" } as NodeJS.ProcessEnv)).toThrow(/DASHBOARD_SESSION_SECRET/);
     expect(() => parseAppConfig({ APP_MODE: "demo", ENABLE_WEB_TERMINAL: "true" } as NodeJS.ProcessEnv)).toThrow(/ENABLE_WEB_TERMINAL/);
   });
 });

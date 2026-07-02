@@ -9,3 +9,4 @@ data/vps.json
 .playwright-mcp/
 dashboard-*.png
 .slim/deepwork/
+.opencode

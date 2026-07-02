@@ -22,6 +22,8 @@
     "import-vps-env": "node scripts/import-vps-env.mjs",
     "add-vps-env": "node scripts/add-vps-from-env.mjs",
     "install-agent-env": "tsx scripts/install-agent-from-env.ts",
+    "set-dashboard-password": "tsx packages/api/src/scripts/set-dashboard-password.ts",
+    "set-dashboard-password:prod": "node dist/scripts/set-dashboard-password.js",
     "migrate:db": "tsx packages/api/src/db/migrate.ts"
   },
   "dependencies": {

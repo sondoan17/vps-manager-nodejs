@@ -3,6 +3,8 @@ import type { Pool } from "pg";
 import type { AppConfig } from "../config/app-config.js";
 import { createDatabasePool } from "../db/pool.js";
 import { createVpsStore } from "../store/vpsStore.js";
+import { createJsonAdminCredentialRepository, type AdminCredentialRepository } from "./admin-credential.repository.js";
+import { createPostgresAdminCredentialRepository } from "./admin-credential.postgres.repository.js";
 import { createJsonAgentRepository, type AgentRepository } from "./agent.repository.js";
 import { createPostgresAgentRepository } from "./agent.postgres.repository.js";
 import { createJsonAuditRepository, type AuditRepository } from "./audit.repository.js";
@@ -23,6 +25,7 @@ export type RepositorySet = {
   metrics: MetricRepository;
   agent: AgentRepository;
   sessions: SessionRepository;
+  adminCredential: AdminCredentialRepository;
   pool?: Pool;
 };
 
@@ -36,7 +39,8 @@ export function createRepositories(config: AppConfig): RepositorySet {
       jobs: createPostgresJobRepository(pool),
       metrics: createPostgresMetricRepository(pool),
       agent: createPostgresAgentRepository(pool),
-      sessions: createPostgresSessionRepository(pool)
+      sessions: createPostgresSessionRepository(pool),
+      adminCredential: createPostgresAdminCredentialRepository(pool)
     };
   }
 
@@ -46,6 +50,7 @@ export function createRepositories(config: AppConfig): RepositorySet {
     jobs: createJsonJobRepository(join(config.dataDir, "jobs.json")),
     metrics: createJsonMetricRepository(join(config.dataDir, "metrics.json")),
     agent: createJsonAgentRepository(join(config.dataDir, "agents.json")),
-    sessions: createJsonSessionRepository(join(config.dataDir, "sessions.json"))
+    sessions: createJsonSessionRepository(join(config.dataDir, "sessions.json")),
+    adminCredential: createJsonAdminCredentialRepository(join(config.dataDir, "admin-credential.json"))
   };
 }

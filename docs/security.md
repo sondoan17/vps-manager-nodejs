@@ -3,7 +3,7 @@
 ## Runtime Modes
 
 - `APP_MODE=demo`: public portfolio mode. Seeds simulated servers, metrics, jobs, audit events, and terminal output. Real SSH and real terminal network access are disabled.
-- `APP_MODE=local`: self-hosted local mode. Mutations require `Authorization: Bearer <LOCAL_AUTH_TOKEN>`. Real SSH remains behind host policy and explicit configuration.
+- `APP_MODE=local`: self-hosted local mode. Dashboard access requires an HttpOnly session cookie obtained by logging in with the DB-backed admin password (set via `npm run set-dashboard-password`). Real SSH remains behind host policy and explicit configuration.
 
 Invalid modes fail during config parsing. `ENABLE_WEB_TERMINAL=true` is rejected unless `APP_MODE=local`.
 

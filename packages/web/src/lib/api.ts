@@ -158,10 +158,10 @@ export function getAuthStatus() {
   return request<AuthStatus>("/api/auth/me");
 }
 
-export function loginWithDashboardToken(token: string) {
+export function loginWithDashboardPassword(password: string) {
   return request<AuthStatus>("/api/auth/login", {
     method: "POST",
-    body: JSON.stringify({ token }),
+    body: JSON.stringify({ password }),
   });
 }
 

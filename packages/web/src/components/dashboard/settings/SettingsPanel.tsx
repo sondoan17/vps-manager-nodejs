@@ -38,7 +38,7 @@ export function SettingsPanel({ overview }: { overview: DashboardOverview }) {
         <CardHeader>
           <CardTitle>Dashboard access</CardTitle>
           <CardDescription>
-            Local mode uses a secure HttpOnly cookie session. Dashboard tokens are never saved in browser storage.
+            Local mode uses a secure HttpOnly cookie session. Dashboard passwords are verified server-side against the stored credential and are never saved in browser storage.
           </CardDescription>
         </CardHeader>
         <CardContent>

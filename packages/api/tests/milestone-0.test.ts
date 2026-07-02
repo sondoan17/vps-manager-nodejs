@@ -114,12 +114,14 @@ describe("database migrations", () => {
       "001_core_schema.sql",
       "002_metric_indexes.sql",
       "003_timescale_optional.sql",
-      "004_dashboard_sessions.sql"
+      "004_dashboard_sessions.sql",
+      "005_dashboard_admin_credentials.sql"
     ]);
     expect(migrations[0]?.sql).toContain("CREATE TABLE IF NOT EXISTS vps");
     expect(migrations[1]?.sql).toContain("metric_samples_vps_effective_idx");
     expect(migrations[2]?.sql).toContain("create_hypertable");
     expect(migrations[3]?.sql).toContain("CREATE TABLE IF NOT EXISTS dashboard_sessions");
+    expect(migrations[4]?.sql).toContain("CREATE TABLE IF NOT EXISTS dashboard_admin_credentials");
   });
 
   it("excludes optional migrations unless requested", async () => {
@@ -128,13 +130,15 @@ describe("database migrations", () => {
     expect(selectMigrations(migrations, false).map((migration) => migration.id)).toEqual([
       "001_core_schema.sql",
       "002_metric_indexes.sql",
-      "004_dashboard_sessions.sql"
+      "004_dashboard_sessions.sql",
+      "005_dashboard_admin_credentials.sql"
     ]);
     expect(selectMigrations(migrations, true).map((migration) => migration.id)).toEqual([
       "001_core_schema.sql",
       "002_metric_indexes.sql",
       "003_timescale_optional.sql",
-      "004_dashboard_sessions.sql"
+      "004_dashboard_sessions.sql",
+      "005_dashboard_admin_credentials.sql"
     ]);
   });
 });

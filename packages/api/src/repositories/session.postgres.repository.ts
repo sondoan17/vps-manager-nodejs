@@ -38,6 +38,13 @@ export function createPostgresSessionRepository(pool: DatabasePool): SessionRepo
       await pool.query("UPDATE dashboard_sessions SET revoked_at = NOW() WHERE id = $1", [id]);
     },
 
+    async revokeAll() {
+      const result = await pool.query(
+        "UPDATE dashboard_sessions SET revoked_at = NOW() WHERE revoked_at IS NULL AND expires_at > NOW()",
+      );
+      return result.rowCount ?? 0;
+    },
+
     async cleanup() {
       const result = await pool.query("DELETE FROM dashboard_sessions WHERE expires_at < NOW()");
       return result.rowCount ?? 0;

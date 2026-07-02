@@ -88,10 +88,10 @@ export function ServersPanel(props: ServersPanelProps) {
     props.metrics.map((metric) => [metric.vpsId, metric]),
   );
   return (
-    <div className="grid min-w-0 max-w-full gap-4 xl:grid-cols-[minmax(0,1fr)_minmax(360px,420px)]">
+    <div className="grid min-w-0 max-w-full gap-5 xl:grid-cols-[minmax(0,1fr)_minmax(360px,420px)]">
       <section className="min-w-0 space-y-4">
-        <Card className="min-w-0 overflow-hidden border border-slate-200 bg-white shadow-sm">
-          <CardHeader className="min-w-0 pb-3">
+        <Card className="min-w-0 overflow-hidden border border-slate-200/80 bg-white/90 shadow-panel backdrop-blur">
+          <CardHeader className="min-w-0 border-b border-slate-100 bg-slate-50/55 pb-4">
             <CardTitle className="truncate">Servers</CardTitle>
             <CardDescription>
               Search, filter, install keys, and verify access.
@@ -107,7 +107,7 @@ export function ServersPanel(props: ServersPanelProps) {
               />
               <select
                 aria-label="Filter status"
-                className="h-10 min-w-0 w-full rounded-xl border border-slate-200 bg-white px-3 text-sm font-semibold text-slate-700 outline-none focus:ring-4 focus:ring-ring"
+                className="h-10 min-w-0 w-full rounded-xl border border-slate-200 bg-white px-3 text-sm font-semibold text-slate-700 outline-none transition focus:border-accent focus:ring-4 focus:ring-accent/20"
                 value={props.statusFilter}
                 onChange={(event) =>
                   props.onStatusFilterChange(event.target.value)
@@ -164,8 +164,8 @@ function CreateServerCard({
   onCreateFormChange,
 }: ServersPanelProps) {
   return (
-    <Card className="h-fit min-w-0 overflow-hidden border border-slate-200 bg-white shadow-sm">
-      <CardHeader className="min-w-0 pb-3">
+    <Card className="h-fit min-w-0 overflow-hidden border border-slate-200/80 bg-white/90 shadow-panel backdrop-blur xl:sticky xl:top-5">
+      <CardHeader className="min-w-0 border-b border-slate-100 bg-gradient-to-br from-white to-slate-50 pb-4">
         <p className="truncate text-xs font-black uppercase tracking-[0.18em] text-accent">
           Add server
         </p>
@@ -329,7 +329,7 @@ function ServerCard({
 
   return (
     <article
-      className={`min-w-0 rounded-xl border bg-white px-4 py-4 shadow-sm transition ${isDown ? "border-red-200 bg-red-50/45 shadow-red-950/5 ring-1 ring-red-100" : "border-slate-200 hover:border-slate-300"}`}
+      className={`min-w-0 rounded-2xl border px-4 py-4 shadow-sm transition duration-300 ${isDown ? "border-red-200 bg-red-50/70 shadow-red-950/5 ring-1 ring-red-100" : "border-slate-200/80 bg-white hover:-translate-y-0.5 hover:border-teal-200 hover:shadow-lg"}`}
     >
       <div
         className={`grid gap-4 xl:grid-cols-[minmax(320px,1.25fr)_minmax(230px,0.8fr)_minmax(220px,0.55fr)_auto] xl:items-center ${isDown ? "border-l-4 border-red-500 pl-3" : ""}`}
@@ -574,7 +574,7 @@ function ServerRuntimeMeta({
     `${runningJobs} running job${runningJobs === 1 ? "" : "s"}`,
   ].filter(Boolean);
   return (
-    <div className="min-w-0 rounded-lg border border-slate-200 bg-white/70 px-3 py-2 text-[12px] font-bold leading-5 text-slate-600 shadow-sm">
+    <div className="min-w-0 rounded-xl border border-slate-200 bg-slate-50/90 px-3 py-2 text-[12px] font-bold leading-5 text-slate-600 shadow-sm">
       <p className="truncate" title={parts.join(" / ")}>
         {parts.join(" / ")}
       </p>
@@ -588,7 +588,7 @@ function ServerMetricStrip({
   metric?: DashboardOverview["metrics"][number];
 }) {
   const base =
-    "rounded-md border border-slate-200 bg-slate-50 px-2.5 py-1 text-[12px] font-black text-slate-800 shadow-[0_1px_0_rgba(15,23,42,0.03)]";
+    "rounded-lg border border-slate-200 bg-slate-50 px-2.5 py-1 text-[12px] font-black text-slate-800 shadow-[0_1px_0_rgba(15,23,42,0.03)]";
   if (!metric)
     return (
       <div className="flex flex-wrap items-center gap-1.5 xl:justify-end">

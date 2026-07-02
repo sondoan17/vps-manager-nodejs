@@ -101,10 +101,12 @@ jobs:
         run: |
           docker run --rm --entrypoint sh vps-manager-nodejs-api:ci -lc '
             test -f /app/dist/db/migrate.js
+            test -f /app/dist/scripts/set-dashboard-password.js
             test -f /app/db/migrations/001_core_schema.sql
             test -f /app/db/migrations/002_metric_indexes.sql
             test -f /app/db/migrations/003_timescale_optional.sql
             test -f /app/db/migrations/004_dashboard_sessions.sql
+            test -f /app/db/migrations/005_dashboard_admin_credentials.sql
           '
 
       - name: Build web Docker image
@@ -259,8 +261,8 @@ jobs:
           DEPLOY_PATH: ${{ steps.config.outputs.deploy_path }}
           API_IMAGE: ${{ needs.publish.outputs.api_sha_tag }}
           WEB_IMAGE: ${{ needs.publish.outputs.web_sha_tag }}
-          LOCAL_AUTH_TOKEN: ${{ secrets.LOCAL_AUTH_TOKEN }}
           DASHBOARD_SESSION_SECRET: ${{ secrets.DASHBOARD_SESSION_SECRET }}
+          DASHBOARD_ADMIN_PASSWORD: ${{ secrets.DASHBOARD_ADMIN_PASSWORD }}
           POSTGRES_PASSWORD: ${{ secrets.POSTGRES_PASSWORD }}
           APP_PORT: ${{ vars.PORT }}
           APP_MODE_VALUE: ${{ vars.APP_MODE }}
@@ -283,15 +285,10 @@ jobs:
             echo "POSTGRES_PASSWORD repository secret is required for production deployment."
             exit 1
           fi
-          if [ -z "$LOCAL_AUTH_TOKEN" ]; then
-            echo "LOCAL_AUTH_TOKEN repository secret is required for production deployment."
-            exit 1
-          fi
           if [ -z "$DASHBOARD_SESSION_SECRET" ]; then
             echo "DASHBOARD_SESSION_SECRET repository secret is required for production deployment (APP_MODE=local)."
             exit 1
           fi
-          LOCAL_AUTH_TOKEN_ONE_LINE="$(printf '%s' "$LOCAL_AUTH_TOKEN" | tr -d '\r\n')"
           DASHBOARD_SESSION_SECRET_ONE_LINE="$(printf '%s' "$DASHBOARD_SESSION_SECRET" | tr -d '\r\n')"
           POSTGRES_PASSWORD_ONE_LINE="$(printf '%s' "$POSTGRES_PASSWORD" | tr -d '\r\n')"
           APP_PORT="${APP_PORT:-3000}"
@@ -313,7 +310,6 @@ jobs:
           $SSH "cat > '$DEPLOY_PATH/.env'" <<EOF
           PORT=$APP_PORT
           APP_MODE=$APP_MODE_VALUE
-          LOCAL_AUTH_TOKEN=$LOCAL_AUTH_TOKEN_ONE_LINE
           DASHBOARD_SESSION_SECRET=$DASHBOARD_SESSION_SECRET_ONE_LINE
           DASHBOARD_SESSION_TTL_SECONDS=$DASHBOARD_SESSION_TTL_SECONDS_VALUE
           DASHBOARD_PUBLIC_ORIGIN=$DASHBOARD_PUBLIC_ORIGIN_VALUE
@@ -389,6 +385,13 @@ jobs:
           $SSH "cd '$DEPLOY_PATH' && docker compose up -d postgres"
           $SSH "cd '$DEPLOY_PATH' && docker compose run --rm api node dist/db/migrate.js"
           $SSH "cd '$DEPLOY_PATH' && docker compose run --rm api node dist/db/migrate.js --include-optional" || echo "Optional Timescale migration failed or is unavailable; continuing with core PostgreSQL schema."
+          # Bootstrap/rotate dashboard admin password if secret is provided
+          if [ -n "$DASHBOARD_ADMIN_PASSWORD" ]; then
+            printf '%s\n' "$DASHBOARD_ADMIN_PASSWORD" | $SSH "cd '$DEPLOY_PATH' && docker compose run --rm -T api node dist/scripts/set-dashboard-password.js --stdin --skip-if-same"
+            echo "Dashboard admin password set/verified."
+          else
+            echo "DASHBOARD_ADMIN_PASSWORD secret not set — dashboard password must be set manually via SSH after deploy."
+          fi
           $SSH "cd '$DEPLOY_PATH' && docker compose up -d --remove-orphans"
           $SSH "cd '$DEPLOY_PATH' && docker compose ps"
           $SSH "for i in \$(seq 1 30); do curl -fsS http://127.0.0.1:3000/api/health && exit 0; sleep 2; done; docker compose -f '$DEPLOY_PATH/docker-compose.yml' logs --tail=80; exit 1"
