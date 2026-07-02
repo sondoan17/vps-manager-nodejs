@@ -213,7 +213,6 @@ jobs:
           WEB_IMAGE: ${{ needs.publish.outputs.web_sha_tag }}
           LOCAL_AUTH_TOKEN: ${{ secrets.LOCAL_AUTH_TOKEN }}
           POSTGRES_PASSWORD: ${{ secrets.POSTGRES_PASSWORD }}
-          ENABLE_TIMESCALE_MIGRATION: ${{ vars.ENABLE_TIMESCALE_MIGRATION }}
           GHCR_USER: ${{ github.actor }}
           GHCR_TOKEN: ${{ github.token }}
         run: |
@@ -288,11 +287,7 @@ jobs:
           $SSH "cd '$DEPLOY_PATH' && docker compose pull"
           $SSH "cd '$DEPLOY_PATH' && docker compose up -d postgres"
           $SSH "cd '$DEPLOY_PATH' && docker compose run --rm api node dist/db/migrate.js"
-          if [ "${ENABLE_TIMESCALE_MIGRATION:-false}" = "true" ]; then
-            $SSH "cd '$DEPLOY_PATH' && docker compose run --rm api node dist/db/migrate.js --include-optional"
-          else
-            echo "Skipping optional Timescale migration. Set repository variable ENABLE_TIMESCALE_MIGRATION=true to run it during deploy."
-          fi
+          $SSH "cd '$DEPLOY_PATH' && docker compose run --rm api node dist/db/migrate.js --include-optional" || echo "Optional Timescale migration failed or is unavailable; continuing with core PostgreSQL schema."
           $SSH "cd '$DEPLOY_PATH' && docker compose up -d --remove-orphans"
           $SSH "cd '$DEPLOY_PATH' && docker compose ps"
           $SSH "for i in \$(seq 1 30); do curl -fsS http://127.0.0.1:3000/api/health && exit 0; sleep 2; done; docker compose -f '$DEPLOY_PATH/docker-compose.yml' logs --tail=80; exit 1"

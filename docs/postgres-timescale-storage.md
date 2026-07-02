@@ -67,7 +67,7 @@ SELECT create_hypertable('metric_samples', 'effective_at', if_not_exists => TRUE
 
 If extension creation is not allowed for the app user, `--include-optional` will fail and the optional migration will not be recorded. Core migrations remain separate and can run without Timescale privileges. Ask a database administrator to run equivalent SQL or continue on plain PostgreSQL.
 
-Production CI/CD runs core migrations before updating the API/web services. The optional Timescale migration is skipped unless repository variable `ENABLE_TIMESCALE_MIGRATION=true` is set.
+Production CI/CD runs core migrations before updating the API/web services. It then attempts the optional Timescale migration and continues if that optional step is unavailable, so plain PostgreSQL remains supported.
 
 `metric_samples.id` is intentionally not a standalone primary key so the table can be converted to a Timescale hypertable partitioned by `effective_at`. Metric dedupe uses `(vps_id, collected_at, effective_at)`.
 

@@ -58,12 +58,6 @@ Set these in GitHub repository settings:
 | `VPS_PORT` | No | SSH port. Defaults to `22`. |
 | `DEPLOY_PATH` | No | Remote app directory. Defaults to `/opt/vps-manager-nodejs`. |
 
-Optional repository variable:
-
-| Variable | Required | Description |
-| --- | --- | --- |
-| `ENABLE_TIMESCALE_MIGRATION` | No | Set to `true` to run the optional TimescaleDB extension/hypertable migration during deploy. Core PostgreSQL migrations always run. |
-
 If the required SSH secrets are missing, the deploy job exits successfully and prints a skip message.
 
 ## Server requirements
@@ -81,8 +75,8 @@ The workflow writes a production `docker-compose.yml` into `DEPLOY_PATH` and run
 docker compose pull
 docker compose up -d postgres
 docker compose run --rm api node dist/db/migrate.js
-# Optional, only when ENABLE_TIMESCALE_MIGRATION=true:
-# docker compose run --rm api node dist/db/migrate.js --include-optional
+# Optional and non-fatal:
+docker compose run --rm api node dist/db/migrate.js --include-optional || true
 docker compose up -d --remove-orphans
 docker compose ps
 ```
