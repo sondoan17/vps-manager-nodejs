@@ -60,8 +60,6 @@ export class AuthController {
    *
    * Accepts `{ password }` and verifies against the DB-backed admin credential.
    * If no credential is configured, returns a safe "setup required" error.
-   * The LOCAL_AUTH_TOKEN env secret is never accepted as a login credential;
-   * only the DB/JSON-backed password is valid.
    *
    * Never logs the submitted password.
    */

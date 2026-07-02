@@ -51,3 +51,9 @@ export class AgentConfigError extends Error {
     super(message);
   }
 }
+
+export class DemoMutationBlockedError extends Error {
+  constructor() {
+    super("Mutations are disabled in demo mode");
+  }
+}

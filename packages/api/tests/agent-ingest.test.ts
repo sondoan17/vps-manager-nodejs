@@ -33,6 +33,7 @@ const demoConfig: AppConfig = {
   dashboardCookieSecure: false,
   dashboardCookieSameSite: "lax",
   dashboardSessionSecret: "test-secret",
+  trustProxyHops: 0,
 };
 
 let tempDir: string;
@@ -375,7 +376,7 @@ describe("POST /api/agent/metrics", () => {
 
   it("metric appears via /api/metrics after ingest", async () => {
     const { createSessionCookie } = await import("./test-helpers.js");
-    const localApp = app({ mode: "local", localAuthToken: "test-token" });
+    const localApp = app({ mode: "local" });
     const sessionCookie = await createSessionCookie(tempDir, demoConfig.dashboardSessionSecret);
 
     await request(localApp)

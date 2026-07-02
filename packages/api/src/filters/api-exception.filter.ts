@@ -1,7 +1,7 @@
 import { Catch, HttpException, type ArgumentsHost, type ExceptionFilter } from "@nestjs/common";
 import type { Request, Response } from "express";
 import { ZodError } from "zod";
-import { AgentAuthError, DemoSshDisabledError, DuplicateAgentInstallError, SshHostBlockedError, SshOperationError, VpsNotFoundError } from "../errors.js";
+import { AgentAuthError, DemoMutationBlockedError, DemoSshDisabledError, DuplicateAgentInstallError, SshHostBlockedError, SshOperationError, VpsNotFoundError } from "../errors.js";
 import { safeErrorMessage } from "../common/redaction.js";
 
 function errorBody(message: string, _requestId?: string) {
@@ -22,7 +22,7 @@ export class ApiExceptionFilter implements ExceptionFilter {
       return response.status(404).json(errorBody("VPS not found", requestId));
     }
 
-    if (error instanceof DemoSshDisabledError || error instanceof SshHostBlockedError) {
+    if (error instanceof DemoMutationBlockedError || error instanceof DemoSshDisabledError || error instanceof SshHostBlockedError) {
       return response.status(403).json(errorBody(safeErrorMessage(error), requestId));
     }
 

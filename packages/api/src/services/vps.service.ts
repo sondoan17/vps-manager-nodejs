@@ -2,7 +2,7 @@ import { Injectable } from "@nestjs/common";
 import { AuditService } from "../audit/audit.service.js";
 import type { AppConfig } from "../config/app-config.js";
 import { demoServers } from "../demo/demo-fixtures.js";
-import { VpsNotFoundError } from "../errors.js";
+import { DemoMutationBlockedError, VpsNotFoundError } from "../errors.js";
 import type { KeyService } from "./keyService.js";
 import { SshService } from "./ssh.service.js";
 import type { VpsRepository } from "../repositories/vps.repository.js";
@@ -26,7 +26,12 @@ export class VpsService {
     return records;
   }
 
+  private assertNotDemo() {
+    if (this.config.mode === "demo") throw new DemoMutationBlockedError();
+  }
+
   async create(body: unknown) {
+    this.assertNotDemo();
     const record = await this.store.create(createVpsSchema.parse(body));
     await this.audit.record({ actor: "system", action: "vps.create", resourceType: "vps", resourceId: record.id, result: "success", metadata: { host: record.host } });
     return record;
@@ -39,6 +44,7 @@ export class VpsService {
   }
 
   async update(id: string, body: unknown) {
+    this.assertNotDemo();
     const updated = await this.store.update(id, updateVpsSchema.parse(body));
     if (!updated) throw new VpsNotFoundError();
     await this.audit.record({ actor: "system", action: "vps.update", resourceType: "vps", resourceId: id, result: "success" });
@@ -46,11 +52,13 @@ export class VpsService {
   }
 
   async delete(id: string) {
+    this.assertNotDemo();
     if (!(await this.store.delete(id))) throw new VpsNotFoundError();
     await this.audit.record({ actor: "system", action: "vps.delete", resourceType: "vps", resourceId: id, result: "success" });
   }
 
   async provisionKey(id: string, body: unknown) {
+    this.assertNotDemo();
     const vps = await this.get(id);
     const { password } = provisionKeySchema.parse(body);
     const keyPair = await this.keys.ensureKeyPair(vps.id);
@@ -66,6 +74,7 @@ export class VpsService {
   }
 
   async verifyKey(id: string) {
+    this.assertNotDemo();
     const vps = await this.get(id);
     const privateKey = await this.keys.readPrivateKey(vps.id);
     try {
@@ -78,6 +87,7 @@ export class VpsService {
   }
 
   async installAgent(id: string, body: unknown, requestHost?: string) {
+    this.assertNotDemo();
     const vps = await this.get(id);
     const { password } = installAgentSchema.parse(body);
     try {

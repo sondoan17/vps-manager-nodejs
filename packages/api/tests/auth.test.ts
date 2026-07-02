@@ -36,6 +36,7 @@ const localConfig: AppConfig = {
   dashboardSessionTtlSeconds: 86_400,
   dashboardCookieSecure: false,
   dashboardCookieSameSite: "lax",
+  trustProxyHops: 0,
 };
 
 let tempDir: string;
@@ -90,6 +91,26 @@ describe("password hashing", () => {
   it("verifyPassword returns false for malformed stored hash", () => {
     expect(verifyPassword(TEST_PASSWORD, "invalid:hash")).toBe(false);
     expect(verifyPassword(TEST_PASSWORD, "")).toBe(false);
+    expect(verifyPassword(TEST_PASSWORD, null as unknown as string)).toBe(false);
+    expect(verifyPassword(TEST_PASSWORD, "scrypt$4000")).toBe(false);
+    expect(verifyPassword(TEST_PASSWORD, "scrypt$4000$8$1$salt$hash$extra")).toBe(false);
+  });
+
+  it("verifyPassword returns false for extreme/unsafe scrypt params without throwing", () => {
+    // N not a power of 2
+    expect(verifyPassword(TEST_PASSWORD, "scrypt$4001$8$1$dGVzdA$dGVzdA")).toBe(false);
+    // N too small
+    expect(verifyPassword(TEST_PASSWORD, "scrypt$100$8$1$dGVzdA$dGVzdA")).toBe(false);
+    // N too large
+    expect(verifyPassword(TEST_PASSWORD, "scrypt$200000$8$1$dGVzdA$dGVzdA")).toBe(false);
+    // r out of bounds
+    expect(verifyPassword(TEST_PASSWORD, "scrypt$4000$999$1$dGVzdA$dGVzdA")).toBe(false);
+    // p out of bounds
+    expect(verifyPassword(TEST_PASSWORD, "scrypt$4000$8$999$dGVzdA$dGVzdA")).toBe(false);
+    // salt too short
+    expect(verifyPassword(TEST_PASSWORD, "scrypt$4000$8$1$dGVzdA$dGVzdGVzdA")).toBe(false);
+    // hash too short
+    expect(verifyPassword(TEST_PASSWORD, "scrypt$4000$8$1$dGVzdGFkdmFsdWU$dGVzdA")).toBe(false);
   });
 
   it("produces different hashes for same password (random salt)", () => {

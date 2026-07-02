@@ -9,7 +9,6 @@ export type StorageDriver = "json" | "postgres";
 
 export type AppConfig = {
   mode: AppMode;
-  localAuthToken?: string;
   enableWebTerminal: boolean;
   allowPrivateNetworkTargets: boolean;
   dataDir: string;
@@ -31,6 +30,9 @@ export type AppConfig = {
   dashboardPublicOrigin?: string;
   dashboardCookieSecure: boolean;
   dashboardCookieSameSite: "lax" | "strict" | "none";
+
+  // Reverse proxy trust
+  trustProxyHops: number;
 };
 
 const booleanSchema = z
@@ -40,7 +42,6 @@ const booleanSchema = z
 
 const envSchema = z.object({
   APP_MODE: z.enum(["demo", "local"]).default("demo"),
-  LOCAL_AUTH_TOKEN: z.preprocess((value) => (value === "" ? undefined : value), z.string().trim().min(1).optional()),
   ENABLE_WEB_TERMINAL: booleanSchema.default("false"),
   ALLOW_PRIVATE_NETWORK_TARGETS: booleanSchema.default("false"),
   DATA_DIR: z.string().trim().min(1).default("data"),
@@ -61,14 +62,13 @@ const envSchema = z.object({
   DASHBOARD_SESSION_TTL_SECONDS: z.coerce.number().int().positive().default(86_400),
   DASHBOARD_PUBLIC_ORIGIN: z.preprocess((value) => (value === "" ? undefined : value), z.string().trim().optional()),
   DASHBOARD_COOKIE_SECURE: booleanSchema.default("false"),
-  DASHBOARD_COOKIE_SAME_SITE: z.enum(["lax", "strict", "none"]).default("lax")
+  DASHBOARD_COOKIE_SAME_SITE: z.enum(["lax", "strict", "none"]).default("lax"),
+
+  TRUST_PROXY_HOPS: z.coerce.number().int().min(0).default(0)
 });
 
 export function parseAppConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
   const parsed = envSchema.parse(env);
-
-  // LOCAL_AUTH_TOKEN is no longer required — dashboard auth uses DB-backed password.
-  // LOCAL_AUTH_TOKEN may still be present for backward compat or as a server-side secret.
 
   if (parsed.APP_MODE === "local" && !parsed.DASHBOARD_SESSION_SECRET) {
     throw new Error("DASHBOARD_SESSION_SECRET is required when APP_MODE=local");
@@ -84,7 +84,6 @@ export function parseAppConfig(env: NodeJS.ProcessEnv = process.env): AppConfig 
 
   return {
     mode: parsed.APP_MODE,
-    localAuthToken: parsed.LOCAL_AUTH_TOKEN,
     enableWebTerminal: parsed.ENABLE_WEB_TERMINAL,
     allowPrivateNetworkTargets: parsed.ALLOW_PRIVATE_NETWORK_TARGETS,
     dataDir: parsed.DATA_DIR,
@@ -104,7 +103,9 @@ export function parseAppConfig(env: NodeJS.ProcessEnv = process.env): AppConfig 
     dashboardSessionTtlSeconds: parsed.DASHBOARD_SESSION_TTL_SECONDS,
     dashboardPublicOrigin: parsed.DASHBOARD_PUBLIC_ORIGIN,
     dashboardCookieSecure: parsed.DASHBOARD_COOKIE_SECURE,
-    dashboardCookieSameSite: parsed.DASHBOARD_COOKIE_SAME_SITE
+    dashboardCookieSameSite: parsed.DASHBOARD_COOKIE_SAME_SITE,
+
+    trustProxyHops: parsed.TRUST_PROXY_HOPS
   };
 }
 

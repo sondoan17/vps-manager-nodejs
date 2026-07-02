@@ -28,6 +28,7 @@ const demoConfig: AppConfig = {
   dashboardCookieSecure: false,
   dashboardCookieSameSite: "lax",
   dashboardSessionSecret: "test-secret",
+  trustProxyHops: 0,
 };
 
 let tempDir: string;
@@ -96,8 +97,7 @@ describe("jobs API", () => {
     it("returns empty list when no jobs stored", async () => {
       const localConfig: AppConfig = {
         ...demoConfig,
-        mode: "local",
-        localAuthToken: "test-token"
+        mode: "local"
       };
       const res = await request(app(localConfig)).get("/api/jobs").set("Cookie", sessionCookie).expect(200);
       expect(res.body.data).toEqual([]);
@@ -107,7 +107,7 @@ describe("jobs API", () => {
       const localConfig: AppConfig = {
         ...demoConfig,
         mode: "local",
-        localAuthToken: "test-token"
+        
       };
       // Manually append a job to the JSON file via the repo
       const repo = createJsonJobRepository(join(tempDir, "data", "jobs.json"));
@@ -187,7 +187,7 @@ describe("metrics API", () => {
       const localConfig: AppConfig = {
         ...demoConfig,
         mode: "local",
-        localAuthToken: "test-token"
+        
       };
       const res = await request(app(localConfig)).get("/api/metrics").set("Cookie", sessionCookie).expect(200);
       expect(res.body.data).toEqual([]);
@@ -197,7 +197,7 @@ describe("metrics API", () => {
       const localConfig: AppConfig = {
         ...demoConfig,
         mode: "local",
-        localAuthToken: "test-token"
+        
       };
       const repo = createJsonMetricRepository(join(tempDir, "data", "metrics.json"));
       await repo.append({
@@ -304,7 +304,7 @@ describe("audit API", () => {
       const localConfig: AppConfig = {
         ...demoConfig,
         mode: "local",
-        localAuthToken: "test-token"
+        
       };
       const res = await request(app(localConfig)).get("/api/audit").set("Cookie", sessionCookie).expect(200);
       expect(res.body.data).toEqual([]);
@@ -314,7 +314,7 @@ describe("audit API", () => {
       const localConfig: AppConfig = {
         ...demoConfig,
         mode: "local",
-        localAuthToken: "test-token"
+        
       };
       const repo = createJsonAuditRepository(join(tempDir, "data", "audit.json"));
       const e1 = await repo.append({

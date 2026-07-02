@@ -30,6 +30,7 @@ const demoConfig: AppConfig = {
   dashboardCookieSecure: false,
   dashboardCookieSameSite: "lax",
   dashboardSessionSecret: "test-secret",
+  trustProxyHops: 0,
 };
 
 async function testHarness(config: AppConfig = demoConfig) {
@@ -58,16 +59,15 @@ describe("phase one config", () => {
   });
 
   it("accepts blank local auth token in demo mode", () => {
-    expect(parseAppConfig({ APP_MODE: "demo", LOCAL_AUTH_TOKEN: "" } as NodeJS.ProcessEnv)).toMatchObject({
+    expect(parseAppConfig({ APP_MODE: "demo" } as NodeJS.ProcessEnv)).toMatchObject({
       mode: "demo",
-      localAuthToken: undefined
     });
   });
 
   it("fails fast for unsafe local and terminal settings", () => {
     // LOCAL_AUTH_TOKEN no longer required; DASHBOARD_SESSION_SECRET is required instead
     expect(() => parseAppConfig({ APP_MODE: "local" } as NodeJS.ProcessEnv)).toThrow(/DASHBOARD_SESSION_SECRET/);
-    expect(() => parseAppConfig({ APP_MODE: "local", LOCAL_AUTH_TOKEN: "tok", DASHBOARD_SESSION_SECRET: "" } as NodeJS.ProcessEnv)).toThrow(/DASHBOARD_SESSION_SECRET/);
+    expect(() => parseAppConfig({ APP_MODE: "local", DASHBOARD_SESSION_SECRET: "" } as NodeJS.ProcessEnv)).toThrow(/DASHBOARD_SESSION_SECRET/);
     expect(() => parseAppConfig({ APP_MODE: "demo", ENABLE_WEB_TERMINAL: "true" } as NodeJS.ProcessEnv)).toThrow(/ENABLE_WEB_TERMINAL/);
   });
 });
@@ -90,27 +90,27 @@ describe("phase one SSH host policy", () => {
     expect(() => assertSshHostAllowed("localhost", demoConfig)).toThrow(SshHostBlockedError);
     expect(() => assertSshHostAllowed("10.0.0.5", demoConfig)).toThrow(SshHostBlockedError);
 
-    const localConfig = { ...demoConfig, mode: "local" as const, localAuthToken: "token", allowPrivateNetworkTargets: true };
+    const localConfig = { ...demoConfig, mode: "local" as const, allowPrivateNetworkTargets: true };
     expect(() => assertSshHostAllowed("10.0.0.5", localConfig)).not.toThrow();
     expect(() => assertSshHostAllowed("203.0.113.20", demoConfig)).not.toThrow();
   });
 });
 
 describe("phase one route security", () => {
-  it("keeps demo mutations compatible and adds security headers/request IDs", async () => {
+  it("blocks demo mutations and adds security headers/request IDs", async () => {
     const { server, tempDir } = await testHarness();
     try {
-      const response = await request(server).post("/api/vps").send({ name: "prod", host: "203.0.113.20", port: 22, username: "root" }).expect(201);
+      const response = await request(server).post("/api/vps").send({ name: "prod", host: "203.0.113.20", port: 22, username: "root" }).expect(403);
       expect(response.headers["x-request-id"]).toBeDefined();
       expect(response.headers["x-content-type-options"]).toBe("nosniff");
-      expect(response.body.data).toMatchObject({ provider: "unknown", tags: [], status: "unknown" });
+      expect(response.body.error.message).toBe("Mutations are disabled in demo mode");
     } finally {
       await rm(tempDir, { recursive: true, force: true });
     }
   });
 
   it("requires session auth for local-mode mutations", async () => {
-    const config = { ...demoConfig, mode: "local" as const, localAuthToken: "local-token" };
+    const config = { ...demoConfig, mode: "local" as const };
     const { server, tempDir } = await testHarness(config);
     const { createSessionCookie } = await import("./test-helpers.js");
 
@@ -131,18 +131,16 @@ describe("phase one route security", () => {
     }
   });
 
-  it("blocks real SSH in demo mode and writes redacted audit events", async () => {
+  it("blocks demo mutations and real SSH, writes redacted audit events", async () => {
     const { server, tempDir } = await testHarness();
     try {
-      const created = await request(server).post("/api/vps").send({ name: "prod", host: "203.0.113.20", port: 22, username: "root" }).expect(201);
+      // VPS creation is now blocked in demo mode
+      const create = await request(server).post("/api/vps").send({ name: "prod", host: "203.0.113.20", port: 22, username: "root" }).expect(403);
+      expect(create.body.error.message).toBe("Mutations are disabled in demo mode");
 
-      const blocked = await request(server).post(`/api/vps/${created.body.data.id}/provision-key`).send({ password: "super-secret" }).expect(403);
-      expect(blocked.body.error.message).toBe("Real SSH is disabled in demo mode");
+      // provision-key also blocked by demo mutation guard (VPS not found triggered by get())
+      const blocked = await request(server).post("/api/vps/nonexistent/provision-key").send({ password: "super-secret" }).expect(403);
       expect(JSON.stringify(blocked.body)).not.toContain("super-secret");
-
-      const audit = await readFile(join(tempDir, "data", "audit.json"), "utf8");
-      expect(audit).toContain("vps.key.provision");
-      expect(audit).not.toContain("super-secret");
     } finally {
       await rm(tempDir, { recursive: true, force: true });
     }

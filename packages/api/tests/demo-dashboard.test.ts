@@ -26,6 +26,7 @@ const demoConfig: AppConfig = {
   dashboardCookieSecure: false,
   dashboardCookieSameSite: "lax",
   dashboardSessionSecret: "test-secret",
+  trustProxyHops: 0,
 };
 
 let tempDir: string;

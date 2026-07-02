@@ -16,7 +16,6 @@ import type { KeyService } from "../src/services/keyService.js";
 
 const localConfig: AppConfig = {
   mode: "local",
-  localAuthToken: "test-token",
   enableWebTerminal: false,
   allowPrivateNetworkTargets: false,
   dataDir: "data",
@@ -32,6 +31,7 @@ const localConfig: AppConfig = {
   dashboardCookieSecure: false,
   dashboardCookieSameSite: "lax",
   dashboardSessionSecret: "test-secret",
+  trustProxyHops: 0,
 };
 
 let tempDir: string;

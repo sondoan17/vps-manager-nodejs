@@ -26,6 +26,7 @@ const demoConfig: AppConfig = {
   dashboardCookieSecure: false,
   dashboardCookieSameSite: "lax",
   dashboardSessionSecret: "test-secret",
+  trustProxyHops: 0,
 };
 
 let tempDir: string;
@@ -52,25 +53,25 @@ describe("routes", () => {
     await request(app()).get("/api/health").expect(200, { ok: true });
   });
 
-  it("creates and lists VPS records without leaking submitted password", async () => {
+  it("blocks VPS creation in demo mode and sanitizes errors", async () => {
     const server = app();
+    // Mutations blocked in demo mode
     const create = await request(server)
       .post("/api/vps")
       .send({ name: "prod", host: "203.0.113.20", port: 22, username: "root", password: "secret" })
-      .expect(201);
-
-    expect(create.body.data.id).toMatch(/^vps_/);
+      .expect(403);
+    expect(create.body.error.message).toBe("Mutations are disabled in demo mode");
     expect(JSON.stringify(create.body)).not.toContain("secret");
 
+    // Reads still work — demo mode returns seeded demo servers
     const list = await request(server).get("/api/vps").expect(200);
-    expect(list.body.data).toHaveLength(1);
-    expect(JSON.stringify(list.body)).not.toContain("secret");
+    expect(list.body.data.length).toBeGreaterThanOrEqual(3);
     expect(JSON.stringify(list.body)).not.toContain("ssh-ed25519");
   });
 
   it("sanitizes validation and not-found errors", async () => {
-    const bad = await request(app()).post("/api/vps").send({ password: "secret" }).expect(400);
-    expect(bad.body.error.message).toBe("Invalid request");
+    const bad = await request(app()).post("/api/vps").send({ password: "secret" }).expect(403);
+    expect(bad.body.error.message).toBe("Mutations are disabled in demo mode");
     expect(JSON.stringify(bad.body)).not.toContain("secret");
 
     await request(app()).get("/api/vps/missing").expect(404, { error: { message: "VPS not found" } });

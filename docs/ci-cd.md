@@ -40,7 +40,7 @@ The production deployment runs three containers:
 - `api`: NestJS API on internal port `3000`; stores data in Docker volumes.
 - `web`: Nginx static web server on host port `3000`; proxies `/api/*` to `api:3000` and serves the SPA fallback.
 
-The public entrypoint is the web container at `http://<server>:3000`. API health is still available through the web proxy at `/api/health`.
+The production docker-compose binds the web container to `127.0.0.1:3000` so it listens only on the loopback interface. An external HTTPS reverse proxy (nginx, Caddy, Cloudflare Tunnel) must terminate TLS and forward to `http://127.0.0.1:3000`. The API health endpoint is reachable through the web proxy at `/api/health`.
 
 ## Required secrets for deployment
 
@@ -56,6 +56,7 @@ Set these in GitHub repository settings:
 | `DASHBOARD_SESSION_SECRET` | Yes | Secret for dashboard session token hashing. Required when `APP_MODE=local`. |
 | `POSTGRES_PASSWORD` | Yes | Password for the `vps_manager` PostgreSQL user. Used on first DB volume initialization and by the API `DATABASE_URL`. |
 | `DASHBOARD_ADMIN_PASSWORD` | No | Plaintext dashboard admin password. If set, the deploy step pipes it to `set-dashboard-password.js --stdin --skip-if-same` after migrations. If unset, the password must be set manually via SSH. |
+| `VPS_KNOWN_HOSTS` | No | Pinned SSH known_hosts entry. If set, written directly to `known_hosts` instead of `ssh-keyscan` (TOFU). Recommended for production. |
 | `VPS_PORT` | No | SSH port. Defaults to `22`. |
 | `DEPLOY_PATH` | No | Remote app directory. Defaults to `/opt/vps-manager-nodejs`. |
 
@@ -68,7 +69,7 @@ Optional repository variables can override generated server `.env` values:
 | `PORT` | `3000` | API listen port inside the container. |
 | `APP_MODE` | `local` | Runtime mode for production deployment. |
 | `ENABLE_WEB_TERMINAL` | `false` | Enables web terminal only when explicitly allowed. |
-| `ALLOW_PRIVATE_NETWORK_TARGETS` | `true` | Allows private-network SSH targets from the server. |
+| `ALLOW_PRIVATE_NETWORK_TARGETS` | `false` | Allows private-network SSH targets from the server. |
 | `DATA_DIR` | `data` | API data directory inside `/app`; resolves to `/app/data`. |
 | `PRIVATE_DIR` | `private` | API private directory inside `/app`; resolves to `/app/private`. |
 | `RATE_LIMIT_WINDOW_MS` | `60000` | Rate limit window. |
@@ -79,6 +80,7 @@ Optional repository variables can override generated server `.env` values:
 | `DASHBOARD_PUBLIC_ORIGIN` | empty | Expected Origin header for CSRF protection. |
 | `DASHBOARD_COOKIE_SECURE` | `true` | Set HttpOnly cookie Secure flag. |
 | `DASHBOARD_COOKIE_SAME_SITE` | `lax` | SameSite cookie attribute. |
+| `TRUST_PROXY_HOPS` | `0` | Number of reverse proxy hops to trust for client IP. Set to `1` when behind an HTTPS proxy. |
 
 ## Server requirements
 
@@ -105,12 +107,16 @@ docker compose ps
 
 After the first deploy (if `DASHBOARD_ADMIN_PASSWORD` was not set), set the dashboard admin password via SSH:
 ```bash
-echo 'your-admin-password' | docker compose -f /opt/vps-manager-nodejs/docker-compose.yml run --rm api node dist/scripts/set-dashboard-password.js --stdin
+# Safer: read password from stdin without showing in process list
+# (paste or pipe the password when prompted)
+printf 'Dashboard password: ' > /dev/tty && read -rs password && printf '%s\n' "$password" | docker compose -f /opt/vps-manager-nodejs/docker-compose.yml run --rm api node dist/scripts/set-dashboard-password.js --stdin && unset password
 ```
+
+Alternatively, set the `DASHBOARD_ADMIN_PASSWORD` GitHub Secret and redeploy — the CI workflow will bootstrap it automatically.
 
 To rotate the password without downtime, pipe the new password with `--skip-if-same`:
 ```bash
-echo 'new-admin-password' | docker compose -f /opt/vps-manager-nodejs/docker-compose.yml run --rm api node dist/scripts/set-dashboard-password.js --stdin --skip-if-same
+printf 'New password: ' > /dev/tty && read -rs password && printf '%s\n' "$password" | docker compose -f /opt/vps-manager-nodejs/docker-compose.yml run --rm api node dist/scripts/set-dashboard-password.js --stdin --skip-if-same && unset password
 ```
 The `--skip-if-same` flag avoids unnecessary session revocations when the password hasn't changed (e.g., re-running the deploy CI without changing the secret).
 

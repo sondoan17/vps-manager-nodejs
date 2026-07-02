@@ -249,8 +249,15 @@ jobs:
         env:
           VPS_HOST: ${{ secrets.VPS_HOST }}
           VPS_PORT: ${{ secrets.VPS_PORT }}
+          VPS_KNOWN_HOSTS: ${{ secrets.VPS_KNOWN_HOSTS }}
         run: |
-          ssh-keyscan -p "${VPS_PORT:-22}" -H "$VPS_HOST" >> ~/.ssh/known_hosts
+          if [ -n "$VPS_KNOWN_HOSTS" ]; then
+            printf '%s\n' "$VPS_KNOWN_HOSTS" >> ~/.ssh/known_hosts
+          else
+            echo "WARNING: VPS_KNOWN_HOSTS secret not set — using ssh-keyscan (TOFU)."
+            echo "Set VPS_KNOWN_HOSTS to a pinned known_hosts entry for production."
+            ssh-keyscan -p "${VPS_PORT:-22}" -H "$VPS_HOST" >> ~/.ssh/known_hosts
+          fi
 
       - name: Deploy container
         if: steps.config.outputs.enabled == 'true'
@@ -278,6 +285,7 @@ jobs:
           DASHBOARD_PUBLIC_ORIGIN_VALUE: ${{ vars.DASHBOARD_PUBLIC_ORIGIN }}
           DASHBOARD_COOKIE_SECURE_VALUE: ${{ vars.DASHBOARD_COOKIE_SECURE }}
           DASHBOARD_COOKIE_SAME_SITE_VALUE: ${{ vars.DASHBOARD_COOKIE_SAME_SITE }}
+          TRUST_PROXY_HOPS_VALUE: ${{ vars.TRUST_PROXY_HOPS }}
           GHCR_USER: ${{ github.actor }}
           GHCR_TOKEN: ${{ github.token }}
         run: |
@@ -294,7 +302,7 @@ jobs:
           APP_PORT="${APP_PORT:-3000}"
           APP_MODE_VALUE="${APP_MODE_VALUE:-local}"
           ENABLE_WEB_TERMINAL_VALUE="${ENABLE_WEB_TERMINAL_VALUE:-false}"
-          ALLOW_PRIVATE_NETWORK_TARGETS_VALUE="${ALLOW_PRIVATE_NETWORK_TARGETS_VALUE:-true}"
+          ALLOW_PRIVATE_NETWORK_TARGETS_VALUE="${ALLOW_PRIVATE_NETWORK_TARGETS_VALUE:-false}"
           DATA_DIR_VALUE="${DATA_DIR_VALUE:-data}"
           PRIVATE_DIR_VALUE="${PRIVATE_DIR_VALUE:-private}"
           RATE_LIMIT_WINDOW_MS_VALUE="${RATE_LIMIT_WINDOW_MS_VALUE:-60000}"
@@ -304,6 +312,7 @@ jobs:
           DASHBOARD_PUBLIC_ORIGIN_VALUE="${DASHBOARD_PUBLIC_ORIGIN_VALUE:-}"
           DASHBOARD_COOKIE_SECURE_VALUE="${DASHBOARD_COOKIE_SECURE_VALUE:-true}"
           DASHBOARD_COOKIE_SAME_SITE_VALUE="${DASHBOARD_COOKIE_SAME_SITE_VALUE:-lax}"
+          TRUST_PROXY_HOPS_VALUE="${TRUST_PROXY_HOPS_VALUE:-0}"
           SSH="ssh -i ~/.ssh/deploy_key -p ${VPS_PORT:-22} ${VPS_USER}@${VPS_HOST}"
           printf '%s' "$GHCR_TOKEN" | $SSH "docker login ghcr.io -u '$GHCR_USER' --password-stdin"
           $SSH "mkdir -p '$DEPLOY_PATH'"
@@ -323,6 +332,7 @@ jobs:
           RATE_LIMIT_MAX=$RATE_LIMIT_MAX_VALUE
           AGENT_PUBLIC_BASE_URL=$AGENT_PUBLIC_BASE_URL_VALUE
           ALLOW_INSECURE_AGENT_HTTP=$ALLOW_INSECURE_AGENT_HTTP_VALUE
+          TRUST_PROXY_HOPS=$TRUST_PROXY_HOPS_VALUE
           STORAGE_DRIVER=postgres
           POSTGRES_DB=vps_manager
           POSTGRES_USER=vps_manager
@@ -366,7 +376,7 @@ jobs:
               image: $WEB_IMAGE
               restart: unless-stopped
               ports:
-                - "3000:80"
+                - "127.0.0.1:3000:80"
               depends_on:
                 api:
                   condition: service_healthy

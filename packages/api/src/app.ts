@@ -26,6 +26,13 @@ export async function createNestApp(
 ): Promise<NestExpressApplication> {
   const config = deps.config ?? loadAppConfig();
   server.disable("x-powered-by");
+  // Trust reverse proxy for correct client IP when behind nginx/haproxy.
+  // Set TRUST_PROXY_HOPS=N to trust the N most recent proxy hops.
+  // Default 0 (no trust) is safe for direct exposure. In production behind
+  // a reverse proxy, set TRUST_PROXY_HOPS=1 (or more if chained).
+  if (config.trustProxyHops > 0) {
+    server.set("trust proxy", config.trustProxyHops);
+  }
   server.use(requestIdMiddleware);
   server.use(helmet({ contentSecurityPolicy: false }));
   server.use(createMutationRateLimit(config));

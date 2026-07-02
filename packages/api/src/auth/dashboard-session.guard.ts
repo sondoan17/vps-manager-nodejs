@@ -22,8 +22,7 @@ function hashToken(token: string, pepper?: string): string {
  * Reads the session cookie, looks up the session by its hash,
  * checks expiration, and sets `request.dashboardSessionId` for audit logging.
  *
- * Local auth is cookie-only after login. The LOCAL_AUTH_TOKEN is the login
- * secret only and is never accepted as a recurring credential by this guard.
+ * Local auth is cookie-only after login with the DB-backed admin password.
  */
 @Injectable()
 export class DashboardSessionGuard implements CanActivate {
