@@ -60,6 +60,21 @@ Set these in GitHub repository settings:
 
 If the required SSH secrets are missing, the deploy job exits successfully and prints a skip message.
 
+Optional repository variables can override generated server `.env` values:
+
+| Variable | Default | Description |
+| --- | --- | --- |
+| `PORT` | `3000` | API listen port inside the container. |
+| `APP_MODE` | `local` | Runtime mode for production deployment. |
+| `ENABLE_WEB_TERMINAL` | `false` | Enables web terminal only when explicitly allowed. |
+| `ALLOW_PRIVATE_NETWORK_TARGETS` | `true` | Allows private-network SSH targets from the server. |
+| `DATA_DIR` | `data` | API data directory inside `/app`; resolves to `/app/data`. |
+| `PRIVATE_DIR` | `private` | API private directory inside `/app`; resolves to `/app/private`. |
+| `RATE_LIMIT_WINDOW_MS` | `60000` | Rate limit window. |
+| `RATE_LIMIT_MAX` | `120` | Rate limit max requests per window. |
+| `AGENT_PUBLIC_BASE_URL` | empty | Public callback URL for installed agents. |
+| `ALLOW_INSECURE_AGENT_HTTP` | `false` | Allows HTTP agent callback URLs when explicitly accepted. |
+
 ## Server requirements
 
 The target server needs:
@@ -69,7 +84,9 @@ The target server needs:
 - SSH access using the configured key
 - Access to pull from `ghcr.io` during the deployment workflow
 
-The workflow writes a production `docker-compose.yml` into `DEPLOY_PATH` and runs:
+The workflow writes a production `.env` and `docker-compose.yml` into `DEPLOY_PATH`. Secrets from GitHub Actions are written to the server-side `.env` file with `chmod 600`; compose services load it with `env_file`.
+
+Then the workflow runs:
 
 ```bash
 docker compose pull
@@ -81,7 +98,7 @@ docker compose up -d --remove-orphans
 docker compose ps
 ```
 
-The database password is written into the server-side compose environment for this single-host deployment. To rotate it after the `vps-manager-postgres` volume exists, update the DB user password with `ALTER USER`, update the GitHub secret, then redeploy.
+The database password is stored in the server-side `.env` file for this single-host deployment. To rotate it after the `vps-manager-postgres` volume exists, update the DB user password with `ALTER USER`, update the GitHub secret, then redeploy.
 
 ## Manual run
 

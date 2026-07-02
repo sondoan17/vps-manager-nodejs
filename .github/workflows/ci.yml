@@ -21,14 +21,40 @@ jobs:
   verify:
     name: Verify
     runs-on: ubuntu-latest
+    outputs:
+      api_changed: ${{ steps.changes.outputs.api }}
+      web_changed: ${{ steps.changes.outputs.web }}
+      agent_changed: ${{ steps.changes.outputs.agent }}
     steps:
       - name: Checkout
         uses: actions/checkout@v4
 
+      - name: Detect image changes
+        id: changes
+        uses: dorny/paths-filter@v3
+        with:
+          filters: |
+            api:
+              - 'Dockerfile'
+              - 'package.json'
+              - 'package-lock.json'
+              - 'packages/api/**'
+            web:
+              - 'Dockerfile'
+              - 'package.json'
+              - 'package-lock.json'
+              - 'packages/web/**'
+              - 'docker/**'
+            agent:
+              - 'package.json'
+              - 'package-lock.json'
+              - 'packages/agent/**'
+              - 'scripts/build-agent.mjs'
+
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: 22
+          node-version: 24
           cache: npm
 
       - name: Install Node dependencies
@@ -44,18 +70,22 @@ jobs:
         run: npm run build
 
       - name: Setup Go
+        if: steps.changes.outputs.agent == 'true'
         uses: actions/setup-go@v5
         with:
           go-version: '1.23.x'
           cache-dependency-path: packages/agent/go.mod
 
       - name: Test Go agent
+        if: steps.changes.outputs.agent == 'true'
         run: npm run test:agent
 
       - name: Setup Docker Buildx
+        if: steps.changes.outputs.api == 'true' || steps.changes.outputs.web == 'true'
         uses: docker/setup-buildx-action@v3
 
       - name: Build API Docker image
+        if: steps.changes.outputs.api == 'true'
         uses: docker/build-push-action@v6
         with:
           context: .
@@ -67,6 +97,7 @@ jobs:
           cache-to: type=gha,mode=max
 
       - name: Smoke test API runtime migration assets
+        if: steps.changes.outputs.api == 'true'
         run: |
           docker run --rm --entrypoint sh vps-manager-nodejs-api:ci -lc '
             test -f /app/dist/db/migrate.js
@@ -76,6 +107,7 @@ jobs:
           '
 
       - name: Build web Docker image
+        if: steps.changes.outputs.web == 'true'
         uses: docker/build-push-action@v6
         with:
           context: .
@@ -101,12 +133,23 @@ jobs:
 
       - name: Docker metadata
         id: meta
+        env:
+          API_CHANGED: ${{ needs.verify.outputs.api_changed }}
+          WEB_CHANGED: ${{ needs.verify.outputs.web_changed }}
         run: |
           BASE_IMAGE="${IMAGE_NAME,,}"
           API_IMAGE="${BASE_IMAGE}-api"
           WEB_IMAGE="${BASE_IMAGE}-web"
-          API_SHA_TAG="$API_IMAGE:${GITHUB_SHA}"
-          WEB_SHA_TAG="$WEB_IMAGE:${GITHUB_SHA}"
+          if [ "$API_CHANGED" = "true" ]; then
+            API_SHA_TAG="$API_IMAGE:${GITHUB_SHA}"
+          else
+            API_SHA_TAG="$API_IMAGE:latest"
+          fi
+          if [ "$WEB_CHANGED" = "true" ]; then
+            WEB_SHA_TAG="$WEB_IMAGE:${GITHUB_SHA}"
+          else
+            WEB_SHA_TAG="$WEB_IMAGE:latest"
+          fi
           {
             echo "api_image=$API_IMAGE"
             echo "api_sha_tag=$API_SHA_TAG"
@@ -121,9 +164,11 @@ jobs:
           } >> "$GITHUB_ENV"
 
       - name: Setup Docker Buildx
+        if: needs.verify.outputs.api_changed == 'true' || needs.verify.outputs.web_changed == 'true'
         uses: docker/setup-buildx-action@v3
 
       - name: Login to GHCR
+        if: needs.verify.outputs.api_changed == 'true' || needs.verify.outputs.web_changed == 'true'
         uses: docker/login-action@v3
         with:
           registry: ghcr.io
@@ -131,6 +176,7 @@ jobs:
           password: ${{ github.token }}
 
       - name: Build and push API Docker image
+        if: needs.verify.outputs.api_changed == 'true'
         uses: docker/build-push-action@v6
         with:
           context: .
@@ -147,6 +193,7 @@ jobs:
           cache-to: type=gha,mode=max
 
       - name: Build and push web Docker image
+        if: needs.verify.outputs.web_changed == 'true'
         uses: docker/build-push-action@v6
         with:
           context: .
@@ -213,6 +260,16 @@ jobs:
           WEB_IMAGE: ${{ needs.publish.outputs.web_sha_tag }}
           LOCAL_AUTH_TOKEN: ${{ secrets.LOCAL_AUTH_TOKEN }}
           POSTGRES_PASSWORD: ${{ secrets.POSTGRES_PASSWORD }}
+          APP_PORT: ${{ vars.PORT }}
+          APP_MODE_VALUE: ${{ vars.APP_MODE }}
+          ENABLE_WEB_TERMINAL_VALUE: ${{ vars.ENABLE_WEB_TERMINAL }}
+          ALLOW_PRIVATE_NETWORK_TARGETS_VALUE: ${{ vars.ALLOW_PRIVATE_NETWORK_TARGETS }}
+          DATA_DIR_VALUE: ${{ vars.DATA_DIR }}
+          PRIVATE_DIR_VALUE: ${{ vars.PRIVATE_DIR }}
+          RATE_LIMIT_WINDOW_MS_VALUE: ${{ vars.RATE_LIMIT_WINDOW_MS }}
+          RATE_LIMIT_MAX_VALUE: ${{ vars.RATE_LIMIT_MAX }}
+          AGENT_PUBLIC_BASE_URL_VALUE: ${{ vars.AGENT_PUBLIC_BASE_URL }}
+          ALLOW_INSECURE_AGENT_HTTP_VALUE: ${{ vars.ALLOW_INSECURE_AGENT_HTTP }}
           GHCR_USER: ${{ github.actor }}
           GHCR_TOKEN: ${{ github.token }}
         run: |
@@ -220,18 +277,50 @@ jobs:
             echo "POSTGRES_PASSWORD repository secret is required for production deployment."
             exit 1
           fi
+          if [ -z "$LOCAL_AUTH_TOKEN" ]; then
+            echo "LOCAL_AUTH_TOKEN repository secret is required for production deployment."
+            exit 1
+          fi
+          LOCAL_AUTH_TOKEN_ONE_LINE="$(printf '%s' "$LOCAL_AUTH_TOKEN" | tr -d '\r\n')"
+          POSTGRES_PASSWORD_ONE_LINE="$(printf '%s' "$POSTGRES_PASSWORD" | tr -d '\r\n')"
+          APP_PORT="${APP_PORT:-3000}"
+          APP_MODE_VALUE="${APP_MODE_VALUE:-local}"
+          ENABLE_WEB_TERMINAL_VALUE="${ENABLE_WEB_TERMINAL_VALUE:-false}"
+          ALLOW_PRIVATE_NETWORK_TARGETS_VALUE="${ALLOW_PRIVATE_NETWORK_TARGETS_VALUE:-true}"
+          DATA_DIR_VALUE="${DATA_DIR_VALUE:-data}"
+          PRIVATE_DIR_VALUE="${PRIVATE_DIR_VALUE:-private}"
+          RATE_LIMIT_WINDOW_MS_VALUE="${RATE_LIMIT_WINDOW_MS_VALUE:-60000}"
+          RATE_LIMIT_MAX_VALUE="${RATE_LIMIT_MAX_VALUE:-120}"
+          ALLOW_INSECURE_AGENT_HTTP_VALUE="${ALLOW_INSECURE_AGENT_HTTP_VALUE:-false}"
           SSH="ssh -i ~/.ssh/deploy_key -p ${VPS_PORT:-22} ${VPS_USER}@${VPS_HOST}"
           printf '%s' "$GHCR_TOKEN" | $SSH "docker login ghcr.io -u '$GHCR_USER' --password-stdin"
           $SSH "mkdir -p '$DEPLOY_PATH'"
+          $SSH "cat > '$DEPLOY_PATH/.env'" <<EOF
+          PORT=$APP_PORT
+          APP_MODE=$APP_MODE_VALUE
+          LOCAL_AUTH_TOKEN=$LOCAL_AUTH_TOKEN_ONE_LINE
+          ENABLE_WEB_TERMINAL=$ENABLE_WEB_TERMINAL_VALUE
+          ALLOW_PRIVATE_NETWORK_TARGETS=$ALLOW_PRIVATE_NETWORK_TARGETS_VALUE
+          DATA_DIR=$DATA_DIR_VALUE
+          PRIVATE_DIR=$PRIVATE_DIR_VALUE
+          RATE_LIMIT_WINDOW_MS=$RATE_LIMIT_WINDOW_MS_VALUE
+          RATE_LIMIT_MAX=$RATE_LIMIT_MAX_VALUE
+          AGENT_PUBLIC_BASE_URL=$AGENT_PUBLIC_BASE_URL_VALUE
+          ALLOW_INSECURE_AGENT_HTTP=$ALLOW_INSECURE_AGENT_HTTP_VALUE
+          STORAGE_DRIVER=postgres
+          POSTGRES_DB=vps_manager
+          POSTGRES_USER=vps_manager
+          POSTGRES_PASSWORD=$POSTGRES_PASSWORD_ONE_LINE
+          DATABASE_URL=postgres://vps_manager:$POSTGRES_PASSWORD_ONE_LINE@postgres:5432/vps_manager
+          EOF
+          $SSH "chmod 600 '$DEPLOY_PATH/.env'"
           $SSH "cat > '$DEPLOY_PATH/docker-compose.yml'" <<EOF
           services:
             postgres:
               image: timescale/timescaledb:2.17.2-pg16
               restart: unless-stopped
-              environment:
-                POSTGRES_DB: vps_manager
-                POSTGRES_USER: vps_manager
-                POSTGRES_PASSWORD: "$POSTGRES_PASSWORD"
+              env_file:
+                - .env
               volumes:
                 - vps-manager-postgres:/var/lib/postgresql/data
               healthcheck:
@@ -246,16 +335,8 @@ jobs:
               depends_on:
                 postgres:
                   condition: service_healthy
-              environment:
-                PORT: "3000"
-                APP_MODE: "local"
-                LOCAL_AUTH_TOKEN: "$LOCAL_AUTH_TOKEN"
-                DATA_DIR: /app/data
-                PRIVATE_DIR: /app/private
-                STORAGE_DRIVER: "postgres"
-                DATABASE_URL: "postgres://vps_manager:$POSTGRES_PASSWORD@postgres:5432/vps_manager"
-                ENABLE_WEB_TERMINAL: "false"
-                ALLOW_PRIVATE_NETWORK_TARGETS: "false"
+              env_file:
+                - .env
               volumes:
                 - vps-manager-data:/app/data
                 - vps-manager-private:/app/private

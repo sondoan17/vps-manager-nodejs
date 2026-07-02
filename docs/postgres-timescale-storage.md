@@ -78,7 +78,8 @@ Production CI/CD runs core migrations before updating the API/web services. It t
 - `POSTGRES_PASSWORD` is used by the Postgres container only during first initialization of the data volume.
 - Changing the GitHub secret later does not automatically rotate the existing database user's password.
 - To rotate it, run `ALTER USER vps_manager WITH PASSWORD 'new_password';`, update the GitHub secret, then redeploy in a controlled window.
-- Keep `POSTGRES_PASSWORD` URL/YAML-safe when using the current compose deployment path. The generated password for this environment uses only URL-safe characters.
+- Production CI/CD writes `POSTGRES_PASSWORD`, `LOCAL_AUTH_TOKEN`, app config variables, and the resolved `DATABASE_URL` into `/opt/vps-manager-nodejs/.env` with restrictive file permissions. `docker-compose.yml` uses `env_file` instead of inline secrets. Non-secret app config values can be overridden with GitHub Actions repository variables documented in `docs/ci-cd.md`.
+- Keep `POSTGRES_PASSWORD` URL-safe while the app uses a single `DATABASE_URL` connection string. The generated password for this environment uses only URL-safe characters.
 
 ## Notes
 
