@@ -22,7 +22,14 @@ const demoConfig: AppConfig = {
   rateLimitWindowMs: 60_000,
   rateLimitMax: 120,
   agentInstallIntervalSeconds: 1,
-  allowInsecureAgentHttp: false
+  allowInsecureAgentHttp: false,
+  storageDriver: "json",
+  dbSsl: false,
+  dbPoolMax: 10,
+  dashboardSessionTtlSeconds: 86_400,
+  dashboardCookieSecure: false,
+  dashboardCookieSameSite: "lax",
+  dashboardSessionSecret: "test-secret",
 };
 
 async function testHarness(config: AppConfig = demoConfig) {
@@ -100,17 +107,21 @@ describe("phase one route security", () => {
     }
   });
 
-  it("requires bearer auth for local-mode mutations", async () => {
+  it("requires session auth for local-mode mutations", async () => {
     const config = { ...demoConfig, mode: "local" as const, localAuthToken: "local-token" };
     const { server, tempDir } = await testHarness(config);
+    const { createSessionCookie } = await import("./test-helpers.js");
 
     try {
       await request(server).get("/api/health").expect(200, { ok: true });
       await request(server).post("/api/vps").send({ name: "prod", host: "203.0.113.20", port: 22, username: "root" }).expect(401);
 
+      const cookie = await createSessionCookie(tempDir, config.dashboardSessionSecret);
       await request(server)
         .post("/api/vps")
-        .set("Authorization", "Bearer local-token")
+        .set("Cookie", cookie)
+        .set("Origin", "http://127.0.0.1")
+        .set("Host", "127.0.0.1")
         .send({ name: "prod", host: "203.0.113.20", port: 22, username: "root" })
         .expect(201);
     } finally {

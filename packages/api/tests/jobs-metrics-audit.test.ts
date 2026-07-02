@@ -20,7 +20,14 @@ const demoConfig: AppConfig = {
   rateLimitWindowMs: 60_000,
   rateLimitMax: 120,
   agentInstallIntervalSeconds: 1,
-  allowInsecureAgentHttp: false
+  allowInsecureAgentHttp: false,
+  storageDriver: "json",
+  dbSsl: false,
+  dbPoolMax: 10,
+  dashboardSessionTtlSeconds: 86_400,
+  dashboardCookieSecure: false,
+  dashboardCookieSameSite: "lax",
+  dashboardSessionSecret: "test-secret",
 };
 
 let tempDir: string;
@@ -79,13 +86,20 @@ describe("jobs API", () => {
   });
 
   describe("local mode", () => {
+    let sessionCookie: string;
+
+    beforeEach(async () => {
+      const { createSessionCookie } = await import("./test-helpers.js");
+      sessionCookie = await createSessionCookie(tempDir, demoConfig.dashboardSessionSecret);
+    });
+
     it("returns empty list when no jobs stored", async () => {
       const localConfig: AppConfig = {
         ...demoConfig,
         mode: "local",
         localAuthToken: "test-token"
       };
-      const res = await request(app(localConfig)).get("/api/jobs").expect(200);
+      const res = await request(app(localConfig)).get("/api/jobs").set("Cookie", sessionCookie).expect(200);
       expect(res.body.data).toEqual([]);
     });
 
@@ -108,7 +122,7 @@ describe("jobs API", () => {
         outputPreview: "Disk usage: 45%"
       });
 
-      const res = await request(app(localConfig)).get("/api/jobs").expect(200);
+      const res = await request(app(localConfig)).get("/api/jobs").set("Cookie", sessionCookie).expect(200);
       expect(res.body.data).toHaveLength(1);
       expect(res.body.data[0]).toMatchObject({
         id: job.id,
@@ -162,13 +176,20 @@ describe("metrics API", () => {
   });
 
   describe("local mode", () => {
+    let sessionCookie: string;
+
+    beforeEach(async () => {
+      const { createSessionCookie } = await import("./test-helpers.js");
+      sessionCookie = await createSessionCookie(tempDir, demoConfig.dashboardSessionSecret);
+    });
+
     it("returns empty list when no metrics stored", async () => {
       const localConfig: AppConfig = {
         ...demoConfig,
         mode: "local",
         localAuthToken: "test-token"
       };
-      const res = await request(app(localConfig)).get("/api/metrics").expect(200);
+      const res = await request(app(localConfig)).get("/api/metrics").set("Cookie", sessionCookie).expect(200);
       expect(res.body.data).toEqual([]);
     });
 
@@ -202,10 +223,10 @@ describe("metrics API", () => {
         collectedAt: "2026-06-25T10:00:00.000Z"
       });
 
-      const all = await request(app(localConfig)).get("/api/metrics").expect(200);
+      const all = await request(app(localConfig)).get("/api/metrics").set("Cookie", sessionCookie).expect(200);
       expect(all.body.data).toHaveLength(2);
 
-      const filtered = await request(app(localConfig)).get("/api/metrics?vpsId=vps_alpha").expect(200);
+      const filtered = await request(app(localConfig)).get("/api/metrics?vpsId=vps_alpha").set("Cookie", sessionCookie).expect(200);
       expect(filtered.body.data).toHaveLength(1);
       expect(filtered.body.data[0].cpu).toBe(35);
     });
@@ -272,13 +293,20 @@ describe("audit API", () => {
   });
 
   describe("local mode", () => {
+    let sessionCookie: string;
+
+    beforeEach(async () => {
+      const { createSessionCookie } = await import("./test-helpers.js");
+      sessionCookie = await createSessionCookie(tempDir, demoConfig.dashboardSessionSecret);
+    });
+
     it("returns empty list when no audit events stored", async () => {
       const localConfig: AppConfig = {
         ...demoConfig,
         mode: "local",
         localAuthToken: "test-token"
       };
-      const res = await request(app(localConfig)).get("/api/audit").expect(200);
+      const res = await request(app(localConfig)).get("/api/audit").set("Cookie", sessionCookie).expect(200);
       expect(res.body.data).toEqual([]);
     });
 
@@ -306,14 +334,14 @@ describe("audit API", () => {
         metadata: { reason: "protected" }
       });
 
-      const all = await request(app(localConfig)).get("/api/audit").expect(200);
+      const all = await request(app(localConfig)).get("/api/audit").set("Cookie", sessionCookie).expect(200);
       expect(all.body.data).toHaveLength(2);
 
-      const actionFilter = await request(app(localConfig)).get("/api/audit?action=vps.create").expect(200);
+      const actionFilter = await request(app(localConfig)).get("/api/audit?action=vps.create").set("Cookie", sessionCookie).expect(200);
       expect(actionFilter.body.data).toHaveLength(1);
       expect(actionFilter.body.data[0].resourceId).toBe("vps_001");
 
-      const resultFilter = await request(app(localConfig)).get("/api/audit?result=blocked").expect(200);
+      const resultFilter = await request(app(localConfig)).get("/api/audit?result=blocked").set("Cookie", sessionCookie).expect(200);
       expect(resultFilter.body.data).toHaveLength(1);
       expect(resultFilter.body.data[0].resourceId).toBe("vps_002");
     });

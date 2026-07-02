@@ -5,18 +5,21 @@ import { AuditService } from "./audit/audit.service.js";
 import { loadAppConfig, type AppConfig } from "./config/app-config.js";
 import { AgentController } from "./controllers/agent.controller.js";
 import { AuditController } from "./controllers/audit.controller.js";
+import { AuthController } from "./controllers/auth.controller.js";
 import { DashboardController } from "./controllers/dashboard.controller.js";
 import { HealthController } from "./controllers/health.controller.js";
 import { JobsController } from "./controllers/jobs.controller.js";
 import { MetricsController } from "./controllers/metrics.controller.js";
 import { MonitoringController } from "./controllers/monitoring.controller.js";
 import { VpsController } from "./controllers/vps.controller.js";
-import { LocalAuthGuard } from "./auth/local-auth.guard.js";
+import { DashboardSessionGuard } from "./auth/dashboard-session.guard.js";
+import { OriginGuard } from "./auth/origin-guard.js";
 import type { AgentRepository } from "./repositories/agent.repository.js";
 import type { AuditRepository } from "./repositories/audit.repository.js";
 import { createRepositories } from "./repositories/create-repositories.js";
 import type { JobRepository } from "./repositories/job.repository.js";
 import type { MetricRepository } from "./repositories/metric.repository.js";
+import type { SessionRepository } from "./repositories/session.repository.js";
 import { createKeyService, type KeyService } from "./services/keyService.js";
 import { SshService } from "./services/ssh.service.js";
 import { AgentInstallerService } from "./services/agent-installer.service.js";
@@ -28,9 +31,9 @@ import { MetricService } from "./services/metric.service.js";
 import { MonitoringService } from "./services/monitoring.service.js";
 import { VpsService } from "./services/vps.service.js";
 import type { VpsRepository } from "./repositories/vps.repository.js";
-import { AGENT_REPOSITORY, APP_CONFIG, AUDIT_REPOSITORY, DATABASE_POOL, JOB_REPOSITORY, KEY_SERVICE, METRIC_REPOSITORY, VPS_REPOSITORY } from "./tokens.js";
+import { AGENT_REPOSITORY, APP_CONFIG, AUDIT_REPOSITORY, DATABASE_POOL, JOB_REPOSITORY, KEY_SERVICE, METRIC_REPOSITORY, SESSION_REPOSITORY, VPS_REPOSITORY } from "./tokens.js";
 
-export { AGENT_REPOSITORY, APP_CONFIG, AUDIT_REPOSITORY, DATABASE_POOL, JOB_REPOSITORY, KEY_SERVICE, METRIC_REPOSITORY, VPS_REPOSITORY };
+export { AGENT_REPOSITORY, APP_CONFIG, AUDIT_REPOSITORY, DATABASE_POOL, JOB_REPOSITORY, KEY_SERVICE, METRIC_REPOSITORY, SESSION_REPOSITORY, VPS_REPOSITORY };
 
 export type AppDependencies = {
   config?: AppConfig;
@@ -40,6 +43,7 @@ export type AppDependencies = {
   jobs?: JobRepository;
   metrics?: MetricRepository;
   agent?: AgentRepository;
+  sessions?: SessionRepository;
 };
 
 export class AppModule {}
@@ -56,12 +60,12 @@ class DatabasePoolShutdown implements OnApplicationShutdown {
 
 export function createAppModule(deps: AppDependencies = {}): DynamicModule {
   const config = deps.config ?? loadAppConfig();
-  const needsRepositories = !deps.store || !deps.audit || !deps.jobs || !deps.metrics || !deps.agent;
+  const needsRepositories = !deps.store || !deps.audit || !deps.jobs || !deps.metrics || !deps.agent || !deps.sessions;
   const repositories = needsRepositories ? createRepositories(config) : undefined;
 
   return {
     module: AppModule,
-    controllers: [HealthController, DashboardController, VpsController, JobsController, MetricsController, AuditController, MonitoringController, AgentController],
+    controllers: [HealthController, DashboardController, VpsController, JobsController, MetricsController, AuditController, MonitoringController, AgentController, AuthController],
     providers: [
       { provide: APP_CONFIG, useValue: config },
       { provide: DATABASE_POOL, useValue: repositories?.pool },
@@ -72,6 +76,9 @@ export function createAppModule(deps: AppDependencies = {}): DynamicModule {
       { provide: JOB_REPOSITORY, useValue: deps.jobs ?? repositories!.jobs },
       { provide: METRIC_REPOSITORY, useValue: deps.metrics ?? repositories!.metrics },
       { provide: AGENT_REPOSITORY, useValue: deps.agent ?? repositories!.agent },
+      { provide: SESSION_REPOSITORY, useValue: deps.sessions ?? repositories!.sessions },
+      DashboardSessionGuard,
+      OriginGuard,
       AgentInstallerService,
       AgentService,
       AuditService,

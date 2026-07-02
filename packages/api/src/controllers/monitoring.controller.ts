@@ -1,8 +1,11 @@
-import { Controller, Get, Inject, Res, Logger } from "@nestjs/common";
+import { Controller, Get, Inject, Res, Logger, UseGuards } from "@nestjs/common";
 import type { Response } from "express";
+import { DashboardSessionGuard } from "../auth/dashboard-session.guard.js";
+import { OriginGuard } from "../auth/origin-guard.js";
 import { MonitoringService } from "../services/monitoring.service.js";
 
 @Controller("api/monitoring")
+@UseGuards(DashboardSessionGuard, OriginGuard)
 export class MonitoringController {
   private readonly logger = new Logger(MonitoringController.name);
 

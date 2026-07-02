@@ -25,7 +25,14 @@ const demoConfig: AppConfig = {
   rateLimitWindowMs: 60_000,
   rateLimitMax: 120,
   agentInstallIntervalSeconds: 1,
-  allowInsecureAgentHttp: false
+  allowInsecureAgentHttp: false,
+  storageDriver: "json",
+  dbSsl: false,
+  dbPoolMax: 10,
+  dashboardSessionTtlSeconds: 86_400,
+  dashboardCookieSecure: false,
+  dashboardCookieSameSite: "lax",
+  dashboardSessionSecret: "test-secret",
 };
 
 let tempDir: string;
@@ -367,7 +374,9 @@ describe("POST /api/agent/metrics", () => {
   });
 
   it("metric appears via /api/metrics after ingest", async () => {
+    const { createSessionCookie } = await import("./test-helpers.js");
     const localApp = app({ mode: "local", localAuthToken: "test-token" });
+    const sessionCookie = await createSessionCookie(tempDir, demoConfig.dashboardSessionSecret);
 
     await request(localApp)
       .post("/api/agent/metrics")
@@ -375,7 +384,7 @@ describe("POST /api/agent/metrics", () => {
       .send(validPayload())
       .expect(201);
 
-    const res = await request(localApp).get("/api/metrics").expect(200);
+    const res = await request(localApp).get("/api/metrics").set("Cookie", sessionCookie).expect(200);
     const agentMetric = res.body.data.find((m: { vpsId: string }) => m.vpsId === vpsId);
     expect(agentMetric).toBeDefined();
     expect(agentMetric.cpu).toBe(42);

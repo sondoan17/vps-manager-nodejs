@@ -24,6 +24,13 @@ export type AppConfig = {
   databaseUrl?: string;
   dbSsl: boolean;
   dbPoolMax: number;
+
+  // Dashboard session auth
+  dashboardSessionSecret?: string;
+  dashboardSessionTtlSeconds: number;
+  dashboardPublicOrigin?: string;
+  dashboardCookieSecure: boolean;
+  dashboardCookieSameSite: "lax" | "strict" | "none";
 };
 
 const booleanSchema = z
@@ -47,7 +54,14 @@ const envSchema = z.object({
   STORAGE_DRIVER: z.enum(["json", "postgres"]).default("json"),
   DATABASE_URL: z.preprocess((value) => (value === "" ? undefined : value), z.string().trim().min(1).optional()),
   DB_SSL: booleanSchema.default("false"),
-  DB_POOL_MAX: z.coerce.number().int().positive().default(10)
+  DB_POOL_MAX: z.coerce.number().int().positive().default(10),
+
+  // Dashboard session auth
+  DASHBOARD_SESSION_SECRET: z.preprocess((value) => (value === "" ? undefined : value), z.string().trim().optional()),
+  DASHBOARD_SESSION_TTL_SECONDS: z.coerce.number().int().positive().default(86_400),
+  DASHBOARD_PUBLIC_ORIGIN: z.preprocess((value) => (value === "" ? undefined : value), z.string().trim().optional()),
+  DASHBOARD_COOKIE_SECURE: booleanSchema.default("false"),
+  DASHBOARD_COOKIE_SAME_SITE: z.enum(["lax", "strict", "none"]).default("lax")
 });
 
 export function parseAppConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
@@ -55,6 +69,10 @@ export function parseAppConfig(env: NodeJS.ProcessEnv = process.env): AppConfig 
 
   if (parsed.APP_MODE === "local" && !parsed.LOCAL_AUTH_TOKEN) {
     throw new Error("LOCAL_AUTH_TOKEN is required when APP_MODE=local");
+  }
+
+  if (parsed.APP_MODE === "local" && !parsed.DASHBOARD_SESSION_SECRET) {
+    throw new Error("DASHBOARD_SESSION_SECRET is required when APP_MODE=local");
   }
 
   if (parsed.ENABLE_WEB_TERMINAL && parsed.APP_MODE !== "local") {
@@ -81,7 +99,13 @@ export function parseAppConfig(env: NodeJS.ProcessEnv = process.env): AppConfig 
     storageDriver: parsed.STORAGE_DRIVER,
     databaseUrl: parsed.DATABASE_URL,
     dbSsl: parsed.DB_SSL,
-    dbPoolMax: parsed.DB_POOL_MAX
+    dbPoolMax: parsed.DB_POOL_MAX,
+
+    dashboardSessionSecret: parsed.DASHBOARD_SESSION_SECRET,
+    dashboardSessionTtlSeconds: parsed.DASHBOARD_SESSION_TTL_SECONDS,
+    dashboardPublicOrigin: parsed.DASHBOARD_PUBLIC_ORIGIN,
+    dashboardCookieSecure: parsed.DASHBOARD_COOKIE_SECURE,
+    dashboardCookieSameSite: parsed.DASHBOARD_COOKIE_SAME_SITE
   };
 }
 

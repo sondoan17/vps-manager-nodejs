@@ -23,6 +23,9 @@ import {
   listMetrics,
   listVps,
   installAgent,
+  getAuthStatus,
+  loginWithDashboardToken,
+  logoutDashboard,
   provisionKey,
   verifyKey,
   type DashboardOverview,
@@ -31,6 +34,9 @@ import {
   type AuditEvent,
   type DashboardJob,
 } from "./lib/api";
+import { Button } from "./components/ui/button";
+import { Input } from "./components/ui/input";
+import { Label } from "./components/ui/label";
 import {
   subscribeMonitoring,
   type LiveConnectionState as LiveState,
@@ -38,6 +44,10 @@ import {
 
 type StatusKind = "default" | "success" | "destructive";
 type Status = { message: string; kind: StatusKind };
+type AuthState =
+  | { status: "checking" }
+  | { status: "open"; mode: "demo" | "local"; authRequired: boolean }
+  | { status: "locked"; mode: "demo" | "local"; message?: string };
 
 const initialCreateForm = {
   name: "",
@@ -139,6 +149,9 @@ export function App() {
     message: "Loading VPS list...",
     kind: "default",
   });
+  const [authState, setAuthState] = useState<AuthState>({ status: "checking" });
+  const [loginToken, setLoginToken] = useState("");
+  const [loginBusy, setLoginBusy] = useState(false);
   const [liveState, setLiveState] = useState<LiveState>({ status: "connecting" });
   const unsubscribeRef = useRef<(() => void) | null>(null);
 
@@ -194,17 +207,35 @@ export function App() {
   }
 
   useEffect(() => {
-    loadVps().catch((error: unknown) =>
-      setStatus({
-        message: error instanceof Error ? error.message : "Request failed",
-        kind: "destructive",
-      }),
-    );
+    let cancelled = false;
+    getAuthStatus()
+      .then(async (auth) => {
+        if (cancelled) return;
+        if (!auth.authRequired || auth.authenticated) {
+          setAuthState({ status: "open", mode: auth.mode, authRequired: auth.authRequired });
+          await loadVps();
+          return;
+        }
+        setAuthState({ status: "locked", mode: auth.mode });
+        setStatus({ message: "Dashboard token required.", kind: "default" });
+      })
+      .catch((error: unknown) => {
+        if (cancelled) return;
+        setAuthState({
+          status: "locked",
+          mode: "local",
+          message: error instanceof Error ? error.message : "Unable to verify dashboard access.",
+        });
+      });
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   // ── SSE monitoring subscription ─────────────────────────────────
 
   useEffect(() => {
+    if (authState.status !== "open") return;
     const unsubscribe = subscribeMonitoring({
       onSnapshot: (payload) => {
         setOverview((prev) => ({
@@ -239,7 +270,7 @@ export function App() {
       unsubscribe();
       unsubscribeRef.current = null;
     };
-  }, []);
+  }, [authState.status]);
 
   useEffect(() => {
     function handlePopState() {
@@ -255,6 +286,44 @@ export function App() {
     const route = routeByView[view];
     if (window.location.pathname !== route) {
       window.history.pushState({}, "", route);
+    }
+  }
+
+  async function handleLogin(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const token = loginToken.trim();
+    if (!token) {
+      setAuthState({ status: "locked", mode: "local", message: "Enter the dashboard token to continue." });
+      return;
+    }
+    setLoginBusy(true);
+    try {
+      const auth = await loginWithDashboardToken(token);
+      setLoginToken("");
+      setAuthState({ status: "open", mode: auth.mode, authRequired: auth.authRequired });
+      await loadVps("Access verified. Dashboard loaded.");
+    } catch (error) {
+      setAuthState({
+        status: "locked",
+        mode: "local",
+        message: error instanceof Error ? error.message : "Login failed. Check the token and try again.",
+      });
+    } finally {
+      setLoginBusy(false);
+    }
+  }
+
+  async function handleLogout() {
+    unsubscribeRef.current?.();
+    unsubscribeRef.current = null;
+    setLiveState({ status: "connecting" });
+    try {
+      await logoutDashboard();
+    } finally {
+      setRecords([]);
+      setOverview(emptyOverview);
+      setAuthState({ status: "locked", mode: "local" });
+      setStatus({ message: "Signed out. Enter the dashboard token to return.", kind: "default" });
     }
   }
 
@@ -370,6 +439,19 @@ export function App() {
     </Alert>
   );
 
+  if (authState.status === "checking") return <AuthLoadingScreen />;
+  if (authState.status === "locked") {
+    return (
+      <LoginGate
+        token={loginToken}
+        busy={loginBusy}
+        message={authState.message}
+        onTokenChange={setLoginToken}
+        onSubmit={handleLogin}
+      />
+    );
+  }
+
   return (
     <DashboardShell
       activeView={activeView}
@@ -378,6 +460,7 @@ export function App() {
       busy={busy}
       liveState={liveState}
       onRefresh={() => runAction("Refreshing VPS list...", () => loadVps())}
+      onLogout={authState.authRequired ? handleLogout : undefined}
     >
       {activeView === "overview" ? <OverviewPanel overview={overview} /> : null}
       {activeView === "servers" ? (
@@ -417,5 +500,40 @@ export function App() {
       ) : null}
       {activeView === "settings" ? <SettingsPanel overview={overview} /> : null}
     </DashboardShell>
+  );
+}
+
+function AuthLoadingScreen() {
+  return (
+    <main className="grid min-h-screen place-items-center bg-slate-950 text-white">
+      <div className="rounded-3xl border border-white/10 bg-white/10 px-6 py-5 font-semibold shadow-2xl backdrop-blur">
+        Checking dashboard access...
+      </div>
+    </main>
+  );
+}
+
+function LoginGate({ token, busy, message, onTokenChange, onSubmit }: { token: string; busy: boolean; message?: string; onTokenChange: (value: string) => void; onSubmit: (event: FormEvent<HTMLFormElement>) => void }) {
+  return (
+    <main className="relative grid min-h-screen overflow-hidden bg-gradient-to-br from-slate-950 via-indigo-950 to-cyan-950 px-4 py-8 text-white">
+      <div className="absolute inset-0 bg-[radial-gradient(circle_at_15%_10%,rgba(34,211,238,0.24),transparent_26%),radial-gradient(circle_at_90%_4%,rgba(99,102,241,0.32),transparent_28%)]" />
+      <section className="relative m-auto w-full max-w-md rounded-[2rem] border border-white/12 bg-white/10 p-6 shadow-2xl backdrop-blur-xl sm:p-8">
+        <div className="mb-6">
+          <p className="text-xs font-black uppercase tracking-[0.22em] text-cyan-200/80">Secure local console</p>
+          <h1 className="mt-2 font-display text-3xl leading-tight">Unlock VPS Ops</h1>
+          <p className="mt-3 text-sm font-semibold leading-6 text-white/70">Enter the dashboard token configured on this server. The token is sent once to create an HttpOnly session and is not stored in browser storage.</p>
+        </div>
+        <form className="grid gap-4" onSubmit={onSubmit}>
+          <div className="grid gap-2">
+            <Label htmlFor="dashboard-token" className="text-white">Dashboard token</Label>
+            <Input id="dashboard-token" type="password" autoComplete="current-password" value={token} onChange={(event) => onTokenChange(event.target.value)} className="h-12 border-white/15 bg-slate-950/55 text-white placeholder:text-white/40" placeholder="Paste token" autoFocus />
+          </div>
+          {message ? <Alert variant="destructive" className="rounded-xl px-3 py-2 text-sm font-semibold">{message}</Alert> : null}
+          <Button type="submit" disabled={busy} className="h-12 rounded-xl bg-cyan-300 font-black text-slate-950 hover:bg-cyan-200">
+            {busy ? "Verifying..." : "Enter dashboard"}
+          </Button>
+        </form>
+      </section>
+    </main>
   );
 }

@@ -1,7 +1,10 @@
-import { Controller, Get, Inject } from "@nestjs/common";
+import { Controller, Get, Inject, UseGuards } from "@nestjs/common";
+import { DashboardSessionGuard } from "../auth/dashboard-session.guard.js";
+import { OriginGuard } from "../auth/origin-guard.js";
 import { DashboardService } from "../dashboard/dashboard.service.js";
 
 @Controller("api/dashboard")
+@UseGuards(DashboardSessionGuard, OriginGuard)
 export class DashboardController {
   constructor(@Inject(DashboardService) private readonly dashboard: DashboardService) {}
 

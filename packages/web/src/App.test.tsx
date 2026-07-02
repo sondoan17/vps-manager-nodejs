@@ -113,6 +113,16 @@ function makeEnvelope(type: string, payload: unknown) {
   });
 }
 
+function authOk(mode: "demo" | "local" = "local", authRequired = true) {
+  return {
+    ok: true,
+    status: 200,
+    json: async () => ({
+      data: { mode, authenticated: authRequired, authRequired },
+    }),
+  };
+}
+
 beforeEach(() => {
   fetchMock.mockReset();
   window.history.replaceState({}, "", "/");
@@ -135,6 +145,7 @@ afterEach(() => {
 describe("React dashboard", () => {
   it("loads default overview then switches to servers empty state", async () => {
     fetchMock
+      .mockResolvedValueOnce(authOk())
       .mockResolvedValueOnce({
         ok: true,
         status: 200,
@@ -184,6 +195,7 @@ describe("React dashboard", () => {
   it("opens a dashboard section from its route", async () => {
     window.history.replaceState({}, "", "/metrics");
     fetchMock
+      .mockResolvedValueOnce(authOk())
       .mockResolvedValueOnce({
         ok: true,
         status: 200,
@@ -222,6 +234,7 @@ describe("React dashboard", () => {
 
   it("creates a VPS then provisions key only when one-time password is submitted", async () => {
     fetchMock
+      .mockResolvedValueOnce(authOk())
       .mockResolvedValueOnce({
         ok: true,
         status: 200,
@@ -345,6 +358,7 @@ describe("React dashboard", () => {
 
   it("renders demo operations overview from dashboard data", async () => {
     fetchMock
+      .mockResolvedValueOnce(authOk("demo", false))
       .mockResolvedValueOnce({
         ok: true,
         status: 200,
@@ -617,6 +631,7 @@ describe("React dashboard", () => {
       settings: { ...emptyDashboard.settings, appMode: "demo" },
     };
     fetchMock
+      .mockResolvedValueOnce(authOk("demo", false))
       .mockResolvedValueOnce({
         ok: true,
         status: 200,
@@ -696,6 +711,7 @@ describe("React dashboard", () => {
   describe("SSE live monitoring events", () => {
     function renderAppWithLiveEvents(mockData: any) {
       fetchMock
+        .mockResolvedValueOnce(authOk("demo", false))
         .mockResolvedValueOnce({
           ok: true,
           status: 200,
@@ -759,7 +775,7 @@ describe("React dashboard", () => {
     ];
 
     it("metrics.updated event changes displayed metrics without crashing", async () => {
-      const es = renderAppWithLiveEvents({
+      renderAppWithLiveEvents({
         dashboard: demoDashboard,
         servers: demoServerRecords,
         jobs: [],
@@ -796,7 +812,7 @@ describe("React dashboard", () => {
         ],
       };
 
-      es?.dispatchEvent("metrics.updated", makeEnvelope("metrics.updated", metricsPayload));
+      mockEventSourceInstance?.dispatchEvent("metrics.updated", makeEnvelope("metrics.updated", metricsPayload));
 
       // Wait for metrics to appear (may appear in multiple places)
       await waitFor(() => {
@@ -811,7 +827,7 @@ describe("React dashboard", () => {
     });
 
     it("unknown event types are ignored without crashing", async () => {
-      const es = renderAppWithLiveEvents({
+      renderAppWithLiveEvents({
         dashboard: demoDashboard,
         servers: demoServerRecords,
         jobs: [],
@@ -824,7 +840,7 @@ describe("React dashboard", () => {
       ).toBeInTheDocument();
 
       // Dispatch an unknown event type
-      es?.dispatchEvent("unknown.event", makeEnvelope("unknown.event", { foo: "bar" }));
+      mockEventSourceInstance?.dispatchEvent("unknown.event", makeEnvelope("unknown.event", { foo: "bar" }));
 
       // App should still be functional - navigate and check
       await userEvent.click(
@@ -851,7 +867,7 @@ describe("React dashboard", () => {
         ],
       };
 
-      es?.dispatchEvent("metrics.updated", makeEnvelope("metrics.updated", metricsPayload));
+      mockEventSourceInstance?.dispatchEvent("metrics.updated", makeEnvelope("metrics.updated", metricsPayload));
 
       await waitFor(() => {
         expect(screen.getAllByText("55%").length).toBeGreaterThanOrEqual(1);
@@ -861,7 +877,7 @@ describe("React dashboard", () => {
     });
 
     it("shows live connection state in header", async () => {
-      const es = renderAppWithLiveEvents({
+      renderAppWithLiveEvents({
         dashboard: { ...demoDashboard, mode: "local" },
         servers: demoServerRecords,
         jobs: [],
@@ -875,7 +891,7 @@ describe("React dashboard", () => {
       });
 
       // Simulate hello event which transitions to Live
-      es?.dispatchEvent(
+      mockEventSourceInstance?.dispatchEvent(
         "monitoring.hello",
         makeEnvelope("monitoring.hello", { mode: "local", intervalMs: 5000 }),
       );
@@ -889,7 +905,7 @@ describe("React dashboard", () => {
     });
 
     it("monitoring.heartbeat updates live timestamp without changing metrics", async () => {
-      const es = renderAppWithLiveEvents({
+      renderAppWithLiveEvents({
         dashboard: { ...demoDashboard, mode: "local" },
         servers: demoServerRecords,
         jobs: [],
@@ -908,7 +924,7 @@ describe("React dashboard", () => {
       expect(await screen.findByText("No metrics match these filters.")).toBeInTheDocument();
 
       // Send hello first to go live
-      es?.dispatchEvent(
+      mockEventSourceInstance?.dispatchEvent(
         "monitoring.hello",
         makeEnvelope("monitoring.hello", { mode: "local", intervalMs: 5000 }),
       );
@@ -918,7 +934,7 @@ describe("React dashboard", () => {
       });
 
       // Send heartbeat
-      es?.dispatchEvent(
+      mockEventSourceInstance?.dispatchEvent(
         "monitoring.heartbeat",
         makeEnvelope("monitoring.heartbeat", {}),
       );

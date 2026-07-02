@@ -12,6 +12,7 @@ import {
   createAppModule,
   type AppDependencies,
 } from "./app.module.js";
+import { createLoginRateLimit } from "./common/login-rate-limit.middleware.js";
 import { createMutationRateLimit } from "./common/rate-limit.middleware.js";
 import { requestIdMiddleware } from "./common/request-id.middleware.js";
 import { ApiExceptionFilter } from "./filters/api-exception.filter.js";
@@ -28,6 +29,7 @@ export async function createNestApp(
   server.use(requestIdMiddleware);
   server.use(helmet({ contentSecurityPolicy: false }));
   server.use(createMutationRateLimit(config));
+  server.use(createLoginRateLimit());
   server.use(
     express.static(join(process.cwd(), "public"), { index: "index.html" }),
   );

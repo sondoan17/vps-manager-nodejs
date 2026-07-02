@@ -25,6 +25,13 @@ const localConfig: AppConfig = {
   rateLimitMax: 120,
   agentInstallIntervalSeconds: 15,
   allowInsecureAgentHttp: false,
+  storageDriver: "json",
+  dbSsl: false,
+  dbPoolMax: 10,
+  dashboardSessionTtlSeconds: 86_400,
+  dashboardCookieSecure: false,
+  dashboardCookieSameSite: "lax",
+  dashboardSessionSecret: "test-secret",
 };
 
 let tempDir: string;
@@ -82,48 +89,65 @@ function app(overrides?: Partial<AppConfig>): ReturnType<typeof createApp> {
 }
 
 describe("POST /api/vps/:id/install-agent", () => {
+  let sessionCookie: string;
+
+  beforeEach(async () => {
+    const { createSessionCookie } = await import("./test-helpers.js");
+    sessionCookie = await createSessionCookie(tempDir, localConfig.dashboardSessionSecret);
+  });
+
+  const origin = "http://127.0.0.1";
+  const withCookie = (req: request.Test) => req.set("Cookie", sessionCookie).set("Origin", origin).set("Host", "127.0.0.1");
+
   it("returns 401 without auth token", async () => {
     const vpsId = await createVps();
     await request(app()).post(`/api/vps/${vpsId}/install-agent`).send({}).expect(401);
   });
 
   it("returns 404 for nonexistent VPS", async () => {
-    await request(app()).post("/api/vps/nonexistent/install-agent").set("Authorization", "Bearer test-token").send({}).expect(404);
+    await withCookie(
+      request(app()).post("/api/vps/nonexistent/install-agent").send({})
+    ).expect(404);
   });
 
   it("fails with 409 when agent state is already installing", async () => {
     const vpsId = await createVps();
     const agentRepo = createJsonAgentRepository(join(tempDir, "data", "agents.json"));
     await agentRepo.upsertState({ vpsId, status: "installing" });
-    await request(app()).post(`/api/vps/${vpsId}/install-agent`).set("Authorization", "Bearer test-token").send({}).expect(409);
+    await withCookie(
+      request(app()).post(`/api/vps/${vpsId}/install-agent`).send({})
+    ).expect(409);
   });
 
   it("returns 400 when AGENT_PUBLIC_BASE_URL missing and host is localhost", async () => {
     const vpsId = await createVps("localhost");
-    await request(app({ agentPublicBaseUrl: undefined }))
-      .post(`/api/vps/${vpsId}/install-agent`)
-      .set("Authorization", "Bearer test-token")
-      .set("Host", "localhost:3000")
-      .send({}).expect(400);
+    await withCookie(
+      request(app({ agentPublicBaseUrl: undefined }))
+        .post(`/api/vps/${vpsId}/install-agent`)
+        .set("Host", "localhost:3000")
+        .send({})
+    ).expect(400);
   });
 
   it("fails with 400 when no auth method", async () => {
     const binaryPath = await createMockBinary();
     const vpsId = await createVps();
-    await request(app({ agentBinaryPath: binaryPath, agentPublicBaseUrl: "http://example.com:3000", allowInsecureAgentHttp: true }))
-      .post(`/api/vps/${vpsId}/install-agent`)
-      .set("Authorization", "Bearer test-token")
-      .send({}).expect(400);
+    await withCookie(
+      request(app({ agentBinaryPath: binaryPath, agentPublicBaseUrl: "http://example.com:3000", allowInsecureAgentHttp: true }))
+        .post(`/api/vps/${vpsId}/install-agent`)
+        .send({})
+    ).expect(400);
   });
 
   it("fails with 400 if key marked but key files missing", async () => {
     const binaryPath = await createMockBinary();
     const vpsId = await createVps();
     await vpsRepo.markKeyProvisioned(vpsId);
-    await request(app({ agentBinaryPath: binaryPath, agentPublicBaseUrl: "http://example.com:3000", allowInsecureAgentHttp: true }))
-      .post(`/api/vps/${vpsId}/install-agent`)
-      .set("Authorization", "Bearer test-token")
-      .send({}).expect(400);
+    await withCookie(
+      request(app({ agentBinaryPath: binaryPath, agentPublicBaseUrl: "http://example.com:3000", allowInsecureAgentHttp: true }))
+        .post(`/api/vps/${vpsId}/install-agent`)
+        .send({})
+    ).expect(400);
   });
 
   it("accepts install with key auth", async () => {
@@ -134,10 +158,9 @@ describe("POST /api/vps/:id/install-agent", () => {
 
     const server = app({ agentBinaryPath: binaryPath, agentPublicBaseUrl: "http://example.com:3000", allowInsecureAgentHttp: true });
 
-    const res = await request(server)
-      .post(`/api/vps/${vpsId}/install-agent`)
-      .set("Authorization", "Bearer test-token")
-      .send({});
+    const res = await withCookie(
+      request(server).post(`/api/vps/${vpsId}/install-agent`).send({})
+    );
     expect(res.status).toBe(201);
     expect(res.body.data.jobId).toBeDefined();
     expect(res.body.data.state.status).toBe("installing");
@@ -148,10 +171,9 @@ describe("POST /api/vps/:id/install-agent", () => {
     const vpsId = await createVps();
     const server = app({ agentBinaryPath: binaryPath, agentPublicBaseUrl: "http://example.com:3000", allowInsecureAgentHttp: true });
 
-    const res = await request(server)
-      .post(`/api/vps/${vpsId}/install-agent`)
-      .set("Authorization", "Bearer test-token")
-      .send({ password: "test-pass" });
+    const res = await withCookie(
+      request(server).post(`/api/vps/${vpsId}/install-agent`).send({ password: "test-pass" })
+    );
     expect(res.status).toBe(201);
     expect(res.body.data.jobId).toMatch(/^job_/);
     expect(res.body.data.state.status).toBe("installing");
@@ -168,17 +190,16 @@ describe("POST /api/vps/:id/install-agent", () => {
     const vpsId = await createVps();
     const server = app({ agentBinaryPath: binaryPath, agentPublicBaseUrl: "http://example.com:3000", allowInsecureAgentHttp: true });
 
-    const res = await request(server)
-      .post(`/api/vps/${vpsId}/install-agent`)
-      .set("Authorization", "Bearer test-token")
-      .send({ password: "test-pass" });
+    const res = await withCookie(
+      request(server).post(`/api/vps/${vpsId}/install-agent`).send({ password: "test-pass" })
+    );
     expect(res.status).toBe(201);
     expect(JSON.stringify(res.body)).not.toContain("vma_");
 
-    const auditRes = await request(server).get("/api/audit").set("Authorization", "Bearer test-token").expect(200);
+    const auditRes = await request(server).get("/api/audit").set("Cookie", sessionCookie).expect(200);
     expect(JSON.stringify(auditRes.body)).not.toContain("vma_");
 
-    const jobsRes = await request(server).get("/api/jobs").set("Authorization", "Bearer test-token").expect(200);
+    const jobsRes = await request(server).get("/api/jobs").set("Cookie", sessionCookie).expect(200);
     expect(JSON.stringify(jobsRes.body)).not.toContain("vma_");
   });
 });

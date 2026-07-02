@@ -13,6 +13,8 @@ import { createJsonMetricRepository, type MetricRepository } from "./metric.repo
 import { createPostgresMetricRepository } from "./metric.postgres.repository.js";
 import type { VpsRepository } from "./vps.repository.js";
 import { createPostgresVpsRepository } from "./vps.postgres.repository.js";
+import { createJsonSessionRepository, type SessionRepository } from "./session.repository.js";
+import { createPostgresSessionRepository } from "./session.postgres.repository.js";
 
 export type RepositorySet = {
   vps: VpsRepository;
@@ -20,6 +22,7 @@ export type RepositorySet = {
   jobs: JobRepository;
   metrics: MetricRepository;
   agent: AgentRepository;
+  sessions: SessionRepository;
   pool?: Pool;
 };
 
@@ -32,7 +35,8 @@ export function createRepositories(config: AppConfig): RepositorySet {
       audit: createPostgresAuditRepository(pool),
       jobs: createPostgresJobRepository(pool),
       metrics: createPostgresMetricRepository(pool),
-      agent: createPostgresAgentRepository(pool)
+      agent: createPostgresAgentRepository(pool),
+      sessions: createPostgresSessionRepository(pool)
     };
   }
 
@@ -41,6 +45,7 @@ export function createRepositories(config: AppConfig): RepositorySet {
     audit: createJsonAuditRepository(join(config.dataDir, "audit.json")),
     jobs: createJsonJobRepository(join(config.dataDir, "jobs.json")),
     metrics: createJsonMetricRepository(join(config.dataDir, "metrics.json")),
-    agent: createJsonAgentRepository(join(config.dataDir, "agents.json"))
+    agent: createJsonAgentRepository(join(config.dataDir, "agents.json")),
+    sessions: createJsonSessionRepository(join(config.dataDir, "sessions.json"))
   };
 }

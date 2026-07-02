@@ -1,9 +1,11 @@
 import { Body, Controller, Delete, Get, HttpCode, Inject, Param, Patch, Post, Req, UseGuards } from "@nestjs/common";
 import type { Request } from "express";
-import { LocalAuthGuard } from "../auth/local-auth.guard.js";
+import { DashboardSessionGuard } from "../auth/dashboard-session.guard.js";
+import { OriginGuard } from "../auth/origin-guard.js";
 import { VpsService } from "../services/vps.service.js";
 
 @Controller("api/vps")
+@UseGuards(DashboardSessionGuard, OriginGuard)
 export class VpsController {
   constructor(@Inject(VpsService) private readonly vps: VpsService) {}
 
@@ -14,7 +16,6 @@ export class VpsController {
 
   @Post()
   @HttpCode(201)
-  @UseGuards(LocalAuthGuard)
   async create(@Body() body: unknown) {
     return { data: await this.vps.create(body) };
   }
@@ -25,33 +26,28 @@ export class VpsController {
   }
 
   @Patch(":id")
-  @UseGuards(LocalAuthGuard)
   async update(@Param("id") id: string, @Body() body: unknown) {
     return { data: await this.vps.update(id, body) };
   }
 
   @Delete(":id")
   @HttpCode(204)
-  @UseGuards(LocalAuthGuard)
   async delete(@Param("id") id: string) {
     await this.vps.delete(id);
   }
 
   @Post(":id/provision-key")
-  @UseGuards(LocalAuthGuard)
   async provisionKey(@Param("id") id: string, @Body() body: unknown) {
     return { data: await this.vps.provisionKey(id, body) };
   }
 
   @Post(":id/verify-key")
-  @UseGuards(LocalAuthGuard)
   async verifyKey(@Param("id") id: string) {
     await this.vps.verifyKey(id);
     return { data: { ok: true } };
   }
 
   @Post(":id/install-agent")
-  @UseGuards(LocalAuthGuard)
   async installAgent(@Param("id") id: string, @Body() body: unknown, @Req() req: Request) {
     const requestHost = req.get("host");
     const result = await this.vps.installAgent(id, body, requestHost);

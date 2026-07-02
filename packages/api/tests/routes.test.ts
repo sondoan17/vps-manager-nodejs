@@ -4,9 +4,29 @@ import { join } from "node:path";
 import request from "supertest";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { createApp } from "../src/app.js";
+import type { AppConfig } from "../src/config/app-config.js";
 import { createKeyService } from "../src/services/keyService.js";
 import { createJsonAuditRepository } from "../src/repositories/audit.repository.js";
 import { createVpsStore } from "../src/store/vpsStore.js";
+
+const demoConfig: AppConfig = {
+  mode: "demo",
+  enableWebTerminal: false,
+  allowPrivateNetworkTargets: false,
+  dataDir: "data",
+  privateDir: "private",
+  rateLimitWindowMs: 60_000,
+  rateLimitMax: 120,
+  agentInstallIntervalSeconds: 1,
+  allowInsecureAgentHttp: false,
+  storageDriver: "json",
+  dbSsl: false,
+  dbPoolMax: 10,
+  dashboardSessionTtlSeconds: 86_400,
+  dashboardCookieSecure: false,
+  dashboardCookieSameSite: "lax",
+  dashboardSessionSecret: "test-secret",
+};
 
 let tempDir: string;
 
@@ -20,6 +40,7 @@ afterEach(async () => {
 
 function app() {
   return createApp({
+    config: { ...demoConfig, dataDir: join(tempDir, "data"), privateDir: join(tempDir, "private") },
     store: createVpsStore(join(tempDir, "data", "vps.json")),
     keys: createKeyService(join(tempDir, "private", "keys")),
     audit: createJsonAuditRepository(join(tempDir, "data", "audit.json"))

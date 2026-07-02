@@ -18,7 +18,14 @@ const demoConfig: AppConfig = {
   rateLimitWindowMs: 60_000,
   rateLimitMax: 120,
   agentInstallIntervalSeconds: 1,
-  allowInsecureAgentHttp: false
+  allowInsecureAgentHttp: false,
+  storageDriver: "json",
+  dbSsl: false,
+  dbPoolMax: 10,
+  dashboardSessionTtlSeconds: 86_400,
+  dashboardCookieSecure: false,
+  dashboardCookieSameSite: "lax",
+  dashboardSessionSecret: "test-secret",
 };
 
 let tempDir: string;

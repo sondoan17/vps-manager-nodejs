@@ -74,6 +74,7 @@ type Props = {
   busy: boolean;
   liveState: LiveConnectionState;
   onRefresh: () => void;
+  onLogout?: () => void;
   children: ReactNode;
 };
 
@@ -84,6 +85,7 @@ export function DashboardShell({
   busy,
   liveState,
   onRefresh,
+  onLogout,
   children,
 }: Props) {
   const activeLabel =
@@ -174,7 +176,7 @@ export function DashboardShell({
                     >
                       <RefreshCw size={18} />
                     </IconButton>
-                    <UserMenu />
+                    <UserMenu onLogout={onLogout} />
                   </div>
                 </div>
                 <nav
@@ -352,7 +354,7 @@ function LiveBadge({ state }: { state: LiveConnectionState }) {
   );
 }
 
-function UserMenu() {
+function UserMenu({ onLogout }: { onLogout?: () => void }) {
   return (
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
@@ -398,9 +400,13 @@ function UserMenu() {
           </DropdownMenuItem>
         </DropdownMenuGroup>
         <DropdownMenuSeparator />
-        <DropdownMenuItem className="text-muted-foreground">
+        <DropdownMenuItem
+          className={onLogout ? "text-red-600" : "text-muted-foreground"}
+          onSelect={onLogout}
+          disabled={!onLogout}
+        >
           <LogOut size={16} />
-          Log out unavailable
+          {onLogout ? "Log out" : "Log out unavailable"}
         </DropdownMenuItem>
       </DropdownMenuContent>
     </DropdownMenu>

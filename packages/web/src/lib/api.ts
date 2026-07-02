@@ -1,5 +1,3 @@
-import { getLocalAuthToken } from "./auth-token";
-
 export type VpsRecord = {
   id: string;
   name: string;
@@ -111,12 +109,23 @@ export type CreateVpsPayload = {
 type ApiResponse<T> = { data?: T; error?: { message?: string } };
 const REQUEST_TIMEOUT_MS = 45_000;
 
+export type AuthSession = {
+  user?: string;
+  createdAt?: string;
+  expiresAt?: string;
+};
+
+export type AuthStatus = {
+  mode: "demo" | "local";
+  authenticated: boolean;
+  authRequired: boolean;
+  session?: AuthSession;
+};
+
 async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
-  const localAuthToken = getLocalAuthToken();
   const headers = new Headers(options.headers);
-  headers.set("Content-Type", "application/json");
-  if (localAuthToken && !headers.has("Authorization")) {
-    headers.set("Authorization", `Bearer ${localAuthToken}`);
+  if (options.body && !headers.has("Content-Type")) {
+    headers.set("Content-Type", "application/json");
   }
 
   const controller = new AbortController();
@@ -126,6 +135,7 @@ async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
   try {
     response = await fetch(path, {
       ...options,
+      credentials: options.credentials || "same-origin",
       headers,
       signal: options.signal || controller.signal,
     });
@@ -142,6 +152,21 @@ async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
   const payload = (await response.json().catch(() => ({}))) as ApiResponse<T>;
   if (!response.ok) throw new Error(payload.error?.message || "Request failed");
   return payload.data as T;
+}
+
+export function getAuthStatus() {
+  return request<AuthStatus>("/api/auth/me");
+}
+
+export function loginWithDashboardToken(token: string) {
+  return request<AuthStatus>("/api/auth/login", {
+    method: "POST",
+    body: JSON.stringify({ token }),
+  });
+}
+
+export function logoutDashboard() {
+  return request<{ ok: true }>("/api/auth/logout", { method: "POST" });
 }
 
 export function listVps() {

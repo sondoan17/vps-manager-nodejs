@@ -104,6 +104,7 @@ jobs:
             test -f /app/db/migrations/001_core_schema.sql
             test -f /app/db/migrations/002_metric_indexes.sql
             test -f /app/db/migrations/003_timescale_optional.sql
+            test -f /app/db/migrations/004_dashboard_sessions.sql
           '
 
       - name: Build web Docker image
@@ -259,6 +260,7 @@ jobs:
           API_IMAGE: ${{ needs.publish.outputs.api_sha_tag }}
           WEB_IMAGE: ${{ needs.publish.outputs.web_sha_tag }}
           LOCAL_AUTH_TOKEN: ${{ secrets.LOCAL_AUTH_TOKEN }}
+          DASHBOARD_SESSION_SECRET: ${{ secrets.DASHBOARD_SESSION_SECRET }}
           POSTGRES_PASSWORD: ${{ secrets.POSTGRES_PASSWORD }}
           APP_PORT: ${{ vars.PORT }}
           APP_MODE_VALUE: ${{ vars.APP_MODE }}
@@ -270,6 +272,10 @@ jobs:
           RATE_LIMIT_MAX_VALUE: ${{ vars.RATE_LIMIT_MAX }}
           AGENT_PUBLIC_BASE_URL_VALUE: ${{ vars.AGENT_PUBLIC_BASE_URL }}
           ALLOW_INSECURE_AGENT_HTTP_VALUE: ${{ vars.ALLOW_INSECURE_AGENT_HTTP }}
+          DASHBOARD_SESSION_TTL_SECONDS_VALUE: ${{ vars.DASHBOARD_SESSION_TTL_SECONDS }}
+          DASHBOARD_PUBLIC_ORIGIN_VALUE: ${{ vars.DASHBOARD_PUBLIC_ORIGIN }}
+          DASHBOARD_COOKIE_SECURE_VALUE: ${{ vars.DASHBOARD_COOKIE_SECURE }}
+          DASHBOARD_COOKIE_SAME_SITE_VALUE: ${{ vars.DASHBOARD_COOKIE_SAME_SITE }}
           GHCR_USER: ${{ github.actor }}
           GHCR_TOKEN: ${{ github.token }}
         run: |
@@ -281,7 +287,12 @@ jobs:
             echo "LOCAL_AUTH_TOKEN repository secret is required for production deployment."
             exit 1
           fi
+          if [ -z "$DASHBOARD_SESSION_SECRET" ]; then
+            echo "DASHBOARD_SESSION_SECRET repository secret is required for production deployment (APP_MODE=local)."
+            exit 1
+          fi
           LOCAL_AUTH_TOKEN_ONE_LINE="$(printf '%s' "$LOCAL_AUTH_TOKEN" | tr -d '\r\n')"
+          DASHBOARD_SESSION_SECRET_ONE_LINE="$(printf '%s' "$DASHBOARD_SESSION_SECRET" | tr -d '\r\n')"
           POSTGRES_PASSWORD_ONE_LINE="$(printf '%s' "$POSTGRES_PASSWORD" | tr -d '\r\n')"
           APP_PORT="${APP_PORT:-3000}"
           APP_MODE_VALUE="${APP_MODE_VALUE:-local}"
@@ -292,6 +303,10 @@ jobs:
           RATE_LIMIT_WINDOW_MS_VALUE="${RATE_LIMIT_WINDOW_MS_VALUE:-60000}"
           RATE_LIMIT_MAX_VALUE="${RATE_LIMIT_MAX_VALUE:-120}"
           ALLOW_INSECURE_AGENT_HTTP_VALUE="${ALLOW_INSECURE_AGENT_HTTP_VALUE:-false}"
+          DASHBOARD_SESSION_TTL_SECONDS_VALUE="${DASHBOARD_SESSION_TTL_SECONDS_VALUE:-28800}"
+          DASHBOARD_PUBLIC_ORIGIN_VALUE="${DASHBOARD_PUBLIC_ORIGIN_VALUE:-}"
+          DASHBOARD_COOKIE_SECURE_VALUE="${DASHBOARD_COOKIE_SECURE_VALUE:-true}"
+          DASHBOARD_COOKIE_SAME_SITE_VALUE="${DASHBOARD_COOKIE_SAME_SITE_VALUE:-lax}"
           SSH="ssh -i ~/.ssh/deploy_key -p ${VPS_PORT:-22} ${VPS_USER}@${VPS_HOST}"
           printf '%s' "$GHCR_TOKEN" | $SSH "docker login ghcr.io -u '$GHCR_USER' --password-stdin"
           $SSH "mkdir -p '$DEPLOY_PATH'"
@@ -299,6 +314,11 @@ jobs:
           PORT=$APP_PORT
           APP_MODE=$APP_MODE_VALUE
           LOCAL_AUTH_TOKEN=$LOCAL_AUTH_TOKEN_ONE_LINE
+          DASHBOARD_SESSION_SECRET=$DASHBOARD_SESSION_SECRET_ONE_LINE
+          DASHBOARD_SESSION_TTL_SECONDS=$DASHBOARD_SESSION_TTL_SECONDS_VALUE
+          DASHBOARD_PUBLIC_ORIGIN=$DASHBOARD_PUBLIC_ORIGIN_VALUE
+          DASHBOARD_COOKIE_SECURE=$DASHBOARD_COOKIE_SECURE_VALUE
+          DASHBOARD_COOKIE_SAME_SITE=$DASHBOARD_COOKIE_SAME_SITE_VALUE
           ENABLE_WEB_TERMINAL=$ENABLE_WEB_TERMINAL_VALUE
           ALLOW_PRIVATE_NETWORK_TARGETS=$ALLOW_PRIVATE_NETWORK_TARGETS_VALUE
           DATA_DIR=$DATA_DIR_VALUE
