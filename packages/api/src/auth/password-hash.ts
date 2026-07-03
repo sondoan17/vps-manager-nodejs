@@ -3,7 +3,7 @@ import { randomBytes, scryptSync, timingSafeEqual } from "node:crypto";
 // ── Constants ──────────────────────────────────────────────────────────
 
 /** Minimum password length. */
-export const MIN_PASSWORD_LENGTH = 12;
+export const MIN_PASSWORD_LENGTH = 8;
 /** Maximum password length. */
 export const MAX_PASSWORD_LENGTH = 256;
 /** Default scrypt parameters. */
