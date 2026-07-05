@@ -551,4 +551,43 @@ describe("pagination", () => {
       expect(res.body.page).toBeUndefined();
     });
   });
+
+  describe("rate limiting", () => {
+    it("blocks mutations after exceeding rate limit", async () => {
+      const lowRateConfig: AppConfig = { ...demoConfig, mode: "local", rateLimitMax: 2 };
+
+      // Create a VPS first
+      const server = app(lowRateConfig);
+      const { createSessionCookie } = await import("./test-helpers.js");
+      const cookie = await createSessionCookie(tempDir, lowRateConfig.dashboardSessionSecret);
+
+      // First request should work
+      await request(server)
+        .post("/api/vps")
+        .set("Cookie", cookie)
+        .set("Origin", "http://127.0.0.1")
+        .set("Host", "127.0.0.1")
+        .send({ name: "r1", host: "203.0.113.1", port: 22, username: "root" })
+        .expect(201);
+
+      // Second request should work
+      await request(server)
+        .post("/api/vps")
+        .set("Cookie", cookie)
+        .set("Origin", "http://127.0.0.1")
+        .set("Host", "127.0.0.1")
+        .send({ name: "r2", host: "203.0.113.2", port: 22, username: "root" })
+        .expect(201);
+
+      // Third request should be blocked (rateLimitMax=2)
+      const blocked = await request(server)
+        .post("/api/vps")
+        .set("Cookie", cookie)
+        .set("Origin", "http://127.0.0.1")
+        .set("Host", "127.0.0.1")
+        .send({ name: "r3", host: "203.0.113.3", port: 22, username: "root" })
+        .expect(429);
+      expect(blocked.body.error.message).toBe("Too many requests");
+    });
+  });
 });

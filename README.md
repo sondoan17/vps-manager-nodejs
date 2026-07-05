@@ -89,6 +89,8 @@ See `docs/security.md` for the full model.
 
 List endpoints (`/api/jobs`, `/api/audit`, `/api/metrics`) support pagination via `?limit=N&offset=N`. Default limit is 100, max is 500 for each. Responses include a `page` object with `{ limit, offset, nextOffset? }`. Audit filters use AND semantics: `?resourceId=x&result=y` returns only events matching all criteria. Metrics `?vpsId=x` returns 0 or 1 latest sample (no pagination).
 
+Rate limiting is per-process in demo/JSON mode and shared through Postgres-backed buckets when `STORAGE_DRIVER=postgres`. Set `TRUST_PROXY_HOPS` when running behind a trusted reverse proxy so limits apply to the real client IP.
+
 ## Testing Strategy
 
 CI runs `npm ci`, `npm test`, `npm run typecheck`, `npm run build`, and a Docker image build. Backend tests cover config safety, auth, redaction, SSH host policy, static path protection, secret non-leakage, and demo dashboard data. Frontend tests cover dashboard rendering and password storage invariants.

@@ -29,9 +29,15 @@ export type RepositorySet = {
   pool?: Pool;
 };
 
-export function createRepositories(config: AppConfig): RepositorySet {
+/**
+ * Create a repository set for the given config.
+ *
+ * If `existingPool` is provided (e.g. from a caller that already created one),
+ * it is reused instead of creating a new pool. The caller owns the pool's lifecycle.
+ */
+export function createRepositories(config: AppConfig, existingPool?: Pool): RepositorySet {
   if (config.storageDriver === "postgres") {
-    const pool = createDatabasePool(config);
+    const pool = existingPool ?? createDatabasePool(config);
     return {
       pool,
       vps: createPostgresVpsRepository(pool),

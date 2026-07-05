@@ -37,6 +37,11 @@ const localConfig: AppConfig = {
   dashboardCookieSecure: false,
   dashboardCookieSameSite: "lax",
   trustProxyHops: 0,
+  jobHistoryLimit: 1000,
+  auditHistoryLimit: 5000,
+  metricWindowLimit: 120,
+  sshHostKeyPins: {},
+  sshHostKeyPolicy: "strict",
 };
 
 let tempDir: string;

@@ -103,6 +103,7 @@ describe("HealthController — Postgres storage", () => {
       { id: "001_core_schema.sql", path: "/fake/001_core_schema.sql", sql: "CREATE TABLE ..." },
       { id: "002_metric_indexes.sql", path: "/fake/002_metric_indexes.sql", sql: "CREATE INDEX ..." },
       { id: "003_timescale_optional.sql", path: "/fake/003_timescale_optional.sql", sql: "CREATE EXTENSION ..." },
+      { id: "006_rate_limit_buckets.sql", path: "/fake/006_rate_limit_buckets.sql", sql: "CREATE TABLE ..." },
     ]);
     mod.selectMigrations.mockImplementation((migs: { id: string }[], includeOptional: boolean) =>
       includeOptional ? migs : migs.filter((m) => !m.id.includes("optional")),
@@ -118,6 +119,7 @@ describe("HealthController — Postgres storage", () => {
             rows: [
               { id: "001_core_schema.sql" },
               { id: "002_metric_indexes.sql" },
+              { id: "006_rate_limit_buckets.sql" },
             ],
           };
         }
@@ -173,6 +175,7 @@ describe("HealthController — Postgres storage", () => {
     const ctrl = new HealthController(pgConfig, pool);
     await expect(ctrl.health()).rejects.toThrow(ServiceUnavailableException);
     await expect(ctrl.health()).rejects.toThrow("002_metric_indexes.sql");
+    await expect(ctrl.health()).rejects.toThrow("006_rate_limit_buckets.sql");
   });
 
   it("throws ServiceUnavailableException with missing migration names in message", async () => {
@@ -187,5 +190,6 @@ describe("HealthController — Postgres storage", () => {
     await expect(ctrl.health()).rejects.toThrow(ServiceUnavailableException);
     await expect(ctrl.health()).rejects.toThrow("001_core_schema.sql");
     await expect(ctrl.health()).rejects.toThrow("002_metric_indexes.sql");
+    await expect(ctrl.health()).rejects.toThrow("006_rate_limit_buckets.sql");
   });
 });

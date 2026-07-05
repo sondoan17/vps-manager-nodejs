@@ -36,6 +36,8 @@ import { ADMIN_CREDENTIAL_REPOSITORY, AGENT_REPOSITORY, APP_CONFIG, AUDIT_REPOSI
 
 export { ADMIN_CREDENTIAL_REPOSITORY, AGENT_REPOSITORY, APP_CONFIG, AUDIT_REPOSITORY, DATABASE_POOL, JOB_REPOSITORY, KEY_SERVICE, METRIC_REPOSITORY, SESSION_REPOSITORY, VPS_REPOSITORY };
 
+const DATABASE_POOL_OWNS = Symbol("DATABASE_POOL_OWNS");
+
 export type AppDependencies = {
   config?: AppConfig;
   store?: VpsRepository;
@@ -46,6 +48,9 @@ export type AppDependencies = {
   agent?: AgentRepository;
   sessions?: SessionRepository;
   adminCredential?: AdminCredentialRepository;
+  /** Optional pre-created DB pool. Caller owns lifecycle unless ownsPool=true. */
+  pool?: Pool;
+  ownsPool?: boolean;
 };
 
 export class AppModule {}
@@ -53,24 +58,32 @@ export class AppModule {}
 Module({})(AppModule);
 
 class DatabasePoolShutdown implements OnApplicationShutdown {
-  constructor(@Optional() @Inject(DATABASE_POOL) private readonly pool?: Pool) {}
+  constructor(
+    @Optional() @Inject(DATABASE_POOL) private readonly pool?: Pool,
+    @Optional() @Inject(DATABASE_POOL_OWNS) private readonly ownsPool?: boolean,
+  ) {}
 
   async onApplicationShutdown() {
-    await this.pool?.end();
+    if (this.ownsPool) {
+      await this.pool?.end();
+    }
   }
 }
 
 export function createAppModule(deps: AppDependencies = {}): DynamicModule {
   const config = deps.config ?? loadAppConfig();
   const needsRepositories = !deps.store || !deps.audit || !deps.jobs || !deps.metrics || !deps.agent || !deps.sessions || !deps.adminCredential;
-  const repositories = needsRepositories ? createRepositories(config) : undefined;
+  const repositories = needsRepositories ? createRepositories(config, deps.pool) : undefined;
+  const pool = deps.pool ?? repositories?.pool;
+  const ownsPool = Boolean((deps.pool && deps.ownsPool) || (!deps.pool && repositories?.pool));
 
   return {
     module: AppModule,
     controllers: [HealthController, DashboardController, VpsController, JobsController, MetricsController, AuditController, MonitoringController, AgentController, AuthController],
     providers: [
       { provide: APP_CONFIG, useValue: config },
-      { provide: DATABASE_POOL, useValue: repositories?.pool },
+      { provide: DATABASE_POOL, useValue: pool },
+      { provide: DATABASE_POOL_OWNS, useValue: ownsPool },
       DatabasePoolShutdown,
       { provide: VPS_REPOSITORY, useValue: deps.store ?? repositories!.vps },
       { provide: KEY_SERVICE, useValue: deps.keys ?? createKeyService(join(config.privateDir, "keys")) },

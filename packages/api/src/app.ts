@@ -18,6 +18,8 @@ import { createMutationRateLimit } from "./common/rate-limit.middleware.js";
 import { requestIdMiddleware } from "./common/request-id.middleware.js";
 import { ApiExceptionFilter } from "./common/filters/api-exception.filter.js";
 import { loadAppConfig } from "./config/app-config.js";
+import { createPostgresRateLimitStore, createInMemoryRateLimitStore, type RateLimitStore } from "./common/rate-limit-store.js";
+import { createDatabasePool } from "./db/pool.js";
 
 export type Dependencies = AppDependencies;
 
@@ -56,8 +58,23 @@ export async function createNestApp(
       },
     }),
   );
-  server.use(createMutationRateLimit(config));
-  server.use(createLoginRateLimit());
+
+  // Create rate-limit store: Postgres when in postgres mode, in-memory otherwise
+  let rateLimitStore: RateLimitStore;
+  if (config.storageDriver === "postgres") {
+    // If deps.pool was provided, use it; otherwise create one (owned by this function)
+    const ownsPool = !deps.pool;
+    const pool = deps.pool ?? createDatabasePool(config);
+    // If we created the pool, pass it through deps so createAppModule reuses and closes it.
+    // If caller supplied deps.pool, caller owns lifecycle unless deps.ownsPool was set.
+    deps = { ...deps, pool, ownsPool: ownsPool ? true : (deps.ownsPool ?? false) };
+    rateLimitStore = createPostgresRateLimitStore(pool);
+  } else {
+    rateLimitStore = createInMemoryRateLimitStore();
+  }
+
+  server.use(createMutationRateLimit(config, rateLimitStore));
+  server.use(createLoginRateLimit(rateLimitStore));
   server.use(
     serveStatic(join(process.cwd(), "public"), { index: "index.html" }),
   );
