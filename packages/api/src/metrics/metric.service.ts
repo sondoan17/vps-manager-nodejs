@@ -3,7 +3,20 @@ import type { AppConfig } from "../config/app-config.js";
 import { getDemoMetrics } from "../demo/demo-fixtures.js";
 import type { MetricSample } from "../metrics/metrics.models.js";
 import type { MetricRepository } from "../persistence/repositories/metric.repository.js";
+import type { PaginationParams } from "../common/pagination.js";
 import { APP_CONFIG, METRIC_REPOSITORY } from "../tokens.js";
+
+/**
+ * Sort metrics newest-first by effective_at (collectedAt/receivedAt desc), then vps_id desc.
+ */
+function sortLatestDesc(samples: MetricSample[]): MetricSample[] {
+  return [...samples].sort((a, b) => {
+    const aTime = new Date(a.receivedAt ?? a.collectedAt).getTime();
+    const bTime = new Date(b.receivedAt ?? b.collectedAt).getTime();
+    if (bTime !== aTime) return bTime - aTime;
+    return b.vpsId.localeCompare(a.vpsId);
+  });
+}
 
 @Injectable()
 export class MetricService {
@@ -12,20 +25,25 @@ export class MetricService {
     @Inject(METRIC_REPOSITORY) private readonly metricRepository: MetricRepository
   ) {}
 
-  async list(vpsId?: string): Promise<MetricSample[]> {
+  async list(vpsId?: string, page?: PaginationParams): Promise<MetricSample[]> {
     if (this.config.mode === "demo") {
-      let results = getDemoMetrics();
+      let results = getDemoMetrics() as MetricSample[];
       if (vpsId) {
-        results = results.filter((m) => m.vpsId === vpsId);
+        return results.filter((m) => m.vpsId === vpsId);
+      }
+      results = sortLatestDesc(results);
+      if (page) {
+        return results.slice(page.offset, page.offset + page.limit);
       }
       return results;
     }
 
-    let results = await this.metricRepository.list();
     if (vpsId) {
-      results = results.filter((m) => m.vpsId === vpsId);
+      const result = await this.metricRepository.getLatest(vpsId);
+      return result ? [result] : [];
     }
-    return results;
+
+    return this.metricRepository.listLatest(page);
   }
 
   async append(sample: MetricSample): Promise<MetricSample> {

@@ -260,9 +260,20 @@ export class AgentInstallerService {
       return this.config.agentBinaryPath;
     }
     const candidates = [
+      // Docker default path (set via AGENT_BINARY_PATH env in Dockerfile)
+      "/app/agent/vps-agent-linux-amd64",
+      // process.cwd() relative Docker default (when not set explicitly)
+      join(process.cwd(), "agent", "vps-agent-linux-amd64"),
+      // Source-tree development paths
       join(process.cwd(), "packages", "agent", "dist", "vps-agent-linux-amd64"),
       join(process.cwd(), "..", "..", "packages", "agent", "dist", "vps-agent-linux-amd64"),
     ];
-    return candidates.find((candidate) => existsSync(candidate)) || candidates[0];
+    const found = candidates.find((candidate) => existsSync(candidate));
+    if (found) return found;
+    throw new BadRequestException(
+      "Agent binary not found. The API Docker image includes the agent at /app/agent/vps-agent-linux-amd64. " +
+      "For local development, run 'npm run build:agent' first. " +
+      "You can also set AGENT_BINARY_PATH to override the search path.",
+    );
   }
 }

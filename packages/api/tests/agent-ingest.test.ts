@@ -34,6 +34,11 @@ const demoConfig: AppConfig = {
   dashboardCookieSameSite: "lax",
   dashboardSessionSecret: "test-secret",
   trustProxyHops: 0,
+  jobHistoryLimit: 1000,
+  auditHistoryLimit: 5000,
+  metricWindowLimit: 120,
+  sshHostKeyPins: {},
+  sshHostKeyPolicy: "strict",
 };
 
 let tempDir: string;
@@ -64,7 +69,7 @@ async function createVps(): Promise<string> {
 function makeService() {
   const agentRepo = createJsonAgentRepository(join(tempDir, "data", "agents.json"));
   const metricRepo = createJsonMetricRepository(join(tempDir, "data", "metrics.json"));
-  const service = new AgentService(agentRepo, metricRepo, vpsRepo);
+  const service = new AgentService(agentRepo, metricRepo, vpsRepo, demoConfig);
   return { agentRepo, metricRepo, service };
 }
 

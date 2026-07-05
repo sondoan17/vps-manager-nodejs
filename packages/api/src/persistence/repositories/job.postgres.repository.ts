@@ -1,6 +1,7 @@
 import { nanoid } from "nanoid";
 import { withTransaction, type DatabasePool } from "../../db/pool.js";
 import type { CommandJob } from "../../jobs/jobs.models.js";
+import type { PaginationParams } from "../../common/pagination.js";
 import type { JobRepository } from "./job.repository.js";
 import { optionalIsoString, requiredIsoString, toDateOrNull } from "./postgres-mappers.js";
 
@@ -30,8 +31,10 @@ export function createPostgresJobRepository(pool: DatabasePool): JobRepository {
   }
 
   return {
-    async list() {
-      const result = await pool.query<JobRow>("SELECT * FROM jobs ORDER BY updated_at DESC");
+    async list(page?: PaginationParams) {
+      const result = page
+        ? await pool.query<JobRow>("SELECT * FROM jobs ORDER BY updated_at DESC, id DESC LIMIT $1 OFFSET $2", [page.limit, page.offset])
+        : await pool.query<JobRow>("SELECT * FROM jobs ORDER BY updated_at DESC, id DESC");
       return result.rows.map(rowToJob);
     },
     get,

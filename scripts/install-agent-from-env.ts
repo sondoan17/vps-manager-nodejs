@@ -1,18 +1,41 @@
 #!/usr/bin/env tsx
 
+/**
+ * Manual agent installer for an existing VPS.
+ * Reads VPS SSH credentials from .env.vps and installs the agent binary
+ * plus config, runs -once validation, and starts the background loop.
+ *
+ * Usage:
+ *   npx tsx scripts/install-agent-from-env.ts --vps-id <vps_id> [--help]
+ *
+ * Requires a .env.vps file with LOCAL_VPS_IP, LOCAL_VPS_PORT, LOCAL_VPS_USER,
+ * LOCAL_VPS_PASSWORD.
+ */
+
 import { createHash, randomBytes } from "node:crypto";
 import { existsSync, readFileSync } from "node:fs";
-import { join } from "node:path";
 import { networkInterfaces } from "node:os";
 import { Client, type SFTPWrapper } from "ssh2";
 import { loadAppConfig } from "../packages/api/src/config/app-config.js";
-import { createJsonAgentRepository } from "../packages/api/src/repositories/agent.repository.js";
-import { createVpsStore } from "../packages/api/src/store/vpsStore.js";
+import { createRepositories } from "../packages/api/src/persistence/repositories/create-repositories.js";
 
 const REMOTE_DIR = "/tmp/vps-manager-agent";
 const REMOTE_BINARY = `${REMOTE_DIR}/vps-agent`;
 const REMOTE_CONFIG = `${REMOTE_DIR}/config.json`;
 const LOCAL_BINARY = "packages/agent/dist/vps-agent-linux-amd64";
+
+function usage(exitCode = 0): never {
+  const output = exitCode === 0 ? console.log : console.error;
+  output(`Usage: npx tsx scripts/install-agent-from-env.ts --vps-id <vps_id> [options]
+
+Installs the agent on a VPS using SSH credentials from .env.vps.
+
+Options:
+  --vps-id <id>   Existing VPS id to bind the token to
+  --help          Show this help and exit
+`);
+  process.exit(exitCode);
+}
 
 function argValue(name: string): string | undefined {
   const index = process.argv.indexOf(name);
@@ -122,28 +145,28 @@ function exec(client: Client, command: string, timeoutMs = 30_000) {
 
 async function createAgentToken(vpsId: string) {
   const config = loadAppConfig();
-  const dataDir = resolveDataDir(config.dataDir);
-  const vpsRepository = createVpsStore(join(dataDir, "vps.json"));
-  const agentRepository = createJsonAgentRepository(join(dataDir, "agents.json"));
-  const vps = await vpsRepository.get(vpsId);
-  if (!vps) throw new Error(`VPS not found: ${vpsId}`);
-  const secret = randomBytes(32).toString("hex");
-  const credential = await agentRepository.createCredential({
-    vpsId: vps.id,
-    secretHash: createHash("sha256").update(secret).digest("hex"),
-    status: "active",
-  });
-  return { config, vps, token: `vma_${credential.id}_${secret}`, credentialId: credential.id };
-}
+  const repos = createRepositories(config);
+  const { vps: vpsRepository, agent: agentRepository, pool } = repos;
 
-function resolveDataDir(configuredDataDir: string) {
-  const candidates = [configuredDataDir, join("packages", "api", configuredDataDir)];
-  return candidates.find((candidate) => existsSync(join(candidate, "vps.json"))) || configuredDataDir;
+  try {
+    const vps = await vpsRepository.get(vpsId);
+    if (!vps) throw new Error(`VPS not found: ${vpsId}`);
+    const secret = randomBytes(32).toString("hex");
+    const credential = await agentRepository.createCredential({
+      vpsId: vps.id,
+      secretHash: createHash("sha256").update(secret).digest("hex"),
+      status: "active",
+    });
+    return { config, vps, token: `vma_${credential.id}_${secret}`, credentialId: credential.id };
+  } finally {
+    if (pool) await pool.end();
+  }
 }
 
 async function main() {
+  if (process.argv.includes("--help")) usage();
   const vpsId = argValue("--vps-id");
-  if (!vpsId) throw new Error("Usage: tsx scripts/install-agent-from-env.ts --vps-id <vps_id>");
+  if (!vpsId) usage(1);
   if (!existsSync(LOCAL_BINARY)) throw new Error(`Agent binary not found: ${LOCAL_BINARY}. Run npm run build:agent first.`);
 
   const env = parseEnvFile(".env.vps");

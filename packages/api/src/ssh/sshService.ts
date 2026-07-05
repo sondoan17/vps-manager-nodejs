@@ -6,7 +6,21 @@ const SSH_READY_TIMEOUT_MS = 15_000;
 const SSH_DIR_PATH = ".ssh";
 const AUTHORIZED_KEYS_PATH = `${SSH_DIR_PATH}/authorized_keys`;
 
-function connect(config: { host: string; port: number; username: string; password?: string; privateKey?: string }) {
+/**
+ * Additional security options for SSH connections.
+ * When provided, the connection uses a DNS-vetted IP and installs a hostVerifier callback.
+ */
+export interface SshSecurityOptions {
+  /** DNS-resolved IP to connect to (avoids DNS rebinding TOCTOU). */
+  vettedHost?: string;
+  /** ssh2 hostVerifier callback for host key pinning. */
+  hostVerifier?: (key: Buffer, verify: (permitted: boolean) => void) => void;
+}
+
+function connect(
+  config: { host: string; port: number; username: string; password?: string; privateKey?: string },
+  security?: SshSecurityOptions,
+) {
   return new Promise<Client>((resolve, reject) => {
     const client = new Client();
     let settled = false;
@@ -29,7 +43,17 @@ function connect(config: { host: string; port: number; username: string; passwor
       reject(toSshOperationError(error));
     });
     try {
-      client.connect({ ...config, readyTimeout: SSH_READY_TIMEOUT_MS });
+      // Use vetted IP for actual connection (DNS rebinding protection)
+      const targetHost = security?.vettedHost ?? config.host;
+      client.connect({
+        host: targetHost,
+        port: config.port,
+        username: config.username,
+        password: config.password,
+        privateKey: config.privateKey,
+        readyTimeout: SSH_READY_TIMEOUT_MS,
+        hostVerifier: security?.hostVerifier,
+      });
     } catch (error: unknown) {
       if (settled) return;
       settled = true;
@@ -62,6 +86,11 @@ function toSshOperationError(error: unknown) {
 
   if (code === "ENOTFOUND" || code === "EAI_AGAIN") {
     return new SshOperationError("SSH host could not be resolved.");
+  }
+
+  // Host key verification failure from ssh2 (hostVerifier called verify(false))
+  if (level === "handshake" || /host denied|host key verification/i.test(message)) {
+    return new SshOperationError("SSH host key verification failed. Check configured host key pins.");
   }
 
   if (code === "EHOSTUNREACH" || code === "ENETUNREACH") {
@@ -138,8 +167,8 @@ async function installPublicKeyViaSftp(client: Client, publicKey: string) {
   await sftpChmod(sftp, AUTHORIZED_KEYS_PATH, 0o600);
 }
 
-export async function provisionPublicKey(vps: VpsRecord, password: string, publicKey: string) {
-  const client = await connect({ host: vps.host, port: vps.port, username: vps.username, password });
+export async function provisionPublicKey(vps: VpsRecord, password: string, publicKey: string, security?: SshSecurityOptions) {
+  const client = await connect({ host: vps.host, port: vps.port, username: vps.username, password }, security);
   try {
     await installPublicKeyViaSftp(client, publicKey);
   } finally {
@@ -147,8 +176,8 @@ export async function provisionPublicKey(vps: VpsRecord, password: string, publi
   }
 }
 
-export async function verifyPrivateKey(vps: VpsRecord, privateKey: string) {
-  const client = await connect({ host: vps.host, port: vps.port, username: vps.username, privateKey });
+export async function verifyPrivateKey(vps: VpsRecord, privateKey: string, security?: SshSecurityOptions) {
+  const client = await connect({ host: vps.host, port: vps.port, username: vps.username, privateKey }, security);
   client.end();
 }
 
@@ -167,8 +196,9 @@ export async function uploadFile(
   content: Buffer,
   mode: number,
   auth: { password?: string; privateKey?: string },
+  security?: SshSecurityOptions,
 ) {
-  const client = await connect({ host: vps.host, port: vps.port, username: vps.username, ...auth });
+  const client = await connect({ host: vps.host, port: vps.port, username: vps.username, ...auth }, security);
   try {
     const sftp = await openSftp(client);
     await sftpWriteBuffer(sftp, remotePath, content, mode);
@@ -182,8 +212,9 @@ export async function makeDirectory(
   remotePath: string,
   mode: number,
   auth: { password?: string; privateKey?: string },
+  security?: SshSecurityOptions,
 ) {
-  const client = await connect({ host: vps.host, port: vps.port, username: vps.username, ...auth });
+  const client = await connect({ host: vps.host, port: vps.port, username: vps.username, ...auth }, security);
   try {
     const sftp = await openSftp(client);
     await sftpMkdir(sftp, remotePath, mode);
@@ -197,8 +228,9 @@ export async function execCommand(
   command: string,
   auth: { password?: string; privateKey?: string },
   timeoutMs = 30_000,
+  security?: SshSecurityOptions,
 ): Promise<{ stdout: string; stderr: string }> {
-  const client = await connect({ host: vps.host, port: vps.port, username: vps.username, ...auth });
+  const client = await connect({ host: vps.host, port: vps.port, username: vps.username, ...auth }, security);
   try {
     return await new Promise<{ stdout: string; stderr: string }>((resolve, reject) => {
       client.exec(command, (error, stream) => {

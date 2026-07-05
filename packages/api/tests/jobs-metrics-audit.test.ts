@@ -29,6 +29,11 @@ const demoConfig: AppConfig = {
   dashboardCookieSameSite: "lax",
   dashboardSessionSecret: "test-secret",
   trustProxyHops: 0,
+  jobHistoryLimit: 1000,
+  auditHistoryLimit: 5000,
+  metricWindowLimit: 120,
+  sshHostKeyPins: {},
+  sshHostKeyPolicy: "strict",
 };
 
 let tempDir: string;
@@ -344,6 +349,206 @@ describe("audit API", () => {
       const resultFilter = await request(app(localConfig)).get("/api/audit?result=blocked").set("Cookie", sessionCookie).expect(200);
       expect(resultFilter.body.data).toHaveLength(1);
       expect(resultFilter.body.data[0].resourceId).toBe("vps_002");
+    });
+  });
+});
+
+describe("pagination", () => {
+  let sessionCookie: string;
+
+  beforeEach(async () => {
+    const { createSessionCookie } = await import("./test-helpers.js");
+    sessionCookie = await createSessionCookie(tempDir, demoConfig.dashboardSessionSecret);
+  });
+
+  describe("GET /api/jobs pagination", () => {
+    it("returns page metadata with limit and offset", async () => {
+      // Pre-populate jobs
+      const repo = createJsonJobRepository(join(tempDir, "data", "jobs.json"));
+      for (let i = 0; i < 5; i++) {
+        await repo.create({
+          vpsId: "vps-1",
+          type: "test",
+          status: "succeeded",
+          progress: 100,
+        });
+      }
+
+      const localConfig: AppConfig = { ...demoConfig, mode: "local" };
+      const res = await request(app(localConfig)).get("/api/jobs?limit=2&offset=0").set("Cookie", sessionCookie).expect(200);
+      expect(res.body.data).toHaveLength(2);
+      expect(res.body.page).toEqual({ limit: 2, offset: 0, nextOffset: 2 });
+    });
+
+    it("supports offset pagination", async () => {
+      const repo = createJsonJobRepository(join(tempDir, "data", "jobs.json"));
+      for (let i = 0; i < 5; i++) {
+        await repo.create({
+          vpsId: "vps-1",
+          type: "test",
+          status: "succeeded",
+          progress: 100,
+        });
+      }
+
+      const localConfig: AppConfig = { ...demoConfig, mode: "local" };
+      const first = await request(app(localConfig)).get("/api/jobs?limit=2&offset=0").set("Cookie", sessionCookie).expect(200);
+      expect(first.body.data).toHaveLength(2);
+
+      const second = await request(app(localConfig)).get("/api/jobs?limit=2&offset=2").set("Cookie", sessionCookie).expect(200);
+      expect(second.body.data).toHaveLength(2);
+      // Different jobs than first page
+      expect(second.body.data[0].id).not.toBe(first.body.data[0].id);
+    });
+
+    it("rejects limit above max", async () => {
+      await request(app()).get("/api/jobs?limit=9999").expect(400);
+    });
+
+    it("rejects zero limit", async () => {
+      await request(app()).get("/api/jobs?limit=0").expect(400);
+    });
+
+    it("rejects negative offset", async () => {
+      await request(app()).get("/api/jobs?offset=-1").expect(400);
+    });
+
+    it("rejects float limit", async () => {
+      await request(app()).get("/api/jobs?limit=1.5").expect(400);
+    });
+
+    it("rejects non-numeric limit", async () => {
+      await request(app()).get("/api/jobs?limit=abc").expect(400);
+    });
+
+    it("rejects repeated limit values", async () => {
+      await request(app()).get("/api/jobs?limit=1&limit=2").expect(400);
+    });
+  });
+
+  describe("GET /api/audit pagination", () => {
+    it("returns page metadata", async () => {
+      const localConfig: AppConfig = { ...demoConfig, mode: "local" };
+      const repo = createJsonAuditRepository(join(tempDir, "data", "audit.json"));
+      for (let i = 0; i < 5; i++) {
+        await repo.append({
+          actor: "test",
+          action: "test.event",
+          resourceType: "test",
+          result: "success",
+        });
+      }
+
+      const res = await request(app(localConfig)).get("/api/audit?limit=2").set("Cookie", sessionCookie).expect(200);
+      expect(res.body.data).toHaveLength(2);
+      expect(res.body.page.limit).toBe(2);
+      expect(res.body.page.offset).toBe(0);
+    });
+
+    it("applies AND filters with pagination", async () => {
+      const localConfig: AppConfig = { ...demoConfig, mode: "local" };
+      const repo = createJsonAuditRepository(join(tempDir, "data", "audit.json"));
+      for (let i = 0; i < 3; i++) {
+        await repo.append({
+          actor: "test",
+          action: "test.alpha",
+          resourceType: "test",
+          resourceId: "r1",
+          result: "success",
+        });
+        await repo.append({
+          actor: "test",
+          action: "test.beta",
+          resourceType: "test",
+          resourceId: "r2",
+          result: "failure",
+        });
+      }
+
+      // AND filter: resourceId + result
+      const res = await request(app(localConfig))
+        .get("/api/audit?resourceId=r2&result=failure&limit=10")
+        .set("Cookie", sessionCookie)
+        .expect(200);
+      expect(res.body.data).toHaveLength(3);
+      for (const e of res.body.data) {
+        expect(e.resourceId).toBe("r2");
+        expect(e.result).toBe("failure");
+      }
+    });
+
+    it("filters before pagination", async () => {
+      const localConfig: AppConfig = { ...demoConfig, mode: "local" };
+      const repo = createJsonAuditRepository(join(tempDir, "data", "audit.json"));
+
+      await repo.append({
+        id: "audit_failure_old",
+        actor: "test",
+        action: "test.failure",
+        resourceType: "test",
+        result: "failure",
+        timestamp: "2026-06-25T10:00:00.000Z",
+      });
+      await repo.append({
+        id: "audit_success_new",
+        actor: "test",
+        action: "test.success",
+        resourceType: "test",
+        result: "success",
+        timestamp: "2026-06-25T11:00:00.000Z",
+      });
+
+      const res = await request(app(localConfig))
+        .get("/api/audit?result=failure&limit=1")
+        .set("Cookie", sessionCookie)
+        .expect(200);
+
+      expect(res.body.data).toHaveLength(1);
+      expect(res.body.data[0].id).toBe("audit_failure_old");
+    });
+  });
+
+  describe("GET /api/metrics pagination", () => {
+    it("returns paginated latest without vpsId", async () => {
+      const localConfig: AppConfig = { ...demoConfig, mode: "local" };
+      const repo = createJsonMetricRepository(join(tempDir, "data", "metrics.json"));
+      for (let i = 0; i < 5; i++) {
+        await repo.upsertLatest({
+          vpsId: `vps-${i}`,
+          cpu: i * 10,
+          memory: 50,
+          disk: 50,
+          loadAverage: 0.5,
+          networkRx: 1000,
+          networkTx: 500,
+          uptime: 86400,
+          collectedAt: new Date().toISOString(),
+        });
+      }
+
+      const res = await request(app(localConfig)).get("/api/metrics?limit=2").set("Cookie", sessionCookie).expect(200);
+      expect(res.body.data).toHaveLength(2);
+      expect(res.body.page).toBeDefined();
+    });
+
+    it("returns 0/1 item with vpsId filter (no pagination)", async () => {
+      const localConfig: AppConfig = { ...demoConfig, mode: "local" };
+      const repo = createJsonMetricRepository(join(tempDir, "data", "metrics.json"));
+      await repo.upsertLatest({
+        vpsId: "vps-specific",
+        cpu: 42,
+        memory: 50,
+        disk: 50,
+        loadAverage: 0.5,
+        networkRx: 1000,
+        networkTx: 500,
+        uptime: 86400,
+        collectedAt: new Date().toISOString(),
+      });
+
+      const res = await request(app(localConfig)).get("/api/metrics?vpsId=vps-specific").set("Cookie", sessionCookie).expect(200);
+      expect(res.body.data).toHaveLength(1);
+      expect(res.body.page).toBeUndefined();
     });
   });
 });

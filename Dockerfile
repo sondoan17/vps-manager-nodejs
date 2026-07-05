@@ -9,14 +9,23 @@ FROM deps AS build
 COPY . .
 RUN npm run build
 
+FROM golang:1.23-alpine AS agent-builder
+WORKDIR /src
+COPY packages/agent/go.mod ./
+RUN go mod download
+COPY packages/agent/ .
+RUN CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -o /out/vps-agent-linux-amd64 ./cmd/vps-agent
+
 FROM node:24-alpine AS api-runtime
-ENV NODE_ENV=production
+ENV NODE_ENV=production \
+    AGENT_BINARY_PATH=/app/agent/vps-agent-linux-amd64
 WORKDIR /app
 RUN addgroup -S app && adduser -S app -G app
 COPY --from=deps --chown=app:app /app/node_modules ./node_modules
 COPY --from=build --chown=app:app /app/package.json ./package.json
 COPY --from=build --chown=app:app /app/dist ./dist
 COPY --from=build --chown=app:app /app/packages/api/db ./db
+COPY --from=agent-builder --chown=app:app --chmod=0755 /out/vps-agent-linux-amd64 /app/agent/vps-agent-linux-amd64
 RUN mkdir -p /app/data /app/private && chown -R app:app /app/data /app/private
 USER app
 EXPOSE 3000

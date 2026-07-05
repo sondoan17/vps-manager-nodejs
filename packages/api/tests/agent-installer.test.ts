@@ -30,8 +30,13 @@ const localConfig: AppConfig = {
   dashboardSessionTtlSeconds: 86_400,
   dashboardCookieSecure: false,
   dashboardCookieSameSite: "lax",
-  dashboardSessionSecret: "test-secret",
+  dashboardSessionSecret: "installer-test-secret-32+chars-here!!",
   trustProxyHops: 0,
+  jobHistoryLimit: 1000,
+  auditHistoryLimit: 5000,
+  metricWindowLimit: 120,
+  sshHostKeyPins: {},
+  sshHostKeyPolicy: "strict",
 };
 
 let tempDir: string;

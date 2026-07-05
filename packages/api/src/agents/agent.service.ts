@@ -1,12 +1,13 @@
 import { Inject, Injectable, UnauthorizedException } from "@nestjs/common";
 import { createHash, randomBytes, timingSafeEqual } from "node:crypto";
 import { ZodError } from "zod";
+import type { AppConfig } from "../config/app-config.js";
 import type { AgentCredential, AgentCredentialStatus, AgentMetricPayload } from "./agent.models.js";
 import type { MetricSample } from "../metrics/metrics.models.js";
 import type { AgentRepository } from "../persistence/repositories/agent.repository.js";
 import type { MetricRepository } from "../persistence/repositories/metric.repository.js";
 import type { VpsRepository } from "../persistence/repositories/vps.repository.js";
-import { AGENT_REPOSITORY, METRIC_REPOSITORY, VPS_REPOSITORY } from "../tokens.js";
+import { AGENT_REPOSITORY, APP_CONFIG, METRIC_REPOSITORY, VPS_REPOSITORY } from "../tokens.js";
 import { agentMetricPayloadSchema } from "./agent.schemas.js";
 import { VpsNotFoundError } from "../common/errors.js";
 
@@ -51,6 +52,7 @@ export class AgentService {
     @Inject(AGENT_REPOSITORY) private readonly agentRepository: AgentRepository,
     @Inject(METRIC_REPOSITORY) private readonly metricRepository: MetricRepository,
     @Inject(VPS_REPOSITORY) private readonly vpsRepository: VpsRepository,
+    @Inject(APP_CONFIG) private readonly config: AppConfig,
   ) {}
 
   /**
@@ -213,7 +215,7 @@ export class AgentService {
       agentVersion: parsed.agentVersion,
     };
 
-    await this.metricRepository.append(sample);
+    await this.metricRepository.append(sample, this.config.metricWindowLimit);
     return sample;
   }
 }

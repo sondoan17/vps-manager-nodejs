@@ -2,7 +2,7 @@ import { nanoid } from "nanoid";
 import { redactValue } from "../../common/redaction.js";
 import type { DatabasePool } from "../../db/pool.js";
 import type { AuditEvent } from "../../audit/audit.models.js";
-import type { AuditRepository } from "./audit.repository.js";
+import type { AuditListOptions, AuditRepository } from "./audit.repository.js";
 import { requiredIsoString, toDateOrNull, toJsonOrNull } from "./postgres-mappers.js";
 
 type AuditRow = {
@@ -29,8 +29,9 @@ type AuditRow = {
 
 export function createPostgresAuditRepository(pool: DatabasePool): AuditRepository {
   return {
-    async list() {
-      const result = await pool.query<AuditRow>("SELECT * FROM audit_events ORDER BY timestamp DESC");
+    async list(options?: AuditListOptions) {
+      const { sql, values } = buildListQuery(options);
+      const result = await pool.query<AuditRow>(sql, values);
       return result.rows.map(rowToAudit);
     },
     async append(input) {
@@ -71,6 +72,39 @@ export function createPostgresAuditRepository(pool: DatabasePool): AuditReposito
       return rowToAudit(result.rows[0]!);
     }
   };
+}
+
+function buildListQuery(options?: AuditListOptions): { sql: string; values: unknown[] } {
+  const values: unknown[] = [];
+  const where: string[] = [];
+
+  if (options?.filter?.resourceId) {
+    values.push(options.filter.resourceId);
+    where.push(`resource_id = $${values.length}`);
+  }
+  if (options?.filter?.action) {
+    values.push(options.filter.action);
+    where.push(`action = $${values.length}`);
+  }
+  if (options?.filter?.result) {
+    values.push(options.filter.result);
+    where.push(`result = $${values.length}`);
+  }
+
+  let sql = "SELECT * FROM audit_events";
+  if (where.length > 0) {
+    sql += ` WHERE ${where.join(" AND ")}`;
+  }
+  sql += " ORDER BY timestamp DESC, id DESC";
+
+  if (options?.page) {
+    values.push(options.page.limit);
+    sql += ` LIMIT $${values.length}`;
+    values.push(options.page.offset);
+    sql += ` OFFSET $${values.length}`;
+  }
+
+  return { sql, values };
 }
 
 function rowToAudit(row: AuditRow): AuditEvent {

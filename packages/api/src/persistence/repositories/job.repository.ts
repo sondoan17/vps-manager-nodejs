@@ -1,15 +1,16 @@
 import { nanoid } from "nanoid";
 import type { CommandJob } from "../../jobs/jobs.models.js";
+import type { PaginationParams } from "../../common/pagination.js";
 import { readJsonFile, writeJsonFile, withFileLock } from "./json-file.js";
 
 type JobFile = { jobs: CommandJob[] };
 
 export type JobRepository = {
-  list(): Promise<CommandJob[]>;
+  list(page?: PaginationParams): Promise<CommandJob[]>;
   get(id: string): Promise<CommandJob | undefined>;
-  create(job: Omit<CommandJob, "id"> & { id?: string }): Promise<CommandJob>;
+  create(job: Omit<CommandJob, "id"> & { id?: string }, historyLimit?: number): Promise<CommandJob>;
   update(id: string, patch: Partial<Omit<CommandJob, "id">>): Promise<CommandJob | undefined>;
-  append(job: Omit<CommandJob, "id"> & { id?: string }): Promise<CommandJob>;
+  append(job: Omit<CommandJob, "id"> & { id?: string }, historyLimit?: number): Promise<CommandJob>;
 };
 
 /** Normalize jobs that may be missing progress/updatedAt from old files. */
@@ -21,11 +22,58 @@ function normalizeJob(job: CommandJob): CommandJob {
   };
 }
 
+/**
+ * Sort jobs newest-first by updatedAt (desc), then id (desc) for stable ordering.
+ */
+function sortJobsDesc(jobs: CommandJob[]): CommandJob[] {
+  return [...jobs].sort((a, b) => {
+    const aTime = new Date(a.updatedAt ?? a.startedAt ?? 0).getTime();
+    const bTime = new Date(b.updatedAt ?? b.startedAt ?? 0).getTime();
+    if (bTime !== aTime) return bTime - aTime;
+    return b.id.localeCompare(a.id);
+  });
+}
+
+/**
+ * Terminal statuses (finished jobs).
+ */
+const TERMINAL = new Set(["succeeded", "failed", "cancelled"]);
+
+/**
+ * Trim the jobs array to stay within `historyLimit`.
+ *
+ * Rule: keep ALL queued/running jobs.  Trim terminal jobs (oldest first)
+ * until the total is within the cap.
+ */
+function trimJobs(jobs: CommandJob[], historyLimit: number): CommandJob[] {
+  if (jobs.length <= historyLimit) return jobs;
+
+  const active = jobs.filter((j) => !TERMINAL.has(j.status));
+  const terminal = jobs.filter((j) => TERMINAL.has(j.status));
+
+  // Sort terminal by updatedAt ascending so we drop the oldest first
+  terminal.sort((a, b) => {
+    const aTime = new Date(a.updatedAt ?? a.startedAt ?? 0).getTime();
+    const bTime = new Date(b.updatedAt ?? b.startedAt ?? 0).getTime();
+    return aTime - bTime;
+  });
+
+  const maxTerminal = Math.max(0, historyLimit - active.length);
+  if (maxTerminal === 0) return active;
+  const kept = terminal.slice(-maxTerminal);
+  return [...kept, ...active];
+}
+
 export function createJsonJobRepository(filePath = "data/jobs.json"): JobRepository {
   return {
-    async list() {
+    async list(page) {
       const data = await readJsonFile<JobFile>(filePath, { jobs: [] });
-      return data.jobs.map(normalizeJob);
+      let jobs = data.jobs.map(normalizeJob);
+      jobs = sortJobsDesc(jobs);
+      if (page) {
+        return jobs.slice(page.offset, page.offset + page.limit);
+      }
+      return jobs;
     },
 
     async get(id: string) {
@@ -34,7 +82,7 @@ export function createJsonJobRepository(filePath = "data/jobs.json"): JobReposit
       return job ? normalizeJob(job) : undefined;
     },
 
-    async create(input) {
+    async create(input, historyLimit) {
       return withFileLock(filePath, async () => {
         const data = await readJsonFile<JobFile>(filePath, { jobs: [] });
         const job: CommandJob = {
@@ -44,6 +92,9 @@ export function createJsonJobRepository(filePath = "data/jobs.json"): JobReposit
           updatedAt: new Date().toISOString(),
         };
         data.jobs.push(job);
+        if (historyLimit !== undefined) {
+          data.jobs = trimJobs(data.jobs, historyLimit);
+        }
         await writeJsonFile(filePath, data);
         return job;
       });
@@ -60,8 +111,8 @@ export function createJsonJobRepository(filePath = "data/jobs.json"): JobReposit
       });
     },
 
-    async append(input) {
-      return this.create(input);
+    async append(input, historyLimit) {
+      return this.create(input, historyLimit);
     }
   };
 }

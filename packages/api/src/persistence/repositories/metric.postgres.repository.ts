@@ -1,5 +1,6 @@
 import { withTransaction, type DatabasePool } from "../../db/pool.js";
 import type { MetricSample, MetricTrend } from "../../metrics/metrics.models.js";
+import type { PaginationParams } from "../../common/pagination.js";
 import type { MetricRepository } from "./metric.repository.js";
 import { optionalIsoString, requiredIsoString, toDateOrNull, toJsonOrNull } from "./postgres-mappers.js";
 
@@ -25,21 +26,21 @@ type MetricRow = {
 };
 
 export function createPostgresMetricRepository(pool: DatabasePool): MetricRepository {
-  async function listLatest(): Promise<MetricSample[]> {
-    const result = await pool.query<MetricRow>("SELECT * FROM metric_latest ORDER BY effective_at DESC");
+  async function listLatest(page?: PaginationParams): Promise<MetricSample[]> {
+    const result = page
+      ? await pool.query<MetricRow>("SELECT * FROM metric_latest ORDER BY effective_at DESC, vps_id DESC LIMIT $1 OFFSET $2", [page.limit, page.offset])
+      : await pool.query<MetricRow>("SELECT * FROM metric_latest ORDER BY effective_at DESC, vps_id DESC");
     return result.rows.map(rowToMetricSample);
   }
 
   return {
-    async list() {
-      return listLatest();
+    async list(page) {
+      return listLatest(page);
     },
-    async append(sample, windowCap = DEFAULT_WINDOW_CAP) {
-      const limit = normalizeWindowLimit(windowCap);
+    async append(sample, _windowCap = DEFAULT_WINDOW_CAP) {
       return withTransaction(pool, async (client) => {
         const inserted = await insertSample(client, sample);
         await upsertLatest(client, sample, inserted.id);
-        await enforceWindowLimit(client, sample.vpsId, limit);
 
         return sample;
       });
@@ -53,12 +54,8 @@ export function createPostgresMetricRepository(pool: DatabasePool): MetricReposi
       await upsertLatest(pool, sample, null);
       return sample;
     },
-    async appendWindow(sample, limit = DEFAULT_WINDOW_CAP) {
-      const normalizedLimit = normalizeWindowLimit(limit);
-      await withTransaction(pool, async (client) => {
-        await insertSample(client, sample);
-        await enforceWindowLimit(client, sample.vpsId, normalizedLimit);
-      });
+    async appendWindow(sample, _limit = DEFAULT_WINDOW_CAP) {
+      await insertSample(pool, sample);
     },
     async listWindow(vpsId, limit) {
       const effectiveLimit = normalizeWindowLimit(limit ?? DEFAULT_WINDOW_CAP);
@@ -79,22 +76,6 @@ function normalizeWindowLimit(limit: number): number {
     throw new Error("Metric window limit must be a non-negative integer");
   }
   return limit;
-}
-
-async function enforceWindowLimit(client: Pick<DatabasePool, "query">, vpsId: string, limit: number): Promise<void> {
-  if (limit === 0) {
-    await client.query("DELETE FROM metric_samples WHERE vps_id = $1", [vpsId]);
-    return;
-  }
-
-  await client.query(
-    `DELETE FROM metric_samples
-     WHERE vps_id = $1
-       AND id NOT IN (
-         SELECT id FROM metric_samples WHERE vps_id = $1 ORDER BY effective_at DESC, id DESC LIMIT $2
-       )`,
-    [vpsId, limit]
-  );
 }
 
 async function insertSample(client: Pick<DatabasePool, "query">, sample: MetricSample): Promise<{ id: string | number | bigint | null }> {

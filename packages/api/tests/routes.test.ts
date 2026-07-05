@@ -25,8 +25,13 @@ const demoConfig: AppConfig = {
   dashboardSessionTtlSeconds: 86_400,
   dashboardCookieSecure: false,
   dashboardCookieSameSite: "lax",
-  dashboardSessionSecret: "test-secret",
+  dashboardSessionSecret: "routes-test-secret-32+chars-here!!",
   trustProxyHops: 0,
+  jobHistoryLimit: 1000,
+  auditHistoryLimit: 5000,
+  metricWindowLimit: 120,
+  sshHostKeyPins: {},
+  sshHostKeyPolicy: "strict",
 };
 
 let tempDir: string;
@@ -82,6 +87,12 @@ describe("routes", () => {
 
     const page = await request(server).get("/").expect(200);
     expect(page.text).toContain("VPS Manager");
+
+    // CSP header should be present
+    const csp = page.headers["content-security-policy"] as string | undefined;
+    expect(csp).toBeDefined();
+    expect(csp).toContain("default-src 'self'");
+    expect(csp).toContain("frame-ancestors 'none'");
 
     await request(server).get("/private/keys/vps_123").expect(404);
     await request(server).get("/data/vps.json").expect(404);

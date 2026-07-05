@@ -7,6 +7,7 @@ import {
 import express, { type Express } from "express";
 import helmet from "helmet";
 import { join } from "node:path";
+import serveStatic from "serve-static";
 import {
   AppModule,
   createAppModule,
@@ -26,6 +27,9 @@ export async function createNestApp(
 ): Promise<NestExpressApplication> {
   const config = deps.config ?? loadAppConfig();
   server.disable("x-powered-by");
+  // Express 5 uses a strict query parser by default.
+  // Preserve Express 4 nested query object parsing for compatibility.
+  server.set("query parser", "extended");
   // Trust reverse proxy for correct client IP when behind nginx/haproxy.
   // Set TRUST_PROXY_HOPS=N to trust the N most recent proxy hops.
   // Default 0 (no trust) is safe for direct exposure. In production behind
@@ -34,11 +38,28 @@ export async function createNestApp(
     server.set("trust proxy", config.trustProxyHops);
   }
   server.use(requestIdMiddleware);
-  server.use(helmet({ contentSecurityPolicy: false }));
+  server.use(
+    helmet({
+      contentSecurityPolicy: {
+        useDefaults: false,
+        directives: {
+          "default-src": ["'self'"],
+          "script-src": ["'self'"],
+          "style-src": ["'self'", "'unsafe-inline'", "https://fonts.googleapis.com"],
+          "font-src": ["'self'", "https://fonts.gstatic.com", "data:"],
+          "img-src": ["'self'", "data:"],
+          "connect-src": ["'self'", "https://fonts.googleapis.com", "https://fonts.gstatic.com"],
+          "object-src": ["'none'"],
+          "base-uri": ["'self'"],
+          "frame-ancestors": ["'none'"],
+        },
+      },
+    }),
+  );
   server.use(createMutationRateLimit(config));
   server.use(createLoginRateLimit());
   server.use(
-    express.static(join(process.cwd(), "public"), { index: "index.html" }),
+    serveStatic(join(process.cwd(), "public"), { index: "index.html" }),
   );
 
   const nestApp = await NestFactory.create<NestExpressApplication>(

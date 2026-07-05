@@ -1,4 +1,5 @@
 import type { MetricSample } from "../../metrics/metrics.models.js";
+import type { PaginationParams } from "../../common/pagination.js";
 import { readJsonFile, writeJsonFile, withFileLock } from "./json-file.js";
 
 const DEFAULT_WINDOW_CAP = 120;
@@ -53,16 +54,30 @@ function capWindow(window: MetricSample[], limit: number): MetricSample[] {
   return window;
 }
 
+function sortLatestDesc(samples: MetricSample[]): MetricSample[] {
+  return [...samples].sort((a, b) => {
+    const aTime = new Date(a.receivedAt ?? a.collectedAt).getTime();
+    const bTime = new Date(b.receivedAt ?? b.collectedAt).getTime();
+    if (bTime !== aTime) return bTime - aTime;
+    return b.vpsId.localeCompare(a.vpsId);
+  });
+}
+
+function applyPage(samples: MetricSample[], page?: PaginationParams): MetricSample[] {
+  if (!page) return samples;
+  return samples.slice(page.offset, page.offset + page.limit);
+}
+
 // ── Repository type ────────────────────────────────────────────────────
 
 export type MetricRepository = {
   /** Returns latest samples for each VPS (backward compat) */
-  list(): Promise<MetricSample[]>;
+  list(page?: PaginationParams): Promise<MetricSample[]>;
   /** Upserts latest + appends to bounded window */
   append(sample: MetricSample, windowCap?: number): Promise<MetricSample>;
 
   /** Returns all latest samples */
-  listLatest(): Promise<MetricSample[]>;
+  listLatest(page?: PaginationParams): Promise<MetricSample[]>;
   /** Returns latest sample for a specific VPS */
   getLatest(vpsId: string): Promise<MetricSample | undefined>;
   /** Set/replace latest sample for a VPS */
@@ -77,9 +92,9 @@ export type MetricRepository = {
 
 export function createJsonMetricRepository(filePath = "data/metrics.json"): MetricRepository {
   return {
-    async list() {
+    async list(page) {
       const data = await readMetricFile(filePath);
-      return Object.values(data.latest);
+      return applyPage(sortLatestDesc(Object.values(data.latest)), page);
     },
 
     async append(sample, windowCap = DEFAULT_WINDOW_CAP) {
@@ -94,9 +109,9 @@ export function createJsonMetricRepository(filePath = "data/metrics.json"): Metr
       });
     },
 
-    async listLatest() {
+    async listLatest(page) {
       const data = await readMetricFile(filePath);
-      return Object.values(data.latest);
+      return applyPage(sortLatestDesc(Object.values(data.latest)), page);
     },
 
     async getLatest(vpsId: string) {

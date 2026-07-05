@@ -21,6 +21,12 @@ Private keys remain under `private/keys/`. Public/private key material is not di
 
 ## HTTP Safety
 
-The backend disables `x-powered-by`, adds request IDs, applies Helmet headers, rate-limits mutations, normalizes errors, and redacts secret-looking metadata before audit persistence.
+The backend disables `x-powered-by`, adds request IDs, applies Helmet security headers with a restrictive Content Security Policy (`default-src 'self'`, `frame-ancestors 'none'`, with explicit Google Fonts allowances), rate-limits mutations, normalizes errors, and redacts secret-looking metadata before audit persistence.
+
+The nginx reverse proxy adds matching CSP, `X-Content-Type-Options: nosniff`, `Referrer-Policy: strict-origin-when-cross-origin`, `X-Frame-Options: DENY`, and a restrictive Permissions-Policy for frontend static assets.
 
 Static serving is limited to root `public/`; `data/`, `private/`, `packages/api/`, and `packages/web/` are not exposed.
+
+### Session cookie hardening
+
+`DASHBOARD_SESSION_SECRET` must be at least 32 characters in `APP_MODE=local`. `SameSite=None` requires `Secure=true`. An HTTPS dashboard origin in local mode forces `Secure=true`.

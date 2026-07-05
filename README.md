@@ -24,10 +24,16 @@ Open `http://localhost:3000`. Demo mode needs no credentials and shows the banne
 ## Docker Quickstart
 
 ```bash
+# Set the Postgres password first
+export POSTGRES_PASSWORD=your_secure_password_here
 docker compose up --build
 ```
 
 The Compose service defaults to `APP_MODE=demo`, exposes `http://localhost:3000`, and mounts writable volumes for `/app/data` and `/app/private`.
+
+`POSTGRES_PASSWORD` is **required** — it is used by the Postgres container on first start and by the API to construct `DATABASE_URL`. Set it via environment variable or `.env` file.
+
+Before the API starts, the Compose stack automatically runs a one-shot `migrate` service that applies core database migrations (non-optional). The API waits for migrations to complete successfully. Optional TimescaleDB migrations remain manual (see `docs/postgres-timescale-storage.md`).
 
 ## Features
 
@@ -80,6 +86,8 @@ See `docs/security.md` for the full model.
 - `DELETE /api/vps/:id`
 - `POST /api/vps/:id/provision-key` with `{ "password": "..." }`
 - `POST /api/vps/:id/verify-key`
+
+List endpoints (`/api/jobs`, `/api/audit`, `/api/metrics`) support pagination via `?limit=N&offset=N`. Default limit is 100, max is 500 for each. Responses include a `page` object with `{ limit, offset, nextOffset? }`. Audit filters use AND semantics: `?resourceId=x&result=y` returns only events matching all criteria. Metrics `?vpsId=x` returns 0 or 1 latest sample (no pagination).
 
 ## Testing Strategy
 

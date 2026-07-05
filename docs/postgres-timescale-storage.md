@@ -42,6 +42,8 @@ Plain PostgreSQL also works. TimescaleDB is optional.
 
 The root `docker-compose.yml` runs the API in Postgres mode. Set `POSTGRES_PASSWORD` in `.env` or your shell before starting it.
 
+Before the API starts, the Compose stack automatically runs a one-shot `migrate` service that applies core (non-optional) database migrations. The API waits for this service to complete successfully via `depends_on: migrate: service_completed_successfully`. Optional TimescaleDB migration remains manual or handled by production CI/CD.
+
 ## Migrations
 
 The migration command loads the project `.env`, the same as the API server. You can also pass env vars inline.

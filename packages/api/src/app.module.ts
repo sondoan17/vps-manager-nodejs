@@ -83,7 +83,12 @@ export function createAppModule(deps: AppDependencies = {}): DynamicModule {
       DashboardSessionGuard,
       OriginGuard,
       AgentInstallerService,
-      AgentService,
+      {
+        provide: AgentService,
+        inject: [AGENT_REPOSITORY, METRIC_REPOSITORY, VPS_REPOSITORY, APP_CONFIG],
+        useFactory: (agentRepo: AgentRepository, metricRepo: MetricRepository, vpsRepo: VpsRepository, appConfig: AppConfig) =>
+          new AgentService(agentRepo, metricRepo, vpsRepo, appConfig),
+      },
       AuditService,
       DashboardService,
       JobRunnerService,
