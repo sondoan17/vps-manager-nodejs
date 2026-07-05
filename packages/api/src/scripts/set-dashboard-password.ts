@@ -25,7 +25,7 @@
 
 import { createInterface } from "node:readline/promises";
 import { stdin as input } from "node:process";
-import { join } from "node:path";
+import { isAbsolute, join } from "node:path";
 import { loadAppConfig } from "../config/app-config.js";
 import { createDatabasePool } from "../db/pool.js";
 import { createJsonAdminCredentialRepository, type AdminCredentialRepository } from "../persistence/repositories/admin-credential.repository.js";
@@ -86,7 +86,7 @@ export async function setDashboardPasswordFromCli() {
   }
 
   // Create credential and session repositories
-  const dataDir = join(process.cwd(), config.dataDir);
+  const dataDir = isAbsolute(config.dataDir) ? config.dataDir : join(process.cwd(), config.dataDir);
   let credentialRepo: AdminCredentialRepository;
   let sessionRepo: SessionRepository;
   let pool: Awaited<ReturnType<typeof createDatabasePool>> | undefined;

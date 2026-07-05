@@ -1,4 +1,4 @@
-import { Injectable } from "@nestjs/common";
+import { BadRequestException, Injectable } from "@nestjs/common";
 import { AuditService } from "../audit/audit.service.js";
 import type { AppConfig } from "../config/app-config.js";
 import { demoServers } from "../demo/demo-fixtures.js";
@@ -30,6 +30,12 @@ export class VpsService {
     if (this.config.mode === "demo") throw new DemoMutationBlockedError();
   }
 
+  private assertRemoteUserManaged(vps: { kind?: string; managedBy?: string; tags?: string[] }) {
+    if (vps.kind === "local" || vps.managedBy === "system") {
+      throw new BadRequestException("Local host is managed by the built-in agent");
+    }
+  }
+
   async create(body: unknown) {
     this.assertNotDemo();
     const record = await this.store.create(createVpsSchema.parse(body));
@@ -45,6 +51,7 @@ export class VpsService {
 
   async update(id: string, body: unknown) {
     this.assertNotDemo();
+    this.assertRemoteUserManaged(await this.get(id));
     const updated = await this.store.update(id, updateVpsSchema.parse(body));
     if (!updated) throw new VpsNotFoundError();
     await this.audit.record({ actor: "system", action: "vps.update", resourceType: "vps", resourceId: id, result: "success" });
@@ -53,6 +60,7 @@ export class VpsService {
 
   async delete(id: string) {
     this.assertNotDemo();
+    this.assertRemoteUserManaged(await this.get(id));
     if (!(await this.store.delete(id))) throw new VpsNotFoundError();
     await this.audit.record({ actor: "system", action: "vps.delete", resourceType: "vps", resourceId: id, result: "success" });
   }
@@ -60,6 +68,7 @@ export class VpsService {
   async provisionKey(id: string, body: unknown) {
     this.assertNotDemo();
     const vps = await this.get(id);
+    this.assertRemoteUserManaged(vps);
     const { password } = provisionKeySchema.parse(body);
     const keyPair = await this.keys.ensureKeyPair(vps.id);
     try {
@@ -76,6 +85,7 @@ export class VpsService {
   async verifyKey(id: string) {
     this.assertNotDemo();
     const vps = await this.get(id);
+    this.assertRemoteUserManaged(vps);
     const privateKey = await this.keys.readPrivateKey(vps.id);
     try {
       await this.ssh.verifyPrivateKey(vps, privateKey);
@@ -89,6 +99,7 @@ export class VpsService {
   async installAgent(id: string, body: unknown, requestHost?: string) {
     this.assertNotDemo();
     const vps = await this.get(id);
+    this.assertRemoteUserManaged(vps);
     const { password } = installAgentSchema.parse(body);
     try {
       const result = await this.agentInstaller.install(vps.id, password, requestHost);

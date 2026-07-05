@@ -1,7 +1,7 @@
 import { nanoid } from "nanoid";
 import type { CreateVpsInput, UpdateVpsInput, VpsRecord } from "../../vps/vps.models.js";
-import { readJsonFile, writeJsonFile } from "../repositories/json-file.js";
-import { withVpsDefaults, type VpsRepository } from "../repositories/vps.repository.js";
+import { readJsonFile, readModifyWriteJsonFile } from "../repositories/json-file.js";
+import { withVpsDefaults, type EnsureLocalHostInput, type VpsRepository } from "../repositories/vps.repository.js";
 
 type StoreFile = { vps: VpsRecord[] };
 
@@ -13,10 +13,6 @@ export function createVpsStore(filePath = "data/vps.json") {
     return { vps: data.vps.map(withVpsDefaults) };
   }
 
-  async function writeStore(data: StoreFile): Promise<void> {
-    await writeJsonFile(filePath, data);
-  }
-
   const repository: VpsRepository = {
     async list() {
       return (await readStore()).vps;
@@ -25,10 +21,10 @@ export function createVpsStore(filePath = "data/vps.json") {
       return (await readStore()).vps.find((vps) => vps.id === id);
     },
     async create(input: CreateVpsInput) {
-      const data = await readStore();
+      const id = `vps_${nanoid(12)}`;
       const timestamp = now();
       const record: VpsRecord = {
-        id: `vps_${nanoid(12)}`,
+        id,
         name: input.name,
         host: input.host,
         port: input.port,
@@ -38,35 +34,126 @@ export function createVpsStore(filePath = "data/vps.json") {
         tags: input.tags ?? [],
         status: input.status ?? "unknown",
         notes: input.notes,
+        kind: "remote",
+        managedBy: "user",
         createdAt: timestamp,
         updatedAt: timestamp
       };
-      data.vps.push(record);
-      await writeStore(data);
-      return record;
+      return readModifyWriteJsonFile<StoreFile>(
+        filePath,
+        { vps: [] },
+        (data) => {
+          data.vps = data.vps.map(withVpsDefaults);
+          data.vps.push(record);
+          return data;
+        }
+      ).then((data) => data.vps.find((vps) => vps.id === id) ?? record);
     },
     async update(id: string, input: UpdateVpsInput) {
-      const data = await readStore();
-      const index = data.vps.findIndex((vps) => vps.id === id);
-      if (index === -1) return undefined;
-      data.vps[index] = { ...data.vps[index], ...input, updatedAt: now() };
-      await writeStore(data);
-      return data.vps[index];
+      return readModifyWriteJsonFile<StoreFile>(
+        filePath,
+        { vps: [] },
+        (data) => {
+          data.vps = data.vps.map(withVpsDefaults);
+          const index = data.vps.findIndex((vps) => vps.id === id);
+          if (index === -1) return data;
+          data.vps[index] = { ...data.vps[index], ...input, updatedAt: now() };
+          return data;
+        }
+      ).then((data) => data.vps.find((vps) => vps.id === id));
     },
     async markKeyProvisioned(id: string) {
-      const data = await readStore();
-      const index = data.vps.findIndex((vps) => vps.id === id);
-      if (index === -1) return undefined;
-      data.vps[index] = { ...data.vps[index], keyProvisionedAt: now(), updatedAt: now() };
-      await writeStore(data);
-      return data.vps[index];
+      return readModifyWriteJsonFile<StoreFile>(
+        filePath,
+        { vps: [] },
+        (data) => {
+          data.vps = data.vps.map(withVpsDefaults);
+          const index = data.vps.findIndex((vps) => vps.id === id);
+          if (index === -1) return data;
+          const timestamp = now();
+          data.vps[index] = { ...data.vps[index], keyProvisionedAt: timestamp, updatedAt: timestamp };
+          return data;
+        }
+      ).then((data) => data.vps.find((vps) => vps.id === id));
     },
     async delete(id: string) {
-      const data = await readStore();
-      const next = data.vps.filter((vps) => vps.id !== id);
-      if (next.length === data.vps.length) return false;
-      await writeStore({ vps: next });
-      return true;
+      let deleted = false;
+      await readModifyWriteJsonFile<StoreFile>(
+        filePath,
+        { vps: [] },
+        (data) => {
+          data.vps = data.vps.map(withVpsDefaults);
+          const next = data.vps.filter((vps) => vps.id !== id);
+          deleted = next.length !== data.vps.length;
+          data.vps = next;
+          return data;
+        }
+      );
+      return deleted;
+    },
+    async ensureLocalHost(input: EnsureLocalHostInput) {
+      return readModifyWriteJsonFile<StoreFile>(
+        filePath,
+        { vps: [] },
+        (data) => {
+          data.vps = data.vps.map(withVpsDefaults);
+          const existing = data.vps.find((v) => v.id === input.id);
+          if (existing) {
+            // Update existing local host record
+            const idx = data.vps.indexOf(existing);
+            data.vps[idx] = {
+              ...existing,
+              name: input.name,
+              host: input.host,
+              port: input.port,
+              username: input.username,
+              provider: input.provider ?? "local",
+              tags: input.tags ?? ["local", "local-agent", "system"],
+              status: input.status ?? "unknown",
+              notes: input.notes,
+              kind: input.kind ?? "local",
+              managedBy: input.managedBy ?? "system",
+              updatedAt: now(),
+            };
+          } else {
+            // Create new local host record
+            const timestamp = now();
+            data.vps.push({
+              id: input.id,
+              name: input.name,
+              host: input.host,
+              port: input.port,
+              username: input.username,
+              provider: input.provider ?? "local",
+              tags: input.tags ?? ["local", "local-agent", "system"],
+              status: input.status ?? "unknown",
+              notes: input.notes,
+              kind: input.kind ?? "local",
+              managedBy: input.managedBy ?? "system",
+              createdAt: timestamp,
+              updatedAt: timestamp,
+            });
+          }
+          return data;
+        }
+      ).then((data) => {
+        const found = data.vps.find((v) => v.id === input.id);
+        if (!found) throw new Error("Failed to ensure local host record");
+        return found;
+      });
+    },
+    async markSeen(id: string, status: VpsRecord["status"], lastSeenAt: string) {
+      return readModifyWriteJsonFile<StoreFile>(
+        filePath,
+        { vps: [] },
+        (data) => {
+          data.vps = data.vps.map(withVpsDefaults);
+          const index = data.vps.findIndex((vps) => vps.id === id);
+          if (index === -1) return data;
+          data.vps[index] = { ...data.vps[index], status, lastSeenAt, updatedAt: now() };
+          return data;
+        }
+      ).then((data) => data.vps.find((vps) => vps.id === id));
     }
   };
 

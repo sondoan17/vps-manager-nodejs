@@ -32,6 +32,7 @@ import { AgentInstallerService } from "./agents/agent-installer.service.js";
 import { AgentService } from "./agents/agent.service.js";
 import { VpsService } from "./vps/vps.service.js";
 import type { VpsRepository } from "./persistence/repositories/vps.repository.js";
+import { LocalAgentSupervisorService } from "./agents/local-agent-supervisor.service.js";
 import { ADMIN_CREDENTIAL_REPOSITORY, AGENT_REPOSITORY, APP_CONFIG, AUDIT_REPOSITORY, DATABASE_POOL, JOB_REPOSITORY, KEY_SERVICE, METRIC_REPOSITORY, SESSION_REPOSITORY, VPS_REPOSITORY } from "./tokens.js";
 
 export { ADMIN_CREDENTIAL_REPOSITORY, AGENT_REPOSITORY, APP_CONFIG, AUDIT_REPOSITORY, DATABASE_POOL, JOB_REPOSITORY, KEY_SERVICE, METRIC_REPOSITORY, SESSION_REPOSITORY, VPS_REPOSITORY };
@@ -96,6 +97,7 @@ export function createAppModule(deps: AppDependencies = {}): DynamicModule {
       DashboardSessionGuard,
       OriginGuard,
       AgentInstallerService,
+      LocalAgentSupervisorService,
       {
         provide: AgentService,
         inject: [AGENT_REPOSITORY, METRIC_REPOSITORY, VPS_REPOSITORY, APP_CONFIG],

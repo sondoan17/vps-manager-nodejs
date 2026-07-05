@@ -307,7 +307,8 @@ function ServerCard({
   onInstallAgent: ServersPanelProps["onInstallAgent"];
   onDelete: ServersPanelProps["onDelete"];
 }) {
-  const isReady = Boolean(vps.keyProvisionedAt);
+  const isLocalHost = vps.kind === "local" || vps.managedBy === "system";
+  const isReady = isLocalHost || Boolean(vps.keyProvisionedAt);
   const isDown = vps.status === "unreachable";
   const [showPassword, setShowPassword] = useState(false);
   const [confirmOpen, setConfirmOpen] = useState(false);
@@ -350,7 +351,7 @@ function ServerCard({
               </Badge>
             )}
             <Badge variant={isReady ? "ready" : "pending"}>
-              {isReady ? "Key ready" : "Needs password"}
+              {isLocalHost ? "Local agent" : isReady ? "Key ready" : "Needs password"}
             </Badge>
           </div>
           <p className="mt-1 break-all text-sm font-semibold leading-6 text-slate-600">
@@ -395,7 +396,30 @@ function ServerCard({
         <ServerRuntimeMeta metric={metric} jobs={jobs} />
         <ServerMetricStrip metric={metric} />
         <div className="flex min-w-0 flex-wrap items-start justify-start gap-2 xl:justify-end">
-          {isReady ? (
+          {isLocalHost ? (
+            <>
+              <Button
+                type="button"
+                size="sm"
+                variant="secondary"
+                className="border border-emerald-200 bg-emerald-50 text-emerald-800 shadow-sm hover:bg-emerald-50 disabled:opacity-100"
+                disabled
+              >
+                <Activity size={16} />
+                Managed locally
+              </Button>
+              <Button
+                type="button"
+                size="sm"
+                variant="secondary"
+                className="border border-slate-300 bg-white text-slate-900 shadow-sm hover:bg-slate-100 disabled:opacity-100"
+                disabled
+              >
+                <Activity size={16} />
+                Metrics
+              </Button>
+            </>
+          ) : isReady ? (
             <>
               <Button
                 type="button"
@@ -465,6 +489,7 @@ function ServerCard({
           <ServerOverflow
             vps={vps}
             busy={busy}
+            isLocalHost={isLocalHost}
             onRotate={() => setShowPassword(true)}
             onRequestDelete={() => {
               window.setTimeout(() => setDeleteTarget(vps), 0);
@@ -497,7 +522,7 @@ function ServerCard({
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
-      {showPassword ? (
+      {showPassword && !isLocalHost ? (
         <form
           onSubmit={(event) => event.preventDefault()}
           autoComplete="off"
@@ -619,11 +644,13 @@ function ServerMetricStrip({
 function ServerOverflow({
   vps,
   busy,
+  isLocalHost,
   onRotate,
   onRequestDelete,
 }: {
   vps: VpsRecord;
   busy: boolean;
+  isLocalHost: boolean;
   onRotate: () => void;
   onRequestDelete: () => void;
 }) {
@@ -648,10 +675,17 @@ function ServerOverflow({
           <Activity size={15} />
           View metrics
         </DropdownMenuItem>
-        <DropdownMenuItem onClick={onRotate} disabled={busy}>
-          <RotateCw size={15} />
-          {vps.keyProvisionedAt ? "Rotate key" : "Install key"}
-        </DropdownMenuItem>
+        {isLocalHost ? (
+          <DropdownMenuItem disabled>
+            <Activity size={15} />
+            Managed by local agent
+          </DropdownMenuItem>
+        ) : (
+          <DropdownMenuItem onClick={onRotate} disabled={busy}>
+            <RotateCw size={15} />
+            {vps.keyProvisionedAt ? "Rotate key" : "Install key"}
+          </DropdownMenuItem>
+        )}
         <DropdownMenuItem disabled>
           <Edit3 size={15} />
           Edit server
@@ -659,7 +693,7 @@ function ServerOverflow({
         <DropdownMenuSeparator />
         <DropdownMenuItem
           className="text-destructive focus:text-destructive"
-          disabled={busy}
+          disabled={busy || isLocalHost}
           onClick={onRequestDelete}
         >
           <Trash2 size={15} />
@@ -677,7 +711,7 @@ function ServerOpsSummary({
   records: VpsRecord[];
   metrics: DashboardOverview["metrics"];
 }) {
-  const ready = records.filter((server) => server.keyProvisionedAt).length;
+  const ready = records.filter((server) => server.kind === "local" || server.managedBy === "system" || server.keyProvisionedAt).length;
   const down = records.filter(
     (server) => server.status === "unreachable",
   ).length;

@@ -13,6 +13,8 @@ export type VpsRecord = {
   createdAt: string;
   updatedAt: string;
   keyProvisionedAt?: string;
+  kind?: "remote" | "local";
+  managedBy?: "user" | "system";
 };
 
 export type DashboardOverview = {

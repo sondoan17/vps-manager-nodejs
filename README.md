@@ -64,6 +64,75 @@ Demo mode cannot call real SSH. Local mode requires a DB-backed admin password f
 
 See `docs/security.md` for the full model.
 
+## One-Command Install (Linux amd64)
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/sondoan17/vps-manager-nodejs/main/scripts/install.sh | sudo bash
+```
+
+This installs:
+- **Docker app**: Web UI + API server in containers (`/opt/vps-manager`)
+- **Host agent**: systemd unit that collects system metrics and pushes to the local API
+- **Dashboard**: accessible at `http://<your-ip>:3000`
+
+The installer:
+1. Detects Linux amd64 and Docker (auto-installs with `--install-docker`)
+2. Generates secure config in `/opt/vps-manager/.env` (mode 0600)
+3. Creates a `docker-compose.yml` with API (loopback `127.0.0.1:3001`) and Web (`:3000`)
+4. Pulls images and starts containers
+5. Sets the dashboard password
+6. Extracts the agent binary from the API container
+7. Bootstraps an agent credential and config
+8. Installs the systemd agent via `install-local-agent.sh`
+
+Options: `--help`, `--dry-run`, `--app-dir`, `--app-port`, `--api-port`, `--api-image`, `--web-image`, `--backend-url`, `--allow-insecure-backend-url`, `--dashboard-password-file`, `--install-docker`, `--skip-agent`, `--rotate-agent`.
+
+### Docker App Only (without host agent)
+
+```bash
+sudo ./scripts/install.sh --skip-agent
+```
+
+### Host Agent Only (if app is already running)
+
+```bash
+# Extract binary and bootstrap credential
+umask 077
+AGENT_CONFIG="$(mktemp)"
+docker compose -f /opt/vps-manager/docker-compose.yml exec -T api node dist/scripts/bootstrap-local-agent.js \
+  --backend-url http://127.0.0.1:3000 \
+  --config-only \
+  --rotate > "$AGENT_CONFIG"
+
+docker cp $(docker compose -f /opt/vps-manager/docker-compose.yml ps -q api):/app/agent/vps-agent-linux-amd64 /tmp/vps-agent
+
+sudo ./scripts/install-local-agent.sh --binary /tmp/vps-agent --config "$AGENT_CONFIG"
+KEEP_CREDENTIAL_ID="$(sed -n 's/.*"token"[[:space:]]*:[[:space:]]*"vma_\([^"]*\)_.*/\1/p' "$AGENT_CONFIG" | head -1)"
+docker compose -f /opt/vps-manager/docker-compose.yml exec -T api node dist/scripts/revoke-agent-credentials.js \
+  --vps-id vps_local_host \
+  --keep-credential-id "$KEEP_CREDENTIAL_ID"
+rm -f "$AGENT_CONFIG" /tmp/vps-agent
+```
+
+### Uninstall
+
+```bash
+sudo ./scripts/install-local-agent.sh --uninstall             # removes host agent
+docker compose -f /opt/vps-manager/docker-compose.yml down    # stops containers, preserves data
+
+# Optional destructive purge:
+docker compose -f /opt/vps-manager/docker-compose.yml down -v
+sudo rm -rf /opt/vps-manager
+```
+
+## Architecture
+
+The architecture uses two agent modes:
+
+1. **In-process local agent** (`LocalAgentSupervisorService`): When `APP_MODE=local` and `LOCAL_AGENT_ENABLED=true`, the API process itself collects system metrics every N seconds and pushes them to the `MetricRepository`. The machine is registered as a local `VpsRecord` with `kind=local`, `managedBy=system`. Requires no separate binary.
+
+2. **Host systemd agent**: A standalone Go binary (`vps-agent`) deployed as a systemd service. Configured via `bootstrap-local-agent` script which creates a credential/token and outputs agent config. Used in production deployments when the API runs in Docker and the host needs separate metric collection.
+
 ## Scripts
 
 - `npm run dev` - run the API workspace with `tsx watch`
@@ -74,6 +143,8 @@ See `docs/security.md` for the full model.
 - `npm start` - run compiled server
 - `npm test` - run backend and frontend Vitest tests
 - `npm run typecheck` - typecheck API and web workspaces
+- `npm run bootstrap-local-agent` - bootstrap agent credential and config (`--backend-url <url>` required)
+- `npm run set-dashboard-password` - set dashboard admin password
 
 ## API Surface
 

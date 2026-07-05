@@ -234,6 +234,7 @@ describe("metrics API", () => {
       const filtered = await request(app(localConfig)).get("/api/metrics?vpsId=vps_alpha").set("Cookie", sessionCookie).expect(200);
       expect(filtered.body.data).toHaveLength(1);
       expect(filtered.body.data[0].cpu).toBe(35);
+      expect(filtered.body.data[0].freshness).toBe("stale");
     });
   });
 });

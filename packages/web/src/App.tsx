@@ -105,6 +105,10 @@ function mergeMetrics(
   return merged;
 }
 
+function isLocalHost(vps: VpsRecord): boolean {
+  return vps.kind === "local" || vps.managedBy === "system";
+}
+
 const emptyOverview: DashboardOverview = {
   mode: "local",
   summary: {
@@ -421,7 +425,7 @@ export function App() {
       .join(" ")
       .toLowerCase();
     const matchesSearch = haystack.includes(serverSearch.trim().toLowerCase());
-    const keyState = vps.keyProvisionedAt ? "ready" : "pending";
+    const keyState = isLocalHost(vps) || vps.keyProvisionedAt ? "ready" : "pending";
     return (
       matchesSearch &&
       (statusFilter === "all" ||

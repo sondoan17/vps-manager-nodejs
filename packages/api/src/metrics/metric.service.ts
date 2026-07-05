@@ -6,6 +6,16 @@ import type { MetricRepository } from "../persistence/repositories/metric.reposi
 import type { PaginationParams } from "../common/pagination.js";
 import { APP_CONFIG, METRIC_REPOSITORY } from "../tokens.js";
 
+const STALE_THRESHOLD_MS = 120_000;
+
+function withFreshness<T extends MetricSample>(sample: T): T & { freshness: "fresh" | "stale" } {
+  const timestamp = sample.receivedAt ?? sample.collectedAt;
+  return {
+    ...sample,
+    freshness: Date.now() - new Date(timestamp).getTime() < STALE_THRESHOLD_MS ? "fresh" : "stale",
+  };
+}
+
 /**
  * Sort metrics newest-first by effective_at (collectedAt/receivedAt desc), then vps_id desc.
  */
@@ -40,10 +50,10 @@ export class MetricService {
 
     if (vpsId) {
       const result = await this.metricRepository.getLatest(vpsId);
-      return result ? [result] : [];
+      return result ? [withFreshness(result)] : [];
     }
 
-    return this.metricRepository.listLatest(page);
+    return (await this.metricRepository.listLatest(page)).map(withFreshness);
   }
 
   async append(sample: MetricSample): Promise<MetricSample> {

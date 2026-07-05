@@ -24,6 +24,8 @@
     "install-agent-env": "tsx scripts/install-agent-from-env.ts",
     "set-dashboard-password": "tsx packages/api/src/scripts/set-dashboard-password.ts",
     "set-dashboard-password:prod": "node dist/scripts/set-dashboard-password.js",
+    "bootstrap-local-agent": "tsx packages/api/src/scripts/bootstrap-local-agent.ts",
+    "revoke-agent-credentials": "tsx packages/api/src/scripts/revoke-agent-credentials.ts",
     "migrate:db": "tsx packages/api/src/db/migrate.ts"
   },
   "overrides": {

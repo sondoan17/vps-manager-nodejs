@@ -11,6 +11,8 @@ export type VpsRecord = {
   lastSeenAt?: string;
   notes?: string;
   keyProvisionedAt?: string;
+  kind?: "remote" | "local";
+  managedBy?: "user" | "system";
   createdAt: string;
   updatedAt: string;
 };

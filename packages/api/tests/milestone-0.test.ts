@@ -117,6 +117,7 @@ describe("database migrations", () => {
       "004_dashboard_sessions.sql",
       "005_dashboard_admin_credentials.sql",
       "006_rate_limit_buckets.sql",
+      "007_local_host_fields.sql",
     ]);
     expect(migrations[0]?.sql).toContain("CREATE TABLE IF NOT EXISTS vps");
     expect(migrations[1]?.sql).toContain("metric_samples_vps_effective_idx");
@@ -124,6 +125,7 @@ describe("database migrations", () => {
     expect(migrations[3]?.sql).toContain("CREATE TABLE IF NOT EXISTS dashboard_sessions");
     expect(migrations[4]?.sql).toContain("CREATE TABLE IF NOT EXISTS dashboard_admin_credentials");
     expect(migrations[5]?.sql).toContain("CREATE TABLE IF NOT EXISTS rate_limit_buckets");
+    expect(migrations[6]?.sql).toContain("ALTER TABLE vps ADD COLUMN IF NOT EXISTS kind");
   });
 
   it("excludes optional migrations unless requested", async () => {
@@ -135,6 +137,7 @@ describe("database migrations", () => {
       "004_dashboard_sessions.sql",
       "005_dashboard_admin_credentials.sql",
       "006_rate_limit_buckets.sql",
+      "007_local_host_fields.sql",
     ]);
     expect(selectMigrations(migrations, true).map((migration) => migration.id)).toEqual([
       "001_core_schema.sql",
@@ -143,6 +146,7 @@ describe("database migrations", () => {
       "004_dashboard_sessions.sql",
       "005_dashboard_admin_credentials.sql",
       "006_rate_limit_buckets.sql",
+      "007_local_host_fields.sql",
     ]);
   });
 });

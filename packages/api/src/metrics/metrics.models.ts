@@ -18,7 +18,7 @@ export type MetricSample = {
   uptime: number;
   collectedAt: string;
   receivedAt?: string;
-  source?: "demo" | "agent" | "repository";
+  source?: "demo" | "agent" | "repository" | "local-agent";
   agentVersion?: string;
   trend?: MetricTrend;
 };

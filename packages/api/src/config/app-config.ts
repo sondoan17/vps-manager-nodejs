@@ -19,6 +19,7 @@ export type AppConfig = {
   agentBinaryPath?: string;
   agentInstallIntervalSeconds: number;
   allowInsecureAgentHttp: boolean;
+  localAgentEnabled?: boolean;
   storageDriver: StorageDriver;
   databaseUrl?: string;
   dbSsl: boolean;
@@ -61,6 +62,7 @@ const envSchema = z.object({
   AGENT_BINARY_PATH: z.preprocess((value) => (value === "" ? undefined : value), z.string().trim().optional()),
   AGENT_INSTALL_INTERVAL_SECONDS: z.coerce.number().int().min(1).default(1),
   ALLOW_INSECURE_AGENT_HTTP: booleanSchema.default("false"),
+  LOCAL_AGENT_ENABLED: booleanSchema.default("true"),
   STORAGE_DRIVER: z.enum(["json", "postgres"]).default("json"),
   DATABASE_URL: z.preprocess((value) => (value === "" ? undefined : value), z.string().trim().min(1).optional()),
   DB_SSL: booleanSchema.default("false"),
@@ -138,6 +140,7 @@ export function parseAppConfig(env: NodeJS.ProcessEnv = process.env): AppConfig 
     agentBinaryPath: parsed.AGENT_BINARY_PATH,
     agentInstallIntervalSeconds: parsed.AGENT_INSTALL_INTERVAL_SECONDS,
     allowInsecureAgentHttp: parsed.ALLOW_INSECURE_AGENT_HTTP,
+    localAgentEnabled: parsed.LOCAL_AGENT_ENABLED,
     storageDriver: parsed.STORAGE_DRIVER,
     databaseUrl: parsed.DATABASE_URL,
     dbSsl: parsed.DB_SSL,

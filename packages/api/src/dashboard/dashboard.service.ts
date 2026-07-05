@@ -1,10 +1,13 @@
 import { Inject, Injectable } from "@nestjs/common";
 import type { AppConfig } from "../config/app-config.js";
 import { DEMO_BANNER, demoAuditEvents, demoServers, demoTerminal, getDemoJobs, getDemoMetrics } from "../demo/demo-fixtures.js";
-import type { DashboardOverview, DashboardSummary } from "../dashboard/dashboard.models.js";
+import type { DashboardMetricSample, DashboardOverview, DashboardSummary } from "../dashboard/dashboard.models.js";
 import type { VpsRecord } from "../vps/vps.models.js";
 import type { VpsRepository } from "../persistence/repositories/vps.repository.js";
-import { APP_CONFIG, VPS_REPOSITORY } from "../tokens.js";
+import type { MetricRepository } from "../persistence/repositories/metric.repository.js";
+import { APP_CONFIG, METRIC_REPOSITORY, VPS_REPOSITORY } from "../tokens.js";
+
+const STALE_THRESHOLD_MS = 120_000;
 
 function summarize(servers: readonly VpsRecord[], runningJobs: number): DashboardSummary {
   return {
@@ -16,11 +19,16 @@ function summarize(servers: readonly VpsRecord[], runningJobs: number): Dashboar
   };
 }
 
+function isFreshTimestamp(timestamp: string, thresholdMs = STALE_THRESHOLD_MS): boolean {
+  return Date.now() - new Date(timestamp).getTime() < thresholdMs;
+}
+
 @Injectable()
 export class DashboardService {
   constructor(
     @Inject(APP_CONFIG) private readonly config: AppConfig,
-    @Inject(VPS_REPOSITORY) private readonly vpsRepository: VpsRepository
+    @Inject(VPS_REPOSITORY) private readonly vpsRepository: VpsRepository,
+    @Inject(METRIC_REPOSITORY) private readonly metricRepository: MetricRepository,
   ) {}
 
   async overview(): Promise<DashboardOverview> {
@@ -42,11 +50,17 @@ export class DashboardService {
     }
 
     const servers = await this.vpsRepository.list();
+    const rawMetrics = await this.metricRepository.listLatest();
+    const metrics: DashboardMetricSample[] = rawMetrics.map((m) => ({
+      ...m,
+      freshness: isFreshTimestamp(m.receivedAt ?? m.collectedAt) ? "fresh" : "stale",
+    }));
+
     return {
       mode: "local",
       summary: summarize(servers, 0),
       servers,
-      metrics: [],
+      metrics,
       jobs: [],
       auditEvents: [],
       terminal: { label: "Terminal", networkAccess: "disabled", commands: [], sessions: [] },
