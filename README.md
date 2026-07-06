@@ -73,19 +73,19 @@ curl -fsSL https://raw.githubusercontent.com/sondoan17/vps-manager-nodejs/main/s
 This installs:
 - **Docker app**: Web UI + API server in containers (`/opt/vps-manager`)
 - **Host agent**: systemd unit that collects system metrics and pushes to the local API
-- **Dashboard**: accessible at `http://<your-ip>:3000`
+- **Dashboard**: accessible at `http://<your-ip>:38280`
 
 The installer:
 1. Detects Linux amd64 and Docker (auto-installs with `--install-docker`)
 2. Generates secure config in `/opt/vps-manager/.env` (mode 0600)
-3. Creates a `docker-compose.yml` with API (loopback `127.0.0.1:3001`) and Web (`:3000`)
+3. Creates a `docker-compose.yml` with API (loopback `127.0.0.1:38281`) and Web (`:38280`)
 4. Pulls images and starts containers
 5. Sets the dashboard password
 6. Extracts the agent binary from the API container
 7. Bootstraps an agent credential and config
 8. Installs the systemd agent via `install-local-agent.sh`
 
-Options: `--help`, `--dry-run`, `--app-dir`, `--app-port`, `--api-port`, `--api-image`, `--web-image`, `--backend-url`, `--allow-insecure-backend-url`, `--dashboard-password-file`, `--install-docker`, `--skip-agent`, `--rotate-agent`.
+Options: `--help`, `--dry-run`, `--app-dir`, `--app-port`, `--api-port`, `--api-image`, `--web-image`, `--backend-url`, `--allow-insecure-backend-url`, `--dashboard-password-file`, `--install-docker`, `--skip-pull`, `--skip-agent`, `--rotate-agent`.
 
 ### Docker App Only (without host agent)
 
@@ -100,7 +100,7 @@ sudo ./scripts/install.sh --skip-agent
 umask 077
 AGENT_CONFIG="$(mktemp)"
 docker compose -f /opt/vps-manager/docker-compose.yml exec -T api node dist/scripts/bootstrap-local-agent.js \
-  --backend-url http://127.0.0.1:3000 \
+  --backend-url http://127.0.0.1:38280 \
   --config-only \
   --rotate > "$AGENT_CONFIG"
 

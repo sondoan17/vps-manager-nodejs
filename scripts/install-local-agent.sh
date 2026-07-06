@@ -232,7 +232,9 @@ else
   mkdir -p "$CONFIG_DIR"
   chown root:"${SERVICE_USER}" "$CONFIG_DIR"
   chmod 0750 "$CONFIG_DIR"
-  cp -f "$CONFIG_SRC" "$CONFIG_FILE"
+  if [[ "$CONFIG_SRC" != "$CONFIG_FILE" ]]; then
+    cp -f "$CONFIG_SRC" "$CONFIG_FILE"
+  fi
   chown root:"${SERVICE_USER}" "$CONFIG_FILE"
   chmod 0640 "$CONFIG_FILE"
   echo "  Installed config: ${CONFIG_FILE}"
@@ -246,6 +248,8 @@ Description=VPS Manager Agent
 Documentation=https://github.com/sondoan17/vps-manager-nodejs
 After=network-online.target
 Wants=network-online.target
+StartLimitIntervalSec=60
+StartLimitBurst=5
 
 [Service]
 Type=simple
@@ -254,8 +258,6 @@ Group=${SERVICE_USER}
 ExecStart=${BINARY_DEST} -config ${CONFIG_FILE}
 Restart=always
 RestartSec=10
-StartLimitIntervalSec=60
-StartLimitBurst=5
 
 # Security hardening
 NoNewPrivileges=true

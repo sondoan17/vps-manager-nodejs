@@ -13,14 +13,15 @@
 #   --help                   Show this help.
 #   --dry-run                Print what would be done without making changes.
 #   --app-dir <path>         Application data directory (default: /opt/vps-manager).
-#   --app-port <port>        Web UI port (default: 3000).
-#   --api-port <port>        Internal API port (default: 3001).
+#   --app-port <port>        Web UI port (default: 38280).
+#   --api-port <port>        Internal API port (default: 38281).
 #   --api-image <image>      API Docker image (default: ghcr.io/sondoan17/vps-manager-nodejs-api:latest).
 #   --web-image <image>      Web Docker image (default: ghcr.io/sondoan17/vps-manager-nodejs-web:latest).
 #   --backend-url <url>      Backend URL for the host agent (default: http://127.0.0.1:<app-port>).
 #   --allow-insecure-backend-url Allow http backend URL to non-loopback addresses.
 #   --dashboard-password-file <path> Read dashboard password from file (one line).
 #   --install-docker         Auto-install Docker via get.docker.com (default: fail with instructions).
+#   --skip-pull              Do not pull images before starting (use local images).
 #   --skip-agent             Skip installing the host systemd agent.
 #   --rotate-agent           Rotate local agent token/config even if one already exists.
 #
@@ -41,14 +42,15 @@ umask 077
 # ── Defaults ──────────────────────────────────────────────────────────────
 
 APP_DIR="/opt/vps-manager"
-APP_PORT=3000
-API_PORT=3001
+APP_PORT=38280
+API_PORT=38281
 API_IMAGE="ghcr.io/sondoan17/vps-manager-nodejs-api:latest"
 WEB_IMAGE="ghcr.io/sondoan17/vps-manager-nodejs-web:latest"
 BACKEND_URL=""
 ALLOW_INSECURE_BACKEND_URL=false
 DASHBOARD_PASSWORD_FILE=""
 INSTALL_DOCKER=false
+SKIP_PULL=false
 SKIP_AGENT=false
 ROTATE_AGENT=false
 DRY_RUN=false
@@ -94,6 +96,7 @@ while [[ $# -gt 0 ]]; do
       echo "  --allow-insecure-backend-url Allow http backend URL to non-loopback addresses."
       echo "  --dashboard-password-file <path> Read password from file."
       echo "  --install-docker          Auto-install Docker via get.docker.com."
+      echo "  --skip-pull               Do not pull images before starting (use local images)."
       echo "  --skip-agent              Skip host systemd agent installation."
       echo "  --rotate-agent            Rotate local agent token/config."
       exit 0 ;;
@@ -107,6 +110,7 @@ while [[ $# -gt 0 ]]; do
     --allow-insecure-backend-url) ALLOW_INSECURE_BACKEND_URL=true; shift ;;
     --dashboard-password-file) DASHBOARD_PASSWORD_FILE="$2"; shift 2 ;;
     --install-docker) INSTALL_DOCKER=true; shift ;;
+    --skip-pull) SKIP_PULL=true; shift ;;
     --skip-agent) SKIP_AGENT=true; shift ;;
     --rotate-agent) ROTATE_AGENT=true; shift ;;
     *)
@@ -300,12 +304,32 @@ fi
 
 # ── Pull ──────────────────────────────────────────────────────────────────
 
-if [[ "$DRY_RUN" == "true" ]]; then
+if [[ "$SKIP_PULL" == "true" ]]; then
+  echo "[Docker] Skipping image pull (--skip-pull)."
+elif [[ "$DRY_RUN" == "true" ]]; then
   echo "[DRY-RUN] Would run: docker compose -f ${COMPOSE_FILE} pull"
 else
   echo "[Docker] Pulling images..."
   docker compose -f "$COMPOSE_FILE" pull
   echo "[Docker] Images pulled."
+fi
+
+# ── Bind mount ownership ──────────────────────────────────────────────────
+
+# The API image runs as a non-root user. Bind-mounted data/private directories
+# must be owned by that container UID/GID or JSON storage and credentials cannot
+# be written on first boot.
+if [[ "$DRY_RUN" == "true" ]]; then
+  echo "[DRY-RUN] Would set ${DATA_DIR} and ${PRIVATE_DIR} ownership to the API container user"
+else
+  API_UID_GID="$(docker run --rm --entrypoint sh "$API_IMAGE" -lc 'printf "%s:%s" "$(id -u)" "$(id -g)"')"
+  if [[ ! "$API_UID_GID" =~ ^[0-9]+:[0-9]+$ ]]; then
+    echo "Error: Could not determine API image runtime UID/GID for ${API_IMAGE}." >&2
+    exit 1
+  fi
+  chown -R "$API_UID_GID" "$DATA_DIR" "$PRIVATE_DIR"
+  chmod 0700 "$DATA_DIR" "$PRIVATE_DIR"
+  echo "[Setup] Data directories owned by API container user (${API_UID_GID})."
 fi
 
 # ── Start ─────────────────────────────────────────────────────────────────
