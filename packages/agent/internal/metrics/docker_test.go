@@ -362,7 +362,7 @@ func TestCollectDocker_ContainerLimit(t *testing.T) {
 				if i > 0 {
 					_, _ = w.Write([]byte(`,`))
 				}
-				_, _ = w.Write([]byte(`{"Id":"id"`))
+				_, _ = w.Write([]byte(`{"Id":"id`))
 				_, _ = w.Write([]byte(string(rune('a' + i%26))))
 				_, _ = w.Write([]byte(`","Names":["/c`))
 				_, _ = w.Write([]byte(string(rune('0' + i%10))))
