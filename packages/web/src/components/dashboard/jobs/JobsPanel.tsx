@@ -67,7 +67,7 @@ export function JobsPanel({
 
   if (compact) {
     return (
-      <Card className="min-w-0 max-w-full overflow-hidden border-slate-200">
+      <Card className="min-w-0 max-w-full overflow-hidden border-neutral-200">
         <CardHeader className="min-w-0 p-4 pb-3 sm:p-5 sm:pb-4">
           <div className="flex items-center justify-between gap-3">
             <CardTitle className="truncate text-xl font-black">
@@ -94,7 +94,7 @@ export function JobsPanel({
   }
 
   return (
-    <Card className="min-w-0 max-w-full overflow-hidden border-slate-200 bg-white shadow-sm">
+    <Card className="min-w-0 max-w-full overflow-hidden border-neutral-200 bg-white shadow-sm">
       <CardHeader className="min-w-0 p-4 pb-3 sm:p-5 sm:pb-4">
         <div className="flex flex-wrap items-start justify-between gap-3">
           <div className="min-w-0">
@@ -104,12 +104,12 @@ export function JobsPanel({
             </CardDescription>
           </div>
           <div className="flex shrink-0 items-center gap-2">
-            <div className="flex items-center gap-1 rounded-2xl border border-slate-200 bg-slate-100 p-1 shadow-inner">
+            <div className="flex items-center gap-1 rounded-md border border-neutral-200 bg-neutral-100 p-1 shadow-inner">
               <Button
                 type="button"
                 variant={viewMode === "compact" ? "secondary" : "ghost"}
                 size="sm"
-                className="h-9 rounded-xl px-3 text-xs font-black"
+                className="h-9 rounded-md px-3 text-xs font-black"
                 onClick={() => setViewMode("compact")}
               >
                 Compact view
@@ -118,7 +118,7 @@ export function JobsPanel({
                 type="button"
                 variant={viewMode === "detailed" ? "secondary" : "ghost"}
                 size="sm"
-                className="h-9 rounded-xl px-3 text-xs font-black"
+                className="h-9 rounded-md px-3 text-xs font-black"
                 onClick={() => setViewMode("detailed")}
               >
                 Detailed view
@@ -128,7 +128,7 @@ export function JobsPanel({
               type="button"
               variant="outline"
               size="sm"
-              className="ml-1 rounded-xl border-slate-300 bg-white text-sm font-black shadow-sm"
+              className="ml-1 rounded-md border-neutral-300 bg-white text-sm font-black shadow-sm"
             >
               Logs
             </Button>
@@ -137,7 +137,7 @@ export function JobsPanel({
       </CardHeader>
       <CardContent className="grid min-w-0 max-w-full gap-4 overflow-hidden p-4 pt-0 sm:p-5 sm:pt-0">
         <section
-          className="grid gap-3 rounded-xl border border-slate-200 bg-slate-50 p-3 md:grid-cols-[minmax(0,1fr)_170px_190px]"
+          className="grid gap-3 rounded-md border border-neutral-200 bg-neutral-50 p-3 md:grid-cols-[minmax(0,1fr)_170px_190px]"
           aria-label="Jobs filters"
         >
           <Input
@@ -148,7 +148,7 @@ export function JobsPanel({
           />
           <select
             aria-label="Filter job status"
-            className="h-10 rounded-xl border border-slate-200 bg-white px-3 text-sm font-bold text-slate-700 outline-none focus:ring-4 focus:ring-ring"
+            className="h-10 rounded-md border border-neutral-200 bg-white px-3 text-sm font-bold text-neutral-700 outline-none focus:ring-4 focus:ring-ring"
             value={statusFilter}
             onChange={(event) => setStatusFilter(event.target.value)}
           >
@@ -160,7 +160,7 @@ export function JobsPanel({
           </select>
           <select
             aria-label="Filter job type"
-            className="h-10 rounded-xl border border-slate-200 bg-white px-3 text-sm font-bold text-slate-700 outline-none focus:ring-4 focus:ring-ring"
+            className="h-10 rounded-md border border-neutral-200 bg-white px-3 text-sm font-bold text-neutral-700 outline-none focus:ring-4 focus:ring-ring"
             value={typeFilter}
             onChange={(event) => setTypeFilter(event.target.value)}
           >
@@ -186,7 +186,7 @@ export function JobsPanel({
           <EmptyState>No jobs match these filters.</EmptyState>
         )}
         <section
-          className="grid grid-cols-1 gap-3 border-t border-slate-200 pt-4 sm:grid-cols-2 xl:grid-cols-5"
+          className="grid grid-cols-1 gap-3 border-t border-neutral-200 pt-4 sm:grid-cols-2 xl:grid-cols-5"
           aria-label="Jobs summary"
         >
           <SummaryPill label="Workers" value={`${workers || 0}`} />
@@ -210,17 +210,17 @@ export function JobsPanel({
 function CompactJobRow({ job }: { job: DashboardOverview["jobs"][number] }) {
   const progress = Math.min(100, Math.max(0, job.progress));
   return (
-    <article className="grid min-w-0 gap-2 rounded-xl border border-slate-200 bg-white p-3 shadow-sm">
+    <article className="grid min-w-0 gap-2 rounded-md border border-neutral-200 bg-white p-3 shadow-sm">
       <div className="flex min-w-0 items-start justify-between gap-3">
         <div className="min-w-0">
           <strong
-            className="block truncate text-[17px] font-black leading-6 text-slate-950"
+            className="block truncate text-[17px] font-black leading-6 text-neutral-950"
             title={job.type}
           >
             {job.type}
           </strong>
           <p
-            className="mt-1 truncate text-[15px] font-semibold leading-6 text-slate-500"
+            className="mt-1 truncate text-[15px] font-semibold leading-6 text-neutral-500"
             title={`${job.vpsId} \u00b7 ${progress}% progress`}
           >
             {job.vpsId} · {job.workerId || "Worker n/a"} · {progress}% progress
@@ -230,9 +230,9 @@ function CompactJobRow({ job }: { job: DashboardOverview["jobs"][number] }) {
           {job.status}
         </Badge>
       </div>
-      <div className="h-2 overflow-hidden rounded-full bg-slate-100">
+      <div className="h-2 overflow-hidden rounded-full bg-neutral-100">
         <div
-          className="h-full rounded-full bg-cyan-600"
+          className="h-full rounded-full bg-neutral-600"
           style={{ width: `${progress}%` }}
         />
       </div>
@@ -264,41 +264,41 @@ function JobCompactListRow({
     .join(" \u00b7 ");
   return (
     <article
-      className={`grid min-w-0 gap-2 rounded-xl border px-3 py-2.5 shadow-sm md:grid-cols-[minmax(0,1fr)_auto] md:items-center ${isFailed ? "border-red-200 bg-red-50/70" : isRunning ? "border-cyan-200 bg-cyan-50/40 ring-1 ring-cyan-100" : "border-slate-200 bg-white"}`}
+      className={`grid min-w-0 gap-2 rounded-md border px-3 py-2.5 shadow-sm md:grid-cols-[minmax(0,1fr)_auto] md:items-center ${isFailed ? "border-neutral-200 bg-neutral-50/70" : isRunning ? "border-neutral-200 bg-neutral-50/40 ring-1 ring-neutral-100" : "border-neutral-200 bg-white"}`}
     >
       <div className="min-w-0">
         <div className="flex flex-wrap items-center gap-2">
           <strong
-            className="truncate text-[15px] font-black text-slate-950"
+            className="truncate text-[15px] font-black text-neutral-950"
             title={job.type}
           >
             {job.type}
           </strong>
           <JobStatusBadge status={job.status} />
-          <span className="truncate font-mono text-[11px] font-bold text-slate-400">
+          <span className="truncate font-mono text-[11px] font-bold text-neutral-400">
             {job.id}
           </span>
         </div>
         <p
-          className="mt-1 truncate text-xs font-bold text-slate-500"
+          className="mt-1 truncate text-xs font-bold text-neutral-500"
           title={meta}
         >
           {meta}
         </p>
         {isQueued ? (
-          <p className="mt-1 text-xs font-bold text-slate-500">
+          <p className="mt-1 text-xs font-bold text-neutral-500">
             Queued / {job.outputPreview || "Waiting for an available worker."}
           </p>
         ) : null}
         {isFailed && job.errorMessage ? (
-          <p className="mt-1 line-clamp-2 text-xs font-bold text-red-700">
+          <p className="mt-1 line-clamp-2 text-xs font-bold text-neutral-700">
             {job.errorMessage}
           </p>
         ) : null}
         {!isQueued ? (
-          <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-slate-100">
+          <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-neutral-100">
             <div
-              className={`h-full rounded-full ${isFailed ? "bg-red-500" : isRunning ? "bg-cyan-500" : "bg-slate-400"}`}
+              className={`h-full rounded-full ${isFailed ? "bg-neutral-500" : isRunning ? "bg-neutral-500" : "bg-neutral-400"}`}
               style={{ width: `${progress}%` }}
             />
           </div>
@@ -306,7 +306,7 @@ function JobCompactListRow({
       </div>
       <div className="flex flex-wrap items-center gap-2 md:justify-end">
         {!isQueued ? (
-          <span className="min-w-12 text-right text-xs font-black text-slate-500">
+          <span className="min-w-12 text-right text-xs font-black text-neutral-500">
             {progress}%
           </span>
         ) : null}
@@ -318,7 +318,7 @@ function JobCompactListRow({
               isFailed ? "destructive" : isRunning ? "secondary" : "outline"
             }
             size="sm"
-            className={`h-8 rounded-lg text-xs font-black ${isRunning ? "border border-cyan-200 bg-cyan-50 text-cyan-900 hover:bg-cyan-100" : ""}`}
+            className={`h-8 rounded-sm text-xs font-black ${isRunning ? "border border-neutral-200 bg-neutral-50 text-neutral-900 hover:bg-neutral-100" : ""}`}
           >
             <a href={job.errorLogUrl} target="_blank" rel="noopener noreferrer">
               View log
@@ -330,7 +330,7 @@ function JobCompactListRow({
             type="button"
             variant="outline"
             size="sm"
-            className="h-8 rounded-lg text-xs font-black"
+            className="h-8 rounded-sm text-xs font-black"
             disabled
           >
             Cancel
@@ -341,7 +341,7 @@ function JobCompactListRow({
             type="button"
             variant="outline"
             size="sm"
-            className="h-8 rounded-lg border-red-200 text-xs font-black text-red-700"
+            className="h-8 rounded-sm border-neutral-200 text-xs font-black text-neutral-700"
             disabled
           >
             Retry
@@ -376,23 +376,23 @@ function JobCard({ job }: { job: DashboardOverview["jobs"][number] }) {
   ].join(" \u00b7 ");
   return (
     <article
-      className={`grid min-w-0 gap-3 rounded-xl border p-4 shadow-sm ${isFailed ? "border-red-200 bg-red-50/60 ring-1 ring-red-100" : "border-slate-200 bg-white"}`}
+      className={`grid min-w-0 gap-3 rounded-md border p-4 shadow-sm ${isFailed ? "border-neutral-200 bg-neutral-50/60 ring-1 ring-neutral-100" : "border-neutral-200 bg-white"}`}
     >
       <div className="grid min-w-0 gap-3 xl:grid-cols-[minmax(0,1fr)_auto]">
         <div className="min-w-0">
           <div className="flex flex-wrap items-center gap-2">
             <strong
-              className="truncate text-lg font-black leading-6 text-slate-950"
+              className="truncate text-lg font-black leading-6 text-neutral-950"
               title={job.type}
             >
               {job.type}
             </strong>
             <JobStatusBadge status={job.status} />
           </div>
-          <p className="mt-1 break-all font-mono text-xs font-bold text-slate-500">
+          <p className="mt-1 break-all font-mono text-xs font-bold text-neutral-500">
             {job.id}
           </p>
-          <p className="mt-2 text-sm font-bold leading-5 text-slate-600">
+          <p className="mt-2 text-sm font-bold leading-5 text-neutral-600">
             {inlineMeta}
           </p>
         </div>
@@ -405,7 +405,7 @@ function JobCard({ job }: { job: DashboardOverview["jobs"][number] }) {
                 isFailed ? "destructive" : isRunning ? "secondary" : "outline"
               }
               size="sm"
-              className={`rounded-xl ${isRunning ? "border border-cyan-200 bg-cyan-50 text-cyan-900 hover:bg-cyan-100" : ""}`}
+              className={`rounded-md ${isRunning ? "border border-neutral-200 bg-neutral-50 text-neutral-900 hover:bg-neutral-100" : ""}`}
             >
               <a
                 href={job.errorLogUrl}
@@ -420,7 +420,7 @@ function JobCard({ job }: { job: DashboardOverview["jobs"][number] }) {
               type="button"
               variant="outline"
               size="sm"
-              className="rounded-xl"
+              className="rounded-md"
               disabled
             >
               View log
@@ -431,7 +431,7 @@ function JobCard({ job }: { job: DashboardOverview["jobs"][number] }) {
               type="button"
               variant="outline"
               size="sm"
-              className="rounded-xl"
+              className="rounded-md"
               disabled
               title="Cancel is not wired to an API yet"
             >
@@ -443,7 +443,7 @@ function JobCard({ job }: { job: DashboardOverview["jobs"][number] }) {
               type="button"
               variant="outline"
               size="sm"
-              className="rounded-xl border-red-200 text-red-700 hover:bg-red-50"
+              className="rounded-md border-neutral-200 text-neutral-700 hover:bg-neutral-50"
               disabled
               title="Retry is not wired to an API yet"
             >
@@ -454,29 +454,29 @@ function JobCard({ job }: { job: DashboardOverview["jobs"][number] }) {
         </div>
       </div>
       {isQueued ? (
-        <p className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-sm font-bold leading-5 text-slate-600">
+        <p className="rounded-sm border border-neutral-200 bg-neutral-50 px-3 py-2 text-sm font-bold leading-5 text-neutral-600">
           Queued / {job.outputPreview || "Waiting for an available worker."}
         </p>
       ) : (
         <div>
-          <div className="flex items-center justify-between gap-3 text-xs font-black uppercase tracking-[0.08em] text-slate-500">
+          <div className="flex items-center justify-between gap-3 text-xs font-black uppercase tracking-[0.08em] text-neutral-500">
             <span>Progress</span>
             <span>{progress}%</span>
           </div>
-          <div className="mt-2 h-2.5 overflow-hidden rounded-full bg-slate-100">
+          <div className="mt-2 h-2.5 overflow-hidden rounded-full bg-neutral-100">
             <div
-              className={`h-full rounded-full ${isFailed ? "bg-red-500" : isRunning ? "bg-cyan-500" : "bg-cyan-600"}`}
+              className={`h-full rounded-full ${isFailed ? "bg-neutral-500" : isRunning ? "bg-neutral-500" : "bg-neutral-600"}`}
               style={{ width: `${progress}%` }}
             />
           </div>
         </div>
       )}
       {job.errorMessage ? (
-        <p className="rounded-lg border border-red-200 bg-white px-3 py-2 text-sm font-bold leading-5 text-red-700">
+        <p className="rounded-sm border border-neutral-200 bg-white px-3 py-2 text-sm font-bold leading-5 text-neutral-700">
           {job.errorMessage}
         </p>
       ) : job.outputPreview && !isQueued ? (
-        <p className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-sm font-semibold leading-5 text-slate-600">
+        <p className="rounded-sm border border-neutral-200 bg-neutral-50 px-3 py-2 text-sm font-semibold leading-5 text-neutral-600">
           {job.outputPreview}
         </p>
       ) : null}
@@ -491,8 +491,8 @@ function JobStatusBadge({
 }) {
   if (status === "running")
     return (
-      <span className="inline-flex items-center gap-1 rounded-full border border-cyan-200 bg-cyan-100 px-2 py-0.5 text-xs font-black uppercase text-cyan-800">
-        <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-cyan-600" />
+      <span className="inline-flex items-center gap-1 rounded-full border border-neutral-200 bg-neutral-100 px-2 py-0.5 text-xs font-black uppercase text-neutral-800">
+        <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-neutral-600" />
         Running
       </span>
     );
@@ -511,7 +511,7 @@ function JobOverflow({ job }: { job: DashboardOverview["jobs"][number] }) {
           type="button"
           variant="outline"
           size="sm"
-          className="h-8 rounded-lg px-2"
+          className="h-8 rounded-sm px-2"
           aria-label={`More actions for ${job.id}`}
         >
           <MoreHorizontal size={15} />
@@ -519,7 +519,7 @@ function JobOverflow({ job }: { job: DashboardOverview["jobs"][number] }) {
       </DropdownMenuTrigger>
       <DropdownMenuContent
         align="end"
-        className="z-[80] w-44 rounded-xl border border-slate-200 bg-white shadow-2xl shadow-slate-950/20"
+        className="z-[80] w-44 rounded-md border border-neutral-200 bg-white shadow-2xl shadow-neutral-950/20"
       >
         <DropdownMenuItem disabled className="opacity-45">
           Restart worker

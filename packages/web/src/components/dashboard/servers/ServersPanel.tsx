@@ -99,10 +99,10 @@ export function ServersPanel(props: ServersPanelProps) {
   return (
     <div className="grid min-w-0 max-w-full gap-5 xl:grid-cols-[minmax(0,1fr)_minmax(360px,420px)]">
       <section className="min-w-0 space-y-4">
-        <Card className="min-w-0 overflow-hidden border border-stone-200/80 bg-white/95 shadow-panel backdrop-blur">
-          <CardHeader className="min-w-0 border-b border-stone-200/70 bg-[#f6f3ec] pb-4">
-            <p className="truncate text-[11px] font-black uppercase tracking-[0.2em] text-[#844fba]">Fleet inventory</p>
-            <CardTitle className="truncate text-[#15181e]">Servers</CardTitle>
+        <Card className="min-w-0 overflow-hidden border border-neutral-200/80 bg-white/95 shadow-panel backdrop-blur">
+          <CardHeader className="min-w-0 border-b border-neutral-200/70 bg-[#f6f3ec] pb-4">
+            <p className="truncate text-[11px] font-black uppercase tracking-[0.2em] text-[#000000]">Fleet inventory</p>
+            <CardTitle className="truncate text-[#000000]">Servers</CardTitle>
             <CardDescription>
               Search, filter, install keys, and verify access.
             </CardDescription>
@@ -117,7 +117,7 @@ export function ServersPanel(props: ServersPanelProps) {
               />
               <select
                 aria-label="Filter status"
-                className="h-10 min-w-0 w-full rounded-md border border-stone-200 bg-white px-3 text-sm font-semibold text-slate-700 outline-none transition focus:border-accent focus:ring-4 focus:ring-accent/20"
+                className="h-10 min-w-0 w-full rounded-md border border-neutral-200 bg-white px-3 text-sm font-semibold text-neutral-700 outline-none transition focus:border-accent focus:ring-4 focus:ring-accent/20"
                 value={props.statusFilter}
                 onChange={(event) =>
                   props.onStatusFilterChange(event.target.value)
@@ -177,9 +177,9 @@ function CreateServerCard({
   onCreateFormChange,
 }: ServersPanelProps) {
   return (
-    <Card className="h-fit min-w-0 overflow-hidden border border-stone-200/80 bg-white/95 shadow-panel backdrop-blur xl:sticky xl:top-5">
-      <CardHeader className="min-w-0 border-b border-stone-200 bg-[#15181e] pb-4 text-white">
-        <p className="truncate text-[11px] font-black uppercase tracking-[0.2em] text-[#ffb000]">
+    <Card className="h-fit min-w-0 overflow-hidden border border-neutral-200/80 bg-white/95 shadow-panel backdrop-blur xl:sticky xl:top-5">
+      <CardHeader className="min-w-0 border-b border-neutral-200 bg-[#000000] pb-4 text-white">
+        <p className="truncate text-[11px] font-black uppercase tracking-[0.2em] text-[#a3a3a3]">
           Add server
         </p>
         <CardTitle className="truncate text-white">New VPS</CardTitle>
@@ -194,7 +194,7 @@ function CreateServerCard({
           className="grid min-w-0 gap-4"
         >
           <fieldset className="grid gap-3">
-            <legend className="mb-1 text-[11px] font-black uppercase tracking-[0.14em] text-slate-500">
+            <legend className="mb-1 text-[11px] font-black uppercase tracking-[0.14em] text-neutral-500">
               Basic info
             </legend>
             <Label>
@@ -229,7 +229,7 @@ function CreateServerCard({
             </Label>
           </fieldset>
           <fieldset className="grid gap-3">
-            <legend className="mb-1 text-[11px] font-black uppercase tracking-[0.14em] text-slate-500">
+            <legend className="mb-1 text-[11px] font-black uppercase tracking-[0.14em] text-neutral-500">
               SSH access
             </legend>
             <div className="grid min-w-0 gap-3 sm:grid-cols-2">
@@ -267,7 +267,7 @@ function CreateServerCard({
             </div>
           </fieldset>
           <fieldset className="grid gap-3">
-            <legend className="mb-1 text-[11px] font-black uppercase tracking-[0.14em] text-slate-500">
+            <legend className="mb-1 text-[11px] font-black uppercase tracking-[0.14em] text-neutral-500">
               Key provisioning
             </legend>
             <Label>
@@ -287,7 +287,7 @@ function CreateServerCard({
               />
             </Label>
           </fieldset>
-          <Button type="submit" disabled={busy} className="min-w-0 rounded-xl">
+          <Button type="submit" disabled={busy} className="min-w-0 rounded-md">
             <Server size={18} />
             <span className="truncate">Create VPS</span>
           </Button>
@@ -349,18 +349,18 @@ function ServerCard({
 
   return (
     <article
-      className={`min-w-0 rounded-xl border px-4 py-4 shadow-[0_10px_28px_rgba(13,14,18,0.04)] transition duration-300 ${isDown ? "border-red-200 bg-red-50/70 shadow-red-950/5 ring-1 ring-red-100" : "border-stone-200/90 bg-white hover:-translate-y-0.5 hover:border-[#844fba]/30 hover:shadow-[0_18px_38px_rgba(13,14,18,0.08)]"}`}
+      className={`min-w-0 rounded-md border px-4 py-4 shadow-[0_10px_28px_rgba(13,14,18,0.04)] transition duration-300 ${isDown ? "border-neutral-200 bg-neutral-50/70 shadow-neutral-950/5 ring-1 ring-neutral-100" : "border-neutral-200/90 bg-white hover:-translate-y-0.5 hover:border-[#000000]/30 hover:shadow-[0_18px_38px_rgba(13,14,18,0.08)]"}`}
     >
       <div
-        className={`grid gap-4 xl:grid-cols-[minmax(320px,1.25fr)_minmax(230px,0.8fr)_minmax(220px,0.55fr)_auto] xl:items-center ${isDown ? "border-l-4 border-red-500 pl-3" : ""}`}
+        className={`grid gap-4 xl:grid-cols-[minmax(320px,1.25fr)_minmax(230px,0.8fr)_minmax(220px,0.55fr)_auto] xl:items-center ${isDown ? "border-l-4 border-neutral-500 pl-3" : ""}`}
       >
         <div className="min-w-0">
           <div className="flex flex-wrap items-center gap-2">
-            <h3 className="truncate text-[17px] font-extrabold tracking-[-0.03em] text-[#15181e]">
+            <h3 className="truncate text-[17px] font-bold tracking-[-0.03em] text-[#000000]">
               {vps.name}
             </h3>
             {isDown ? (
-              <span className="inline-flex items-center gap-1 rounded-full border border-red-200 bg-red-100 px-2 py-0.5 text-xs font-black uppercase text-red-700">
+              <span className="inline-flex items-center gap-1 rounded-full border border-neutral-200 bg-neutral-100 px-2 py-0.5 text-xs font-black uppercase text-neutral-700">
                 <AlertTriangle size={13} />
                 Down
               </span>
@@ -373,23 +373,23 @@ function ServerCard({
               {isLocalHost ? "Local agent" : isReady ? "Key ready" : "Needs password"}
             </Badge>
           </div>
-          <p className="mt-1 break-all text-sm font-semibold leading-6 text-slate-600">
+          <p className="mt-1 break-all text-sm font-semibold leading-6 text-neutral-600">
             {vps.username}@{vps.host}:{vps.port}
           </p>
-          <p className="mt-1 break-all font-mono text-xs font-bold text-slate-500">
+          <p className="mt-1 break-all font-mono text-xs font-bold text-neutral-500">
             ID: {vps.id}
           </p>
-          <div className="mt-2 flex flex-wrap items-center gap-x-2 gap-y-1.5 text-[13px] font-bold text-slate-500">
+          <div className="mt-2 flex flex-wrap items-center gap-x-2 gap-y-1.5 text-[13px] font-bold text-neutral-500">
             <span className="flex items-center gap-1.5">
               <ServerCog size={14} />
               {vps.provider || "Provider not set"}
             </span>
-            <span className="text-slate-300">/</span>
+            <span className="text-neutral-300">/</span>
             <span className="flex items-center gap-1.5">
               <MapPin size={14} />
               {vps.region || "Region not set"}
             </span>
-            <span className="text-slate-300">/</span>
+            <span className="text-neutral-300">/</span>
             <span className="flex items-center gap-1.5">
               <Clock3 size={14} />
               Seen {formatDate(vps.lastSeenAt)}
@@ -397,17 +397,17 @@ function ServerCard({
           </div>
           {vps.tags?.length ? (
             <p
-              className="mt-2 truncate text-xs font-bold text-slate-500"
+              className="mt-2 truncate text-xs font-bold text-neutral-500"
               title={`Tags: ${vps.tags.join(", ")}`}
             >
-              <span className="font-black uppercase tracking-[0.08em] text-slate-400">
+              <span className="font-black uppercase tracking-[0.08em] text-neutral-400">
                 Tags:
               </span>{" "}
               {vps.tags.join(", ")}
             </p>
           ) : null}
           {vps.notes ? (
-            <p className="mt-2 line-clamp-2 text-sm leading-5 text-slate-500">
+            <p className="mt-2 line-clamp-2 text-sm leading-5 text-neutral-500">
               {vps.notes}
             </p>
           ) : null}
@@ -428,7 +428,7 @@ function ServerCard({
                 type="button"
                 size="sm"
                 variant="secondary"
-                className="border border-emerald-200 bg-emerald-50 text-emerald-800 shadow-sm hover:bg-emerald-50 disabled:opacity-100"
+                className="border border-neutral-200 bg-neutral-50 text-neutral-800 shadow-sm hover:bg-neutral-50 disabled:opacity-100"
                 disabled
               >
                 <Activity size={16} />
@@ -438,7 +438,7 @@ function ServerCard({
                 type="button"
                 size="sm"
                 variant="secondary"
-                className="border border-slate-300 bg-white text-slate-900 shadow-sm hover:bg-slate-100 disabled:opacity-100"
+                className="border border-neutral-300 bg-white text-neutral-900 shadow-sm hover:bg-neutral-100 disabled:opacity-100"
                 disabled
               >
                 <Activity size={16} />
@@ -481,7 +481,7 @@ function ServerCard({
                 type="button"
                 size="sm"
                 variant="secondary"
-                className="border border-slate-300 bg-white text-slate-900 shadow-sm hover:bg-slate-100 disabled:opacity-100"
+                className="border border-neutral-300 bg-white text-neutral-900 shadow-sm hover:bg-neutral-100 disabled:opacity-100"
                 disabled
               >
                 <Activity size={16} />
@@ -552,7 +552,7 @@ function ServerCard({
         <form
           onSubmit={(event) => event.preventDefault()}
           autoComplete="off"
-          className="mt-3 grid gap-2 border-t border-slate-200 pt-3 sm:grid-cols-[minmax(0,1fr)_auto]"
+          className="mt-3 grid gap-2 border-t border-neutral-200 pt-3 sm:grid-cols-[minmax(0,1fr)_auto]"
         >
           <Label>
             {isReady ? "One-time password for rotation" : "One-time password"}
@@ -569,7 +569,7 @@ function ServerCard({
               onKeyDown={handlePasswordKeyDown}
             />
             {passwordError ? (
-              <p className="mt-1 text-xs font-semibold text-red-600">{passwordError}</p>
+              <p className="mt-1 text-xs font-semibold text-neutral-600">{passwordError}</p>
             ) : null}
           </Label>
           <AlertDialog open={confirmOpen} onOpenChange={setConfirmOpen}>
@@ -578,7 +578,7 @@ function ServerCard({
                 type="button"
                 size="sm"
                 disabled={busy || !password.trim()}
-                className="self-end rounded-xl"
+                className="self-end rounded-md"
               >
                 <KeyRound size={16} />
                 {isReady ? "Rotate key" : "Install key"}
@@ -628,7 +628,7 @@ function ServerRuntimeMeta({
     `${runningJobs} running job${runningJobs === 1 ? "" : "s"}`,
   ].filter(Boolean);
   return (
-    <div className="min-w-0 rounded-xl border border-slate-200 bg-slate-50/90 px-3 py-2 text-[12px] font-bold leading-5 text-slate-600 shadow-sm">
+    <div className="min-w-0 rounded-md border border-neutral-200 bg-neutral-50/90 px-3 py-2 text-[12px] font-bold leading-5 text-neutral-600 shadow-sm">
       <p className="truncate" title={parts.join(" / ")}>
         {parts.join(" / ")}
       </p>
@@ -643,7 +643,7 @@ function ServerSystemInfoStrip({
 }) {
   if (!systemInfo) {
     return (
-      <div className="mt-3 rounded-xl border border-dashed border-slate-200 bg-slate-50/70 px-3 py-2 text-xs font-bold text-slate-400">
+      <div className="mt-3 rounded-md border border-dashed border-neutral-200 bg-neutral-50/70 px-3 py-2 text-xs font-bold text-neutral-400">
         System info not reported yet.
       </div>
     );
@@ -663,19 +663,19 @@ function ServerSystemInfoStrip({
     : "Disk n/a";
 
   return (
-    <div className="mt-3 grid gap-2 rounded-xl border border-slate-200 bg-gradient-to-br from-slate-50 to-white px-3 py-2 text-xs text-slate-600 shadow-sm">
-      <p className="truncate font-black text-slate-800" title={osLabel}>
+    <div className="mt-3 grid gap-2 rounded-md border border-neutral-200 bg-gradient-to-br from-neutral-50 to-white px-3 py-2 text-xs text-neutral-600 shadow-sm">
+      <p className="truncate font-black text-neutral-800" title={osLabel}>
         {osLabel}
       </p>
       <div className="flex flex-wrap gap-x-2 gap-y-1 font-bold">
         <span className="truncate" title={kernelParts.join(" · ") || undefined}>
           {kernelParts.length ? kernelParts.join(" · ") : "Kernel n/a"}
         </span>
-        <span className="text-slate-300">/</span>
+        <span className="text-neutral-300">/</span>
         <span className="truncate" title={cpuLabel}>{cpuLabel}</span>
-        <span className="text-slate-300">/</span>
+        <span className="text-neutral-300">/</span>
         <span>{memoryLabel}</span>
-        <span className="text-slate-300">/</span>
+        <span className="text-neutral-300">/</span>
         <span>{diskLabel}</span>
       </div>
     </div>
@@ -725,20 +725,20 @@ function DockerMetricsPanel({
 
   let body: ReactNode;
   if (!enabled) {
-    body = <p className="text-xs font-bold text-slate-500">Docker metrics off.</p>;
+    body = <p className="text-xs font-bold text-neutral-500">Docker metrics off.</p>;
   } else if (!dockerMetrics) {
-    body = <p className="text-xs font-bold text-amber-700">Waiting for Docker-capable agent.</p>;
+    body = <p className="text-xs font-bold text-neutral-700">Waiting for Docker-capable agent.</p>;
   } else if (!dockerMetrics.available) {
     body = (
       <div className="space-y-1">
-        <p className="text-xs font-black text-amber-800">{formatDockerError(dockerMetrics.errorCode)}</p>
-        <p className="text-[11px] font-semibold text-slate-500">Check Docker socket access for the agent.</p>
+        <p className="text-xs font-black text-neutral-800">{formatDockerError(dockerMetrics.errorCode)}</p>
+        <p className="text-[11px] font-semibold text-neutral-500">Check Docker socket access for the agent.</p>
       </div>
     );
   } else {
     body = (
       <div className="space-y-2">
-        <div className="flex flex-wrap gap-1.5 text-[11px] font-black text-slate-700">
+        <div className="flex flex-wrap gap-1.5 text-[11px] font-black text-neutral-700">
           <span className="rounded-full bg-white px-2 py-0.5 shadow-sm">{dockerMetrics.containerRunning}/{dockerMetrics.containerTotal} running</span>
           <span className="rounded-full bg-white px-2 py-0.5 shadow-sm">CPU {dockerMetrics.cpuPercent.toFixed(1)}%</span>
           <span className="rounded-full bg-white px-2 py-0.5 shadow-sm">RAM {formatBytes(dockerMetrics.memoryUsageBytes)}</span>
@@ -748,8 +748,8 @@ function DockerMetricsPanel({
         {topContainers.length ? (
           <div className="grid gap-1">
             {topContainers.map((container) => (
-              <p key={container.id} className="truncate text-[11px] font-bold text-slate-600" title={`${container.name} · ${container.image} · ${container.status}`}>
-                <span className="text-slate-900">{container.name}</span> · {container.state} · {container.cpuPercent.toFixed(1)}% · {formatBytes(container.memoryUsageBytes)}
+              <p key={container.id} className="truncate text-[11px] font-bold text-neutral-600" title={`${container.name} · ${container.image} · ${container.status}`}>
+                <span className="text-neutral-900">{container.name}</span> · {container.state} · {container.cpuPercent.toFixed(1)}% · {formatBytes(container.memoryUsageBytes)}
               </p>
             ))}
           </div>
@@ -759,14 +759,14 @@ function DockerMetricsPanel({
   }
 
   return (
-    <div className="rounded-xl border border-slate-200 bg-slate-50/90 px-3 py-2 shadow-sm">
+    <div className="rounded-md border border-neutral-200 bg-neutral-50/90 px-3 py-2 shadow-sm">
       <div className="mb-1.5 flex items-center justify-between gap-2">
-        <span className="text-[11px] font-black uppercase tracking-[0.12em] text-slate-500">Docker</span>
+        <span className="text-[11px] font-black uppercase tracking-[0.12em] text-neutral-500">Docker</span>
         <Button
           type="button"
           size="sm"
           variant={enabled ? "secondary" : "outline"}
-          className="h-7 rounded-lg px-2 text-[11px]"
+          className="h-7 rounded-sm px-2 text-[11px]"
           disabled={busy}
           aria-pressed={enabled}
           aria-label={`${enabled ? "Disable" : "Enable"} Docker metrics for ${vps.name}`}
@@ -786,7 +786,7 @@ function ServerMetricStrip({
   metric?: DashboardOverview["metrics"][number];
 }) {
   const base =
-    "rounded-lg border border-slate-200 bg-slate-50 px-2.5 py-1 text-[12px] font-black text-slate-800 shadow-[0_1px_0_rgba(15,23,42,0.03)]";
+    "rounded-sm border border-neutral-200 bg-neutral-50 px-2.5 py-1 text-[12px] font-black text-neutral-800 shadow-[0_1px_0_rgba(15,23,42,0.03)]";
   if (!metric)
     return (
       <div className="flex flex-wrap items-center gap-1.5 xl:justify-end">
@@ -799,16 +799,16 @@ function ServerMetricStrip({
   return (
     <div className="flex flex-wrap items-center gap-1.5 xl:justify-end">
       <span className={base}>
-        <span className="text-slate-500">CPU</span> {metric.cpu}%
+        <span className="text-neutral-500">CPU</span> {metric.cpu}%
       </span>
       <span className={base}>
-        <span className="text-slate-500">RAM</span> {metric.memory}%
+        <span className="text-neutral-500">RAM</span> {metric.memory}%
       </span>
       <span className={base}>
-        <span className="text-slate-500">Disk</span> {metric.disk}%
+        <span className="text-neutral-500">Disk</span> {metric.disk}%
       </span>
       <span className={base}>
-        <span className="text-slate-500">Load</span> {metric.loadAverage}
+        <span className="text-neutral-500">Load</span> {metric.loadAverage}
       </span>
     </div>
   );
@@ -839,7 +839,7 @@ function ServerOverflow({
           <MoreHorizontal size={16} />
         </Button>
       </DropdownMenuTrigger>
-      <DropdownMenuContent align="end" className="w-48 rounded-xl">
+      <DropdownMenuContent align="end" className="w-48 rounded-md">
         <DropdownMenuItem disabled>
           <TerminalSquare size={15} />
           Open terminal
@@ -903,7 +903,7 @@ function ServerOpsSummary({
     : null;
   return (
     <section
-      className="grid grid-cols-1 gap-3 border-t border-slate-200 pt-4 sm:grid-cols-2 xl:grid-cols-4"
+      className="grid grid-cols-1 gap-3 border-t border-neutral-200 pt-4 sm:grid-cols-2 xl:grid-cols-4"
       aria-label="Server operations summary"
     >
       <SummaryPill
