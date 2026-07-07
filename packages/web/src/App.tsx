@@ -541,8 +541,8 @@ export function App() {
 
 function AuthLoadingScreen() {
   return (
-    <main className="grid min-h-screen place-items-center bg-[#000000] text-white">
-      <div className="rounded-md border border-white/10 bg-white/[0.06] px-6 py-5 font-semibold shadow-[0_18px_44px_rgba(0,0,0,0.24)] backdrop-blur">
+    <main className="grid min-h-screen place-items-center bg-[#07080a] text-white">
+      <div className="rounded-md border border-white/10 bg-[#101111]/[0.06] px-6 py-5 font-semibold shadow-[0_18px_44px_rgba(0,0,0,0.24)] backdrop-blur">
         Checking dashboard access...
       </div>
     </main>
@@ -551,10 +551,10 @@ function AuthLoadingScreen() {
 
 function LoginGate({ password, busy, message, onPasswordChange, onSubmit }: { password: string; busy: boolean; message?: string; onPasswordChange: (value: string) => void; onSubmit: (event: FormEvent<HTMLFormElement>) => void }) {
   return (
-    <main className="relative grid min-h-screen overflow-hidden bg-[#000000] px-4 py-8 text-white">
+    <main className="relative grid min-h-screen overflow-hidden bg-[#07080a] px-4 py-8 text-white">
       <div className="absolute inset-0 bg-[radial-gradient(circle_at_15%_10%,rgba(255,255,255,0.34),transparent_28%),radial-gradient(circle_at_90%_4%,rgba(255,255,255,0.22),transparent_28%)]" />
       <div className="absolute inset-0 opacity-[0.12] [background-image:linear-gradient(90deg,rgba(255,255,255,0.5)_1px,transparent_1px),linear-gradient(180deg,rgba(255,255,255,0.5)_1px,transparent_1px)] [background-size:42px_42px]" />
-      <section className="relative m-auto w-full max-w-md rounded-md border border-white/12 bg-[#000000]/90 p-6 shadow-[0_24px_70px_rgba(0,0,0,0.28)] backdrop-blur-xl sm:p-8">
+      <section className="relative m-auto w-full max-w-md rounded-md border border-white/12 bg-[#07080a]/90 p-6 shadow-[0_24px_70px_rgba(0,0,0,0.28)] backdrop-blur-xl sm:p-8">
         <div className="mb-6">
           <p className="text-xs font-semibold uppercase tracking-[0.24em] text-[#a3a3a3]">Secure local console</p>
           <h1 className="mt-2 font-display text-4xl font-semibold leading-tight tracking-[-0.05em]">Unlock VPS Ops</h1>
@@ -563,10 +563,10 @@ function LoginGate({ password, busy, message, onPasswordChange, onSubmit }: { pa
         <form className="grid gap-4" onSubmit={onSubmit}>
           <div className="grid gap-2">
             <Label htmlFor="dashboard-password" className="text-white">Dashboard password</Label>
-            <Input id="dashboard-password" type="password" autoComplete="current-password" value={password} onChange={(event) => onPasswordChange(event.target.value)} className="h-12 rounded-md border-white/15 bg-[#000000]/75 text-white placeholder:text-white/40" placeholder="Enter password" autoFocus />
+            <Input id="dashboard-password" type="password" autoComplete="current-password" value={password} onChange={(event) => onPasswordChange(event.target.value)} className="h-12 rounded-md border-white/15 bg-[#07080a]/75 text-white placeholder:text-white/40" placeholder="Enter password" autoFocus />
           </div>
           {message ? <Alert variant="destructive" className="rounded-md px-3 py-2 text-sm font-semibold">{message}</Alert> : null}
-          <Button type="submit" disabled={busy} className="h-12 rounded-md bg-[#000000] font-semibold text-white hover:bg-[#1f1f1f]">
+          <Button type="submit" disabled={busy} className="h-12 rounded-md bg-[#07080a] font-semibold text-white hover:bg-[#1f1f1f]">
             {busy ? "Verifying..." : "Enter dashboard"}
           </Button>
         </form>

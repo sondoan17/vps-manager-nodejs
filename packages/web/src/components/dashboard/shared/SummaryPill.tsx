@@ -9,7 +9,7 @@ export function SummaryPill({
 }) {
   return (
     <div
-      className={`min-w-0 rounded-md border px-3.5 py-3 shadow-sm ${tone === "red" ? "border-[#ebebeb] bg-white text-neutral-700" : "border-[#ebebeb] bg-white text-neutral-700"}`}
+      className={`min-w-0 rounded-md border px-3.5 py-3 shadow-sm ${tone === "red" ? "border-white/[0.06] bg-[#101111] text-[#cecece]" : "border-white/[0.06] bg-[#101111] text-[#cecece]"}`}
     >
       <p className="text-[11px] font-semibold uppercase tracking-[0.12em] opacity-75">
         {label}
