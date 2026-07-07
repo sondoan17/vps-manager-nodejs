@@ -46,6 +46,7 @@ jobs:
               - 'package.json'
               - 'package-lock.json'
               - 'packages/web/**'
+              - 'public/**'
               - 'docker/**'
             agent:
               - 'package.json'
