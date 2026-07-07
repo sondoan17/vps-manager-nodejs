@@ -102,11 +102,11 @@ export function AuditPanel({
   };
   const displayedEvents = compact ? events.slice(0, 5) : visibleEvents;
   return (
-    <Card className="min-w-0 max-w-full overflow-hidden border-white/[0.06] bg-[#101111] shadow-sm">
+    <Card className="min-w-0 max-w-full overflow-hidden border-white/10 bg-white/[0.03] shadow-none">
       <CardHeader className="min-w-0 p-4 pb-3 sm:p-5 sm:pb-4">
         <div className="flex flex-wrap items-start justify-between gap-3">
           <div>
-            <CardTitle className="truncate text-xl font-semibold">
+            <CardTitle className="truncate text-xl font-normal">
               {compact ? "Recent audit" : "Audit"}
             </CardTitle>
             <CardDescription>
@@ -125,7 +125,7 @@ export function AuditPanel({
       <CardContent className="min-w-0 max-w-full space-y-4 overflow-hidden p-4 pt-0 sm:p-5 sm:pt-0">
         {!compact ? (
           <>
-            <section className="grid gap-3 rounded-md border-0 bg-[#101111] shadow-[rgba(0,0,0,0.08)_0px_0px_0px_1px] p-3 xl:grid-cols-[minmax(0,1fr)_155px_145px_145px_165px_130px]">
+            <section className="grid gap-3 rounded-none border-0 bg-white/[0.03] shadow-none p-3 xl:grid-cols-[minmax(0,1fr)_155px_145px_145px_165px_130px]">
               <Input
                 aria-label="Search audit events"
                 placeholder="Search events..."
@@ -134,7 +134,7 @@ export function AuditPanel({
               />
               <select
                 aria-label="Filter severity"
-                className="h-10 rounded-md border-0 bg-[#101111] shadow-[rgba(0,0,0,0.08)_0px_0px_0px_1px] px-3 text-sm font-semibold text-[#cecece]"
+                className="h-10 rounded-none border-0 bg-white/[0.03] shadow-none px-3 text-sm font-normal text-white/70"
                 value={severityFilter}
                 onChange={(event) => setSeverityFilter(event.target.value)}
               >
@@ -145,7 +145,7 @@ export function AuditPanel({
               </select>
               <select
                 aria-label="Filter status"
-                className="h-10 rounded-md border-0 bg-[#101111] shadow-[rgba(0,0,0,0.08)_0px_0px_0px_1px] px-3 text-sm font-semibold text-[#cecece]"
+                className="h-10 rounded-none border-0 bg-white/[0.03] shadow-none px-3 text-sm font-normal text-white/70"
                 value={statusFilter}
                 onChange={(event) => setStatusFilter(event.target.value)}
               >
@@ -156,7 +156,7 @@ export function AuditPanel({
               </select>
               <select
                 aria-label="Filter actor"
-                className="h-10 rounded-md border-0 bg-[#101111] shadow-[rgba(0,0,0,0.08)_0px_0px_0px_1px] px-3 text-sm font-semibold text-[#cecece]"
+                className="h-10 rounded-none border-0 bg-white/[0.03] shadow-none px-3 text-sm font-normal text-white/70"
                 value={actorFilter}
                 onChange={(event) => setActorFilter(event.target.value)}
               >
@@ -169,7 +169,7 @@ export function AuditPanel({
               </select>
               <select
                 aria-label="Filter server"
-                className="h-10 rounded-md border-0 bg-[#101111] shadow-[rgba(0,0,0,0.08)_0px_0px_0px_1px] px-3 text-sm font-semibold text-[#cecece]"
+                className="h-10 rounded-none border-0 bg-white/[0.03] shadow-none px-3 text-sm font-normal text-white/70"
                 value={serverFilter}
                 onChange={(event) => setServerFilter(event.target.value)}
               >
@@ -182,7 +182,7 @@ export function AuditPanel({
               </select>
               <select
                 aria-label="Filter time range"
-                className="h-10 rounded-md border-0 bg-[#101111] shadow-[rgba(0,0,0,0.08)_0px_0px_0px_1px] px-3 text-sm font-semibold text-[#cecece]"
+                className="h-10 rounded-none border-0 bg-white/[0.03] shadow-none px-3 text-sm font-normal text-white/70"
                 defaultValue="24h"
               >
                 <option value="24h">Last 24h</option>
@@ -202,7 +202,7 @@ export function AuditPanel({
                   type="button"
                   variant={quickFilter === value ? "default" : "outline"}
                   size="sm"
-                  className={`rounded-md text-xs font-semibold ${quickFilter === value ? "bg-[#07080a] text-white shadow-sm hover:bg-black" : "bg-[#101111]"}`}
+                  className={`rounded-none text-xs font-normal ${quickFilter === value ? "bg-[#1f2228] text-white shadow-none hover:bg-black" : "bg-white/[0.03]"}`}
                   onClick={() => setQuickFilter(value)}
                 >
                   {label}
@@ -234,8 +234,8 @@ export function AuditPanel({
           </>
         ) : null}
         {displayedEvents.length ? (
-          <div className="min-w-0 overflow-hidden rounded-md border border-white/[0.06]">
-            <div className="hidden grid-cols-[1fr_1.55fr_0.8fr_1fr_0.8fr_0.8fr_1fr_0.8fr] gap-3 bg-[#101111] px-3 py-2 text-[12px] font-semibold uppercase tracking-[0.08em] text-[#9c9c9d] lg:grid">
+          <div className="min-w-0 overflow-hidden rounded-none border border-white/10">
+            <div className="hidden grid-cols-[1fr_1.55fr_0.8fr_1fr_0.8fr_0.8fr_1fr_0.8fr] gap-3 bg-white/[0.03] px-3 py-2 text-[12px] font-normal uppercase tracking-[0.08em] text-white/50 lg:grid">
               <span>Time</span>
               <span>Event</span>
               <span>Actor</span>
@@ -266,14 +266,14 @@ export function AuditPanel({
                 return (
                   <article
                     key={event.id}
-                    className={`grid min-w-0 gap-2 border-l-4 px-3 py-4 text-sm font-semibold leading-6 text-[#4d4d4d] transition hover:bg-[#101111]/60 lg:grid-cols-[1fr_1.55fr_0.8fr_1fr_0.8fr_0.8fr_1fr_0.8fr] lg:items-center ${isCritical ? "border-l-neutral-500 bg-[#101111]/70" : index % 2 ? "border-l-transparent bg-[#101111]/60" : "border-l-transparent bg-[#101111]"}`}
+                    className={`grid min-w-0 gap-2 border-l-4 px-3 py-4 text-sm font-normal leading-6 text-white/50 transition hover:bg-white/[0.03]/60 lg:grid-cols-[1fr_1.55fr_0.8fr_1fr_0.8fr_0.8fr_1fr_0.8fr] lg:items-center ${isCritical ? "border-l-neutral-500 bg-white/[0.03]" : index % 2 ? "border-l-transparent bg-white/[0.03]/60" : "border-l-transparent bg-white/[0.03]"}`}
                   >
-                    <span className="font-semibold text-[#4d4d4d]">
+                    <span className="font-normal text-white/50">
                       {formatDate(event.timestamp)}
                     </span>
-                    <span className="flex min-w-0 items-start gap-2 text-[#f9f9f9]">
+                    <span className="flex min-w-0 items-start gap-2 text-[#ffffff]">
                       <span
-                        className={`mt-1 shrink-0 ${isCritical ? "text-[#4d4d4d]" : "text-[#9c9c9d]"}`}
+                        className={`mt-1 shrink-0 ${isCritical ? "text-white/50" : "text-white/50"}`}
                       >
                         {isCritical ? (
                           <AlertTriangle size={16} />
@@ -282,16 +282,16 @@ export function AuditPanel({
                         )}
                       </span>
                       <span className="min-w-0">
-                        <span className="block truncate font-semibold">
+                        <span className="block truncate font-normal">
                           {event.actionLabel || event.action}
                         </span>
-                        <span className="block truncate font-mono text-[11px] font-semibold text-[#808080]">
+                        <span className="block truncate font-mono text-[11px] font-normal text-white/30">
                           {event.actionLabel
                             ? event.eventCode || event.action
                             : ""}
                         </span>
                         {detail ? (
-                          <span className="block truncate text-xs font-semibold text-[#808080]">
+                          <span className="block truncate text-xs font-normal text-white/30">
                             {event.reason
                               ? `Reason: ${event.reason}`
                               : String(detail)}
@@ -300,7 +300,7 @@ export function AuditPanel({
                       </span>
                     </span>
                     <span className="truncate">{event.actor || "system"}</span>
-                    <span className="w-fit max-w-full truncate rounded-full border-0 bg-[#101111] shadow-[rgba(0,0,0,0.08)_0px_0px_0px_1px] px-2 py-1 text-xs font-semibold text-[#4d4d4d]">
+                    <span className="w-fit max-w-full truncate rounded-none border-0 bg-white/[0.03] shadow-none px-2 py-1 text-xs font-normal text-white/50">
                       {target}
                     </span>
                     <Badge
@@ -324,11 +324,11 @@ export function AuditPanel({
                       {event.result}
                     </Badge>
                     <span className="min-w-0">
-                      <span className="block truncate text-xs font-semibold text-[#cecece]">
+                      <span className="block truncate text-xs font-normal text-white/70">
                         {event.sourceIp || event.client || "n/a"}
                       </span>
                       {event.requestId ? (
-                        <span className="block truncate font-mono text-[10px] text-[#808080]">
+                        <span className="block truncate font-mono text-[10px] text-white/30">
                           {event.requestId}
                         </span>
                       ) : null}
@@ -336,7 +336,7 @@ export function AuditPanel({
                     <Button
                       size="sm"
                       variant="outline"
-                      className={`h-8 w-fit rounded-md border-white/[0.1] bg-[#101111] px-2 text-xs font-semibold shadow-sm ${isCritical ? "border-white/[0.1] text-[#cecece] hover:bg-[#101111]" : "text-[#cecece]"}`}
+                      className={`h-8 w-fit rounded-none border-white/10 bg-white/[0.03] px-2 text-xs font-normal shadow-none ${isCritical ? "border-white/10 text-white/70 hover:bg-white/[0.03]" : "text-white/70"}`}
                       onClick={() => setSelectedEvent(event)}
                     >
                       Details
@@ -371,16 +371,16 @@ function AuditSummary({
 }) {
   const colors =
     tone === "red"
-      ? "border-white/[0.06] bg-[#101111] text-[#cecece]"
+      ? "border-white/10 bg-white/[0.03] text-white/70"
       : tone === "amber"
-        ? "border-white/[0.06] bg-[#101111] text-[#cecece]"
-        : "border-white/[0.06] bg-[#101111] text-[#f9f9f9]";
+        ? "border-white/10 bg-white/[0.03] text-white/70"
+        : "border-white/10 bg-white/[0.03] text-[#ffffff]";
   return (
-    <div className={`rounded-md border p-4 shadow-sm ${colors}`}>
-      <p className="text-xs font-semibold uppercase tracking-[0.12em] opacity-70">
+    <div className={`rounded-none border p-4 shadow-none ${colors}`}>
+      <p className="text-xs font-normal uppercase tracking-[0.12em] opacity-70">
         {label}
       </p>
-      <strong className="mt-1 block text-3xl font-semibold leading-none">
+      <strong className="mt-1 block text-3xl font-normal leading-none">
         {value}
       </strong>
     </div>
@@ -411,24 +411,24 @@ function AuditDetailsDrawer({
       }}
       direction="right"
     >
-      <DrawerContent showHandle={false} className="inset-y-0 bottom-auto left-auto right-0 mt-0 h-full w-full max-w-2xl select-text rounded-none border-l border-white/[0.06] bg-[#101111] shadow-2xl after:hidden">
-        <DrawerHeader className="border-b border-white/[0.06] p-5 text-left">
+      <DrawerContent showHandle={false} className="inset-y-0 bottom-auto left-auto right-0 mt-0 h-full w-full max-w-2xl select-text rounded-none border-l border-white/10 bg-white/[0.03] shadow-none after:hidden">
+        <DrawerHeader className="border-b border-white/10 p-5 text-left">
           <div className="flex items-start justify-between gap-4">
             <div className="min-w-0">
-              <p className="text-xs font-semibold uppercase tracking-[0.18em] text-[#9c9c9d]">Audit event details</p>
-              <DrawerTitle className="mt-2 break-words text-2xl font-semibold text-[#f9f9f9]">{event.actionLabel || event.action}</DrawerTitle>
-              <DrawerDescription className="font-mono text-sm font-semibold text-[#9c9c9d]">{event.eventCode || event.action}</DrawerDescription>
+              <p className="text-xs font-normal uppercase tracking-[0.18em] text-white/50">Audit event details</p>
+              <DrawerTitle className="mt-2 break-words text-2xl font-normal text-[#ffffff]">{event.actionLabel || event.action}</DrawerTitle>
+              <DrawerDescription className="font-mono text-sm font-normal text-white/50">{event.eventCode || event.action}</DrawerDescription>
             </div>
-            <Button type="button" variant="outline" size="icon" className="h-9 w-9 shrink-0 border-white/[0.1] bg-[#101111] text-[#2f2d22] shadow-sm" aria-label="Close audit details" onClick={onClose}><X size={16} /></Button>
+            <Button type="button" variant="outline" size="icon" className="h-9 w-9 shrink-0 border-white/10 bg-white/[0.03] text-white/70 shadow-none" aria-label="Close audit details" onClick={onClose}><X size={16} /></Button>
           </div>
         </DrawerHeader>
         <ScrollArea className="min-h-0 flex-1">
           <div className="p-5">
-            <div className="mb-4 flex flex-wrap gap-2 rounded-md border-0 bg-[#101111] shadow-[rgba(0,0,0,0.08)_0px_0px_0px_1px] p-3">
-              <Button type="button" variant="outline" size="sm" className="rounded-md bg-[#101111] text-xs font-semibold" onClick={() => copyText(payload)}><Copy size={14} />Copy payload</Button>
-              {event.requestId ? <Button type="button" variant="outline" size="sm" className="rounded-md bg-[#101111] text-xs font-semibold" onClick={() => copyText(event.requestId || "")}><Copy size={14} />Copy request ID</Button> : null}
-              {event.serverLabel || event.resourceId ? <Button type="button" variant="outline" size="sm" className="rounded-md bg-[#101111] text-xs font-semibold" disabled title="Coming soon">Open server</Button> : null}
-              {event.jobId ? <Button type="button" variant="outline" size="sm" className="rounded-md bg-[#101111] text-xs font-semibold" disabled title="Coming soon">View related job</Button> : null}
+            <div className="mb-4 flex flex-wrap gap-2 rounded-none border-0 bg-white/[0.03] shadow-none p-3">
+              <Button type="button" variant="outline" size="sm" className="rounded-none bg-white/[0.03] text-xs font-normal" onClick={() => copyText(payload)}><Copy size={14} />Copy payload</Button>
+              {event.requestId ? <Button type="button" variant="outline" size="sm" className="rounded-none bg-white/[0.03] text-xs font-normal" onClick={() => copyText(event.requestId || "")}><Copy size={14} />Copy request ID</Button> : null}
+              {event.serverLabel || event.resourceId ? <Button type="button" variant="outline" size="sm" className="rounded-none bg-white/[0.03] text-xs font-normal" disabled title="Coming soon">Open server</Button> : null}
+              {event.jobId ? <Button type="button" variant="outline" size="sm" className="rounded-none bg-white/[0.03] text-xs font-normal" disabled title="Coming soon">View related job</Button> : null}
             </div>
             <div className="grid gap-3 sm:grid-cols-2">
               <AuditDetail label="Actor" value={event.actor || "system"} />
@@ -459,19 +459,19 @@ function AuditDetailsDrawer({
               />
             </div>
             {event.reason ? (
-              <div className="mt-4 rounded-md border-0 bg-[#101111] shadow-[rgba(0,0,0,0.08)_0px_0px_0px_1px] p-4 text-sm font-semibold text-[#cecece]">
-                <span className="block text-xs font-semibold uppercase tracking-[0.12em] text-[#9c9c9d]">
+              <div className="mt-4 rounded-none border-0 bg-white/[0.03] shadow-none p-4 text-sm font-normal text-white/70">
+                <span className="block text-xs font-normal uppercase tracking-[0.12em] text-white/50">
                   Reason
                 </span>
                 {event.reason}
               </div>
             ) : null}
-            <div className="mt-4 rounded-md border border-white/[0.06] bg-[#07080a] p-4">
-              <p className="text-xs font-semibold uppercase tracking-[0.12em] text-[#808080]">
+            <div className="mt-4 rounded-none border border-white/10 bg-[#1f2228] p-4">
+              <p className="text-xs font-normal uppercase tracking-[0.12em] text-white/30">
                 Raw payload
               </p>
-              <ScrollArea className="mt-3 h-96 rounded-md">
-                <pre className="whitespace-pre-wrap break-words pr-4 text-xs font-semibold leading-5 text-[#f9f9f9]">
+              <ScrollArea className="mt-3 h-96 rounded-none">
+                <pre className="whitespace-pre-wrap break-words pr-4 text-xs font-normal leading-5 text-[#ffffff]">
                   {payload}
                 </pre>
               </ScrollArea>
@@ -495,11 +495,11 @@ function AuditDetailsDrawer({
 
 function AuditDetail({ label, value }: { label: string; value: string }) {
   return (
-    <div className="rounded-md border-0 bg-[#101111] shadow-[rgba(0,0,0,0.08)_0px_0px_0px_1px] p-3">
-      <p className="text-xs font-semibold uppercase tracking-[0.12em] text-[#9c9c9d]">
+    <div className="rounded-none border-0 bg-white/[0.03] shadow-none p-3">
+      <p className="text-xs font-normal uppercase tracking-[0.12em] text-white/50">
         {label}
       </p>
-      <p className="mt-1 break-words text-sm font-semibold text-[#f9f9f9]">
+      <p className="mt-1 break-words text-sm font-normal text-[#ffffff]">
         {value}
       </p>
     </div>

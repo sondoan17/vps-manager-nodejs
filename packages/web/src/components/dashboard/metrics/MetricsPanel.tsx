@@ -40,11 +40,11 @@ export function MetricsPanel({
     : null;
   const alerts = buildMetricAlerts(metrics);
   return (
-    <Card className="min-w-0 overflow-hidden border-white/[0.06] bg-[#101111] shadow-sm">
+    <Card className="min-w-0 overflow-hidden border-white/10 bg-white/[0.03] shadow-none">
       <CardHeader className="p-4 pb-3 sm:p-5 sm:pb-4">
         <div className="flex flex-wrap items-start justify-between gap-3">
           <div>
-            <CardTitle className="text-xl font-semibold">Metrics</CardTitle>
+            <CardTitle className="text-xl font-normal">Metrics</CardTitle>
             <CardDescription>
               Telemetry freshness and resource usage by server.
             </CardDescription>
@@ -56,12 +56,12 @@ export function MetricsPanel({
       </CardHeader>
       <CardContent className="grid gap-4 p-4 pt-0 sm:p-5 sm:pt-0">
         <section
-          className="grid gap-3 rounded-md border-0 bg-[#101111] shadow-[rgba(0,0,0,0.08)_0px_0px_0px_1px] p-3 md:grid-cols-[minmax(0,1fr)_190px]"
+          className="grid gap-3 rounded-none border-0 bg-white/[0.03] shadow-none p-3 md:grid-cols-[minmax(0,1fr)_190px]"
           aria-label="Metrics filters"
         >
           <select
             aria-label="Filter metrics server"
-            className="h-10 rounded-md border-0 bg-[#101111] shadow-[rgba(0,0,0,0.08)_0px_0px_0px_1px] px-3 text-sm font-semibold text-[#cecece] outline-none focus:ring-4 focus:ring-ring"
+            className="h-10 rounded-none border-0 bg-white/[0.03] shadow-none px-3 text-sm font-normal text-white/70 outline-none focus:ring-4 focus:ring-ring"
             value={serverFilter}
             onChange={(event) => setServerFilter(event.target.value)}
           >
@@ -74,7 +74,7 @@ export function MetricsPanel({
           </select>
           <select
             aria-label="Filter metric type"
-            className="h-10 rounded-md border-0 bg-[#101111] shadow-[rgba(0,0,0,0.08)_0px_0px_0px_1px] px-3 text-sm font-semibold text-[#cecece] outline-none focus:ring-4 focus:ring-ring"
+            className="h-10 rounded-none border-0 bg-white/[0.03] shadow-none px-3 text-sm font-normal text-white/70 outline-none focus:ring-4 focus:ring-ring"
             value={metricFilter}
             onChange={(event) => setMetricFilter(event.target.value)}
           >
@@ -131,7 +131,7 @@ export function MetricsPanel({
           <EmptyState>No metrics match these filters.</EmptyState>
         )}
         <section
-          className="grid gap-3 rounded-md border-0 bg-[#101111] shadow-[rgba(0,0,0,0.08)_0px_0px_0px_1px] p-3 md:grid-cols-2 xl:grid-cols-4"
+          className="grid gap-3 rounded-none border-0 bg-white/[0.03] shadow-none p-3 md:grid-cols-2 xl:grid-cols-4"
           aria-label="Metric trends"
         >
           <TrendMini metric={highestCpu} label="CPU trend" unit="%" />
@@ -147,18 +147,18 @@ export function MetricsPanel({
           />
         </section>
         <section
-          className="rounded-md border-0 bg-[#101111] shadow-[rgba(0,0,0,0.08)_0px_0px_0px_1px] p-4"
+          className="rounded-none border-0 bg-white/[0.03] shadow-none p-4"
           aria-label="Recent metric alerts"
         >
           <div className="flex items-center justify-between gap-3">
-            <h3 className="font-semibold text-[#f9f9f9]">Recent metric alerts</h3>
+            <h3 className="font-normal text-[#ffffff]">Recent metric alerts</h3>
             <Badge variant={alerts.length ? "pending" : "ready"}>
               {alerts.length} alerts
             </Badge>
           </div>
           {alerts.length ? (
-            <div className="mt-3 overflow-hidden rounded-md border border-white/[0.06]">
-              <div className="hidden grid-cols-[0.8fr_1fr_minmax(0,1.5fr)_0.8fr_auto] gap-3 bg-[#101111] px-3 py-2 text-[11px] font-semibold uppercase tracking-[0.08em] text-[#9c9c9d] md:grid">
+            <div className="mt-3 overflow-hidden rounded-none border border-white/10">
+              <div className="hidden grid-cols-[0.8fr_1fr_minmax(0,1.5fr)_0.8fr_auto] gap-3 bg-white/[0.03] px-3 py-2 text-[11px] font-normal uppercase tracking-[0.08em] text-white/50 md:grid">
                 <span>Severity</span>
                 <span>Server</span>
                 <span>Message</span>
@@ -169,7 +169,7 @@ export function MetricsPanel({
                 {alerts.map((alert) => (
                   <article
                     key={`${alert.vpsId}-${alert.message}`}
-                    className="grid gap-2 px-3 py-2 text-sm font-semibold text-[#4d4d4d] md:grid-cols-[0.8fr_1fr_minmax(0,1.5fr)_0.8fr_auto] md:items-center"
+                    className="grid gap-2 px-3 py-2 text-sm font-normal text-white/50 md:grid-cols-[0.8fr_1fr_minmax(0,1.5fr)_0.8fr_auto] md:items-center"
                   >
                     <Badge
                       className="w-fit uppercase"
@@ -182,22 +182,22 @@ export function MetricsPanel({
                       {alert.severity}
                     </Badge>
                     <span
-                      className="truncate font-semibold text-[#2f2d22]"
+                      className="truncate font-normal text-white/70"
                       title={alert.vpsId}
                     >
                       {alert.vpsId}
                     </span>
-                    <span className="min-w-0 text-[#4d4d4d]">
+                    <span className="min-w-0 text-white/50">
                       {alert.message}
                     </span>
-                    <span className="text-xs font-semibold text-[#9c9c9d]">
+                    <span className="text-xs font-normal text-white/50">
                       {alert.time}
                     </span>
                     <Button
                       type="button"
                       variant="outline"
                       size="sm"
-                      className="w-fit rounded-md text-xs font-semibold"
+                      className="w-fit rounded-none text-xs font-normal"
                       disabled
                       title="Coming soon"
                     >
@@ -208,7 +208,7 @@ export function MetricsPanel({
               </div>
             </div>
           ) : (
-            <p className="mt-3 text-sm font-semibold text-[#9c9c9d]">
+            <p className="mt-3 text-sm font-normal text-white/50">
               No resource warnings from current metrics.
             </p>
           )}
@@ -240,15 +240,15 @@ function MetricSummaryCard({
 }) {
   return (
     <div
-      className={`min-w-0 rounded-md border px-3.5 py-3 shadow-sm ${tone === "red" ? "border-white/[0.06] bg-[#101111] text-[#cecece]" : "border-white/[0.06] bg-[#101111] text-[#cecece]"}`}
+      className={`min-w-0 rounded-none border px-3.5 py-3 shadow-none ${tone === "red" ? "border-white/10 bg-white/[0.03] text-white/70" : "border-white/10 bg-white/[0.03] text-white/70"}`}
     >
-      <p className="text-[11px] font-semibold uppercase tracking-[0.12em] opacity-75">
+      <p className="text-[11px] font-normal uppercase tracking-[0.12em] opacity-75">
         {label}
       </p>
-      <p className="mt-1 truncate text-xs font-semibold opacity-70" title={server}>
+      <p className="mt-1 truncate text-xs font-normal opacity-70" title={server}>
         {server}
       </p>
-      <p className="mt-1 text-2xl font-semibold leading-none">{value}</p>
+      <p className="mt-1 text-2xl font-normal leading-none">{value}</p>
     </div>
   );
 }
@@ -269,23 +269,23 @@ function MetricServerCard({
   ].filter(Boolean);
   return (
     <article
-      className={`grid min-w-0 gap-3 rounded-md border p-4 shadow-sm xl:grid-cols-[minmax(220px,1fr)_minmax(360px,1.4fr)_auto] xl:items-center ${stale ? "border-white/[0.06] bg-[#101111]/60 ring-1 ring-white/[0.08]" : "border-white/[0.06] bg-[#101111]"}`}
+      className={`grid min-w-0 gap-3 rounded-none border p-4 shadow-none xl:grid-cols-[minmax(220px,1fr)_minmax(360px,1.4fr)_auto] xl:items-center ${stale ? "border-white/10 bg-white/[0.03]/60 ring-1 ring-white/10" : "border-white/10 bg-white/[0.03]"}`}
     >
       <div className="min-w-0">
         <div className="flex flex-wrap items-center gap-2">
-          <strong className="truncate text-lg font-semibold text-[#f9f9f9]">
+          <strong className="truncate text-lg font-normal text-[#ffffff]">
             {metric.vpsId}
           </strong>
           <Badge className="uppercase" variant={chipVariant(metric.freshness)}>
             {metric.freshness}
           </Badge>
         </div>
-        <p className="mt-1 text-sm font-semibold text-[#9c9c9d]">
+        <p className="mt-1 text-sm font-normal text-white/50">
           Collected {freshnessLabel(metric.collectedAt)} · Uptime{" "}
           {formatUptime(metric.uptime)}
         </p>
         {warnings.length ? (
-          <p className="mt-2 text-xs font-semibold uppercase tracking-[0.08em] text-[#cecece]">
+          <p className="mt-2 text-xs font-normal uppercase tracking-[0.08em] text-white/70">
             {warnings.join(" · ")}
           </p>
         ) : null}
@@ -322,7 +322,7 @@ function MetricServerCard({
           type="button"
           variant="outline"
           size="sm"
-          className="rounded-md text-xs font-semibold"
+          className="rounded-none text-xs font-normal"
           disabled
           title="Coming soon"
         >
@@ -332,7 +332,7 @@ function MetricServerCard({
           type="button"
           variant="outline"
           size="sm"
-          className="rounded-md text-xs font-semibold"
+          className="rounded-none text-xs font-normal"
           disabled
           title="Coming soon"
         >
@@ -354,12 +354,12 @@ function MetricMini({
 }) {
   return (
     <div
-      className={`min-w-0 rounded-md border px-3 py-2 ${hot ? "border-white/[0.06] bg-[#101111] text-[#f9f9f9]" : "border-white/[0.06] bg-[#101111] text-[#cecece]"}`}
+      className={`min-w-0 rounded-none border px-3 py-2 ${hot ? "border-white/10 bg-white/[0.03] text-[#ffffff]" : "border-white/10 bg-white/[0.03] text-white/70"}`}
     >
-      <p className="text-[10px] font-semibold uppercase tracking-[0.1em] opacity-70">
+      <p className="text-[10px] font-normal uppercase tracking-[0.1em] opacity-70">
         {label}
       </p>
-      <p className="mt-0.5 truncate text-sm font-semibold" title={value}>
+      <p className="mt-0.5 truncate text-sm font-normal" title={value}>
         {value}
       </p>
     </div>
@@ -377,7 +377,7 @@ function TrendMini({
 }) {
   if (!metric?.trend)
     return (
-      <div className="rounded-md border border-dashed border-white/[0.06] bg-[#101111] p-3 text-sm font-semibold text-[#808080]">
+      <div className="rounded-none border border-dashed border-white/10 bg-white/[0.03] p-3 text-sm font-normal text-white/30">
         {label}: no trend
       </div>
     );
@@ -393,17 +393,17 @@ function TrendMini({
     48 -
     (metric.trend.threshold / Math.max(maxPoint, metric.trend.threshold)) * 38;
   return (
-    <div className="rounded-md border-0 bg-[#101111] shadow-[rgba(0,0,0,0.08)_0px_0px_0px_1px] p-3 shadow-sm">
+    <div className="rounded-none border-0 bg-white/[0.03] shadow-none p-3 shadow-none">
       <div className="flex items-start justify-between gap-3">
         <div>
-          <p className="text-xs font-semibold uppercase tracking-[0.1em] text-[#9c9c9d]">
+          <p className="text-xs font-normal uppercase tracking-[0.1em] text-white/50">
             {label}
           </p>
-          <p className="mt-1 text-sm font-semibold text-[#9c9c9d]">
+          <p className="mt-1 text-sm font-normal text-white/50">
             {metric.vpsId} · {metric.trend.range}
           </p>
         </div>
-        <div className="text-right text-xs font-semibold text-[#9c9c9d]">
+        <div className="text-right text-xs font-normal text-white/50">
           <p>
             max {metric.trend.max}
             {unit}
@@ -425,21 +425,21 @@ function TrendMini({
           x2="100"
           y1={thresholdY}
           y2={thresholdY}
-          stroke="#07080a"
+          stroke="#1f2228"
           strokeDasharray="4 4"
           strokeWidth="1.5"
         />
         <polyline
           points={polyline}
           fill="none"
-          stroke="#07080a"
+          stroke="#1f2228"
           strokeWidth="3"
           strokeLinecap="round"
           strokeLinejoin="round"
         />
         <line x1="0" x2="100" y1="50" y2="50" stroke="#e5e5e5" />
       </svg>
-      <div className="mt-1 flex justify-between text-[10px] font-semibold uppercase tracking-[0.08em] text-[#808080]">
+      <div className="mt-1 flex justify-between text-[10px] font-normal uppercase tracking-[0.08em] text-white/30">
         <span>{metric.trend.range}</span>
         <span>30m</span>
         <span>15m</span>
