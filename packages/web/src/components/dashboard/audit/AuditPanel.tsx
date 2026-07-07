@@ -487,7 +487,7 @@ function AuditDetailsDrawer({
               </Button>
             </div>
           </div>
-        </ScrollArea>
+        </ScrollArea> 
       </DrawerContent>
     </Drawer>
   );
