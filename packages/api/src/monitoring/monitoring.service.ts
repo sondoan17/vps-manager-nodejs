@@ -6,6 +6,7 @@ import { DashboardService } from "../dashboard/dashboard.service.js";
 import { demoServers, getDemoMetrics } from "../demo/demo-fixtures.js";
 import type { AuditEvent } from "../audit/audit.models.js";
 import type { DashboardJob, DashboardMetricSample, DashboardOverview } from "../dashboard/dashboard.models.js";
+import type { AgentDockerMetrics } from "../agents/agent.models.js";
 import type { MetricSample } from "../metrics/metrics.models.js";
 import type { VpsRecord } from "../vps/vps.models.js";
 import type { MetricRepository } from "../persistence/repositories/metric.repository.js";
@@ -30,7 +31,7 @@ type SnapshotPayload = {
   metrics: DashboardMetricSample[];
   auditEvents: AuditEvent[];
 };
-type MetricsUpdatedPayload = { metrics: DashboardMetricSample[] };
+type MetricsUpdatedPayload = { metrics: DashboardMetricSample[]; systemInfo?: DashboardOverview["systemInfo"]; dockerMetrics?: AgentDockerMetrics[] };
 type HeartbeatPayload = Record<string, never>;
 type ErrorPayload = { message: string };
 
@@ -251,7 +252,7 @@ export class MonitoringService {
         }
 
         // Send metrics.updated
-        sendEvent(res, "metrics.updated", { metrics });
+        sendEvent(res, "metrics.updated", { metrics, dockerMetrics: [] });
 
         // Send heartbeat every ~3 ticks
         if (Math.random() < 0.3) {
@@ -298,7 +299,8 @@ export class MonitoringService {
         }));
 
         if (updatedMetrics.length > 0) {
-          sendEvent(res, "metrics.updated", { metrics: updatedMetrics });
+          const overview = await this.dashboardService.overview();
+          sendEvent(res, "metrics.updated", { metrics: updatedMetrics, systemInfo: overview.systemInfo, dockerMetrics: overview.dockerMetrics });
         }
 
         sendEvent(res, "monitoring.heartbeat", {});

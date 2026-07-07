@@ -2,7 +2,7 @@ import { Inject, Injectable, UnauthorizedException } from "@nestjs/common";
 import { createHash, randomBytes, timingSafeEqual } from "node:crypto";
 import { ZodError } from "zod";
 import type { AppConfig } from "../config/app-config.js";
-import type { AgentCredential, AgentCredentialStatus, AgentMetricPayload } from "./agent.models.js";
+import type { AgentCredential, AgentCredentialStatus, AgentDockerMetrics, AgentMetricPayload } from "./agent.models.js";
 import type { MetricSample } from "../metrics/metrics.models.js";
 import type { AgentRepository } from "../persistence/repositories/agent.repository.js";
 import type { MetricRepository } from "../persistence/repositories/metric.repository.js";
@@ -11,12 +11,23 @@ import { AGENT_REPOSITORY, APP_CONFIG, METRIC_REPOSITORY, VPS_REPOSITORY } from 
 import { agentMetricPayloadSchema } from "./agent.schemas.js";
 import { VpsNotFoundError } from "../common/errors.js";
 
+export type IngestMetricResult = {
+  sample: MetricSample;
+  config: { dockerMetricsEnabled: boolean };
+};
+
 // ── Token format ────────────────────────────────────────────────────────
 //   vma_<credentialId>_<secret>
 //   The <secret> is 32 random bytes hex-encoded (64 hex chars).
 //   Only the SHA-256 hash of the secret is stored server-side.
 
 const TOKEN_PREFIX = "vma_";
+
+function omitDockerField(payload: AgentMetricPayload): unknown {
+  if (!payload || typeof payload !== "object" || Array.isArray(payload)) return payload;
+  const { docker: _docker, ...rest } = payload as Record<string, unknown>;
+  return rest;
+}
 
 /**
  * Extract the credential id from a raw agent token.
@@ -148,22 +159,27 @@ export class AgentService {
     credential: AgentCredential,
     payload: AgentMetricPayload,
     ip?: string,
-  ): Promise<MetricSample> {
-    // 1. Validate payload
+  ): Promise<IngestMetricResult> {
+    // 1. Verify the VPS still exists and get its config before validating the
+    // optional Docker branch. Docker payloads are ignored when disabled, so a
+    // stale agent cycle cannot break core metric ingest with Docker-only schema
+    // errors.
+    const vps = await this.vpsRepository.get(credential.vpsId);
+    if (!vps) {
+      throw new VpsNotFoundError();
+    }
+
+    const dockerMetricsEnabled = vps.dockerMetricsEnabled ?? false;
+
+    // 2. Validate payload
     let parsed: AgentMetricPayload;
     try {
-      parsed = agentMetricPayloadSchema.parse(payload);
+      parsed = agentMetricPayloadSchema.parse(dockerMetricsEnabled ? payload : omitDockerField(payload));
     } catch (error: unknown) {
       if (error instanceof ZodError) {
         throw error;
       }
       throw error;
-    }
-
-    // 2. Verify the VPS still exists
-    const vps = await this.vpsRepository.get(credential.vpsId);
-    if (!vps) {
-      throw new VpsNotFoundError();
     }
 
     // 3. If vpsId is provided in payload, it must match the credential owner
@@ -199,7 +215,44 @@ export class AgentService {
       lastInstallJobId: existingState?.lastInstallJobId,
     });
 
-    // 7. Build metric sample and append
+    // 7. If system info provided, upsert it (before metric append)
+    if (parsed.system) {
+      await this.agentRepository.upsertSystemInfo({
+        vpsId: credential.vpsId,
+        collectedAt: parsed.collectedAt,
+        receivedAt: now,
+        agentVersion: parsed.agentVersion,
+        ...parsed.system,
+      });
+    }
+
+    // 8. If Docker metrics provided and enabled, upsert them
+    if (parsed.docker && dockerMetricsEnabled) {
+      const dockerMetrics: AgentDockerMetrics = {
+        vpsId: credential.vpsId,
+        collectedAt: parsed.docker.collectedAt,
+        receivedAt: now,
+        agentVersion: parsed.docker.agentVersion ?? parsed.agentVersion,
+        schemaVersion: 1,
+        available: parsed.docker.available,
+        errorCode: parsed.docker.errorCode,
+        containerTotal: parsed.docker.containerTotal,
+        containerRunning: parsed.docker.containerRunning,
+        cpuPercent: parsed.docker.cpuPercent,
+        memoryUsageBytes: parsed.docker.memoryUsageBytes,
+        memoryLimitBytes: parsed.docker.memoryLimitBytes,
+        networkRxBytes: parsed.docker.networkRxBytes,
+        networkTxBytes: parsed.docker.networkTxBytes,
+        blockReadBytes: parsed.docker.blockReadBytes,
+        blockWriteBytes: parsed.docker.blockWriteBytes,
+        pids: parsed.docker.pids,
+        containers: parsed.docker.containers ?? [],
+      };
+      await this.agentRepository.upsertDockerMetrics(dockerMetrics);
+    }
+    // When dockerMetricsEnabled is false, any Docker payload is silently ignored.
+
+    // 9. Build metric sample and append
     const sample: MetricSample = {
       vpsId: credential.vpsId,
       cpu: parsed.cpu,
@@ -216,6 +269,6 @@ export class AgentService {
     };
 
     await this.metricRepository.append(sample, this.config.metricWindowLimit);
-    return sample;
+    return { sample, config: { dockerMetricsEnabled } };
   }
 }

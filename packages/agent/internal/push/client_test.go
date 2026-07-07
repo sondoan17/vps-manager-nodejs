@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -477,6 +478,104 @@ func TestSanitizeBody_NoToken(t *testing.T) {
 // Additional edge case: vpsId is empty in payload (backend derives from token)
 // ---------------------------------------------------------------------------
 
+// ---------------------------------------------------------------------------
+// System info serialisation
+// ---------------------------------------------------------------------------
+
+func TestPush_SystemInfoSerialized(t *testing.T) {
+	var capturedBody []byte
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var err error
+		capturedBody, err = io.ReadAll(r.Body)
+		if err != nil {
+			t.Errorf("read body: %v", err)
+		}
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer srv.Close()
+
+	cfg := createTestConfig(srv.URL)
+	client := NewClient(cfg)
+
+	m := &metrics.SystemMetrics{
+		CPU:    50.0,
+		Memory: 60.0,
+		Disk:   70.0,
+		System: &metrics.SystemInfo{
+			OS:     &metrics.OSInfo{Family: "ubuntu", Name: "Ubuntu", Version: "24.04"},
+			Kernel: &metrics.KernelInfo{Release: "6.8.0", Arch: "amd64"},
+			CPU:    &metrics.CPUInfo{Cores: 4, Model: "Intel Core"},
+		},
+	}
+
+	err := client.Push(context.Background(), m)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	var p payload
+	if err := json.Unmarshal(capturedBody, &p); err != nil {
+		t.Fatalf("unmarshal payload: %v", err)
+	}
+	if p.System == nil {
+		t.Fatal("expected System field to be present in payload")
+	}
+	if p.System.OS == nil {
+		t.Fatal("expected System.OS to be present")
+	}
+	if p.System.OS.Family != "ubuntu" {
+		t.Errorf("System.OS.Family = %q, want %q", p.System.OS.Family, "ubuntu")
+	}
+	if p.System.Kernel == nil {
+		t.Fatal("expected System.Kernel to be present")
+	}
+	if p.System.Kernel.Arch != "amd64" {
+		t.Errorf("System.Kernel.Arch = %q, want %q", p.System.Kernel.Arch, "amd64")
+	}
+	if p.System.CPU == nil {
+		t.Fatal("expected System.CPU to be present")
+	}
+	if p.System.CPU.Cores != 4 {
+		t.Errorf("System.CPU.Cores = %d, want %d", p.System.CPU.Cores, 4)
+	}
+}
+
+func TestPush_SystemInfoOmittedWhenNil(t *testing.T) {
+	var capturedBody []byte
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var err error
+		capturedBody, err = io.ReadAll(r.Body)
+		if err != nil {
+			t.Errorf("read body: %v", err)
+		}
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer srv.Close()
+
+	cfg := createTestConfig(srv.URL)
+	client := NewClient(cfg)
+
+	m := &metrics.SystemMetrics{
+		CPU:    50.0,
+		Memory: 60.0,
+		Disk:   70.0,
+		// System is nil — should be omitted from JSON
+	}
+
+	err := client.Push(context.Background(), m)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	var raw map[string]interface{}
+	if err := json.Unmarshal(capturedBody, &raw); err != nil {
+		t.Fatalf("unmarshal payload: %v", err)
+	}
+	if _, ok := raw["system"]; ok {
+		t.Error("expected 'system' field to be omitted when nil")
+	}
+}
+
 func TestPush_EmptyVpsId(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		var p payload
@@ -522,5 +621,224 @@ func TestPush_TokenNotInAnyErrorPath(t *testing.T) {
 	}
 	if strings.Contains(errStr, "vma_") {
 		t.Errorf("token-like string leaked in error: %s", errStr)
+	}
+}
+
+// ---------------------------------------------------------------------------
+// Config callback tests
+// ---------------------------------------------------------------------------
+
+func TestPush_ConfigCallbackEnabled(t *testing.T) {
+	var received *ConfigResponse
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte(`{"data":{"config":{"dockerMetricsEnabled":true}}}`))
+	}))
+	defer srv.Close()
+
+	cfg := createTestConfig(srv.URL)
+	client := NewClient(cfg)
+	client.SetConfigHandler(func(cr *ConfigResponse) {
+		received = cr
+	})
+
+	m := &metrics.SystemMetrics{CPU: 10}
+	err := client.Push(context.Background(), m)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if received == nil {
+		t.Fatal("config handler was not called")
+	}
+	if !received.DockerMetricsEnabled {
+		t.Error("expected DockerMetricsEnabled=true")
+	}
+}
+
+func TestPush_ConfigCallbackDisabled(t *testing.T) {
+	var received *ConfigResponse
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte(`{"data":{"config":{"dockerMetricsEnabled":false}}}`))
+	}))
+	defer srv.Close()
+
+	cfg := createTestConfig(srv.URL)
+	client := NewClient(cfg)
+	client.SetConfigHandler(func(cr *ConfigResponse) {
+		received = cr
+	})
+
+	m := &metrics.SystemMetrics{CPU: 10}
+	err := client.Push(context.Background(), m)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if received == nil {
+		t.Fatal("config handler was not called")
+	}
+	if received.DockerMetricsEnabled {
+		t.Error("expected DockerMetricsEnabled=false")
+	}
+}
+
+func TestPush_ConfigCallbackMissingConfig_FailsClosed(t *testing.T) {
+	// Old server response without data.config — must fail closed to false.
+	var received *ConfigResponse
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte(`{"ok":true}`))
+	}))
+	defer srv.Close()
+
+	cfg := createTestConfig(srv.URL)
+	client := NewClient(cfg)
+	client.SetConfigHandler(func(cr *ConfigResponse) {
+		received = cr
+	})
+
+	m := &metrics.SystemMetrics{CPU: 10}
+	err := client.Push(context.Background(), m)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if received == nil {
+		t.Fatal("config handler was not called")
+	}
+	if received.DockerMetricsEnabled {
+		t.Error("expected DockerMetricsEnabled=false when config is missing")
+	}
+}
+
+func TestPush_ConfigCallbackMalformedJSON_FailsClosed(t *testing.T) {
+	var received *ConfigResponse
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte(`not json`))
+	}))
+	defer srv.Close()
+
+	cfg := createTestConfig(srv.URL)
+	client := NewClient(cfg)
+	client.SetConfigHandler(func(cr *ConfigResponse) {
+		received = cr
+	})
+
+	m := &metrics.SystemMetrics{CPU: 10}
+	err := client.Push(context.Background(), m)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if received == nil {
+		t.Fatal("config handler was not called")
+	}
+	if received.DockerMetricsEnabled {
+		t.Error("expected DockerMetricsEnabled=false on malformed response")
+	}
+}
+
+func TestPush_ConfigCallbackNotSet(t *testing.T) {
+	// When no handler is set, the push should still succeed without panic.
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte(`{"data":{"config":{"dockerMetricsEnabled":true}}}`))
+	}))
+	defer srv.Close()
+
+	cfg := createTestConfig(srv.URL)
+	client := NewClient(cfg)
+	// No handler set — must not panic.
+
+	m := &metrics.SystemMetrics{CPU: 10}
+	err := client.Push(context.Background(), m)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+}
+
+// ---------------------------------------------------------------------------
+// Docker payload serialisation
+// ---------------------------------------------------------------------------
+
+func TestPush_DockerPayloadSerialised(t *testing.T) {
+	var capturedBody []byte
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var err error
+		capturedBody, err = io.ReadAll(r.Body)
+		if err != nil {
+			t.Errorf("read body: %v", err)
+		}
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer srv.Close()
+
+	cfg := createTestConfig(srv.URL)
+	client := NewClient(cfg)
+
+	m := &metrics.SystemMetrics{
+		CPU: 50.0,
+		Memory: 60.0,
+		Docker: &metrics.DockerMetrics{
+			SchemaVersion:  1,
+			Available:      true,
+			ContainerTotal: 2,
+			CPUPercent:     75.0,
+		},
+	}
+
+	err := client.Push(context.Background(), m)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	var p payload
+	if err := json.Unmarshal(capturedBody, &p); err != nil {
+		t.Fatalf("unmarshal payload: %v", err)
+	}
+	if p.Docker == nil {
+		t.Fatal("expected Docker field to be present in payload")
+	}
+	if !p.Docker.Available {
+		t.Error("expected Docker.Available=true")
+	}
+	if p.Docker.ContainerTotal != 2 {
+		t.Errorf("Docker.ContainerTotal = %d, want 2", p.Docker.ContainerTotal)
+	}
+	if p.Docker.CPUPercent != 75.0 {
+		t.Errorf("Docker.CPUPercent = %f, want 75.0", p.Docker.CPUPercent)
+	}
+}
+
+func TestPush_DockerOmittedWhenNil(t *testing.T) {
+	var capturedBody []byte
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var err error
+		capturedBody, err = io.ReadAll(r.Body)
+		if err != nil {
+			t.Errorf("read body: %v", err)
+		}
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer srv.Close()
+
+	cfg := createTestConfig(srv.URL)
+	client := NewClient(cfg)
+
+	m := &metrics.SystemMetrics{
+		CPU:    50.0,
+		Memory: 60.0,
+	}
+
+	err := client.Push(context.Background(), m)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	var raw map[string]interface{}
+	if err := json.Unmarshal(capturedBody, &raw); err != nil {
+		t.Fatalf("unmarshal payload: %v", err)
+	}
+	if _, ok := raw["docker"]; ok {
+		t.Error("expected 'docker' field to be omitted when nil")
 	}
 }

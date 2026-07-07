@@ -71,6 +71,8 @@ type ServersPanelProps = {
     password: string;
   };
   metrics: DashboardOverview["metrics"];
+  systemInfo: DashboardOverview["systemInfo"];
+  dockerMetrics: DashboardOverview["dockerMetrics"];
   jobs: DashboardOverview["jobs"];
   onSearchChange: (value: string) => void;
   onStatusFilterChange: (value: string) => void;
@@ -80,6 +82,7 @@ type ServersPanelProps = {
   onProvision: (vps: VpsRecord) => void;
   onVerify: (vps: VpsRecord) => void;
   onInstallAgent: (vps: VpsRecord) => void;
+  onToggleDockerMetrics: (vps: VpsRecord) => void;
   onDelete: (vps: VpsRecord) => void;
 };
 
@@ -87,12 +90,19 @@ export function ServersPanel(props: ServersPanelProps) {
   const metricById = new Map(
     props.metrics.map((metric) => [metric.vpsId, metric]),
   );
+  const systemInfoById = new Map(
+    (props.systemInfo ?? []).map((info) => [info.vpsId, info]),
+  );
+  const dockerMetricsById = new Map(
+    (props.dockerMetrics ?? []).map((metric) => [metric.vpsId, metric]),
+  );
   return (
     <div className="grid min-w-0 max-w-full gap-5 xl:grid-cols-[minmax(0,1fr)_minmax(360px,420px)]">
       <section className="min-w-0 space-y-4">
-        <Card className="min-w-0 overflow-hidden border border-slate-200/80 bg-white/90 shadow-panel backdrop-blur">
-          <CardHeader className="min-w-0 border-b border-slate-100 bg-slate-50/55 pb-4">
-            <CardTitle className="truncate">Servers</CardTitle>
+        <Card className="min-w-0 overflow-hidden border border-stone-200/80 bg-white/95 shadow-panel backdrop-blur">
+          <CardHeader className="min-w-0 border-b border-stone-200/70 bg-[#f6f3ec] pb-4">
+            <p className="truncate text-[11px] font-black uppercase tracking-[0.2em] text-[#844fba]">Fleet inventory</p>
+            <CardTitle className="truncate text-[#15181e]">Servers</CardTitle>
             <CardDescription>
               Search, filter, install keys, and verify access.
             </CardDescription>
@@ -107,7 +117,7 @@ export function ServersPanel(props: ServersPanelProps) {
               />
               <select
                 aria-label="Filter status"
-                className="h-10 min-w-0 w-full rounded-xl border border-slate-200 bg-white px-3 text-sm font-semibold text-slate-700 outline-none transition focus:border-accent focus:ring-4 focus:ring-accent/20"
+                className="h-10 min-w-0 w-full rounded-md border border-stone-200 bg-white px-3 text-sm font-semibold text-slate-700 outline-none transition focus:border-accent focus:ring-4 focus:ring-accent/20"
                 value={props.statusFilter}
                 onChange={(event) =>
                   props.onStatusFilterChange(event.target.value)
@@ -136,6 +146,8 @@ export function ServersPanel(props: ServersPanelProps) {
                     key={vps.id}
                     vps={vps}
                     metric={metricById.get(vps.id)}
+                    systemInfo={systemInfoById.get(vps.id)}
+                    dockerMetrics={dockerMetricsById.get(vps.id)}
                     jobs={props.jobs.filter((job) => job.vpsId === vps.id)}
                     busy={props.busy}
                     password={props.provisionPasswords[vps.id] || ""}
@@ -143,6 +155,7 @@ export function ServersPanel(props: ServersPanelProps) {
                     onProvision={props.onProvision}
                     onVerify={props.onVerify}
                     onInstallAgent={props.onInstallAgent}
+                    onToggleDockerMetrics={props.onToggleDockerMetrics}
                     onDelete={props.onDelete}
                   />
                 ))}
@@ -164,13 +177,13 @@ function CreateServerCard({
   onCreateFormChange,
 }: ServersPanelProps) {
   return (
-    <Card className="h-fit min-w-0 overflow-hidden border border-slate-200/80 bg-white/90 shadow-panel backdrop-blur xl:sticky xl:top-5">
-      <CardHeader className="min-w-0 border-b border-slate-100 bg-gradient-to-br from-white to-slate-50 pb-4">
-        <p className="truncate text-xs font-black uppercase tracking-[0.18em] text-accent">
+    <Card className="h-fit min-w-0 overflow-hidden border border-stone-200/80 bg-white/95 shadow-panel backdrop-blur xl:sticky xl:top-5">
+      <CardHeader className="min-w-0 border-b border-stone-200 bg-[#15181e] pb-4 text-white">
+        <p className="truncate text-[11px] font-black uppercase tracking-[0.2em] text-[#ffb000]">
           Add server
         </p>
-        <CardTitle className="truncate">New VPS</CardTitle>
-        <CardDescription>
+        <CardTitle className="truncate text-white">New VPS</CardTitle>
+        <CardDescription className="text-white/58">
           Password is optional and never stored.
         </CardDescription>
       </CardHeader>
@@ -287,6 +300,8 @@ function CreateServerCard({
 function ServerCard({
   vps,
   metric,
+  systemInfo,
+  dockerMetrics,
   jobs,
   busy,
   password,
@@ -294,10 +309,13 @@ function ServerCard({
   onProvision,
   onVerify,
   onInstallAgent,
+  onToggleDockerMetrics,
   onDelete,
 }: {
   vps: VpsRecord;
   metric?: DashboardOverview["metrics"][number];
+  systemInfo?: DashboardOverview["systemInfo"][number];
+  dockerMetrics?: DashboardOverview["dockerMetrics"][number];
   jobs: DashboardOverview["jobs"];
   busy: boolean;
   password: string;
@@ -305,6 +323,7 @@ function ServerCard({
   onProvision: ServersPanelProps["onProvision"];
   onVerify: ServersPanelProps["onVerify"];
   onInstallAgent: ServersPanelProps["onInstallAgent"];
+  onToggleDockerMetrics: ServersPanelProps["onToggleDockerMetrics"];
   onDelete: ServersPanelProps["onDelete"];
 }) {
   const isLocalHost = vps.kind === "local" || vps.managedBy === "system";
@@ -330,14 +349,14 @@ function ServerCard({
 
   return (
     <article
-      className={`min-w-0 rounded-2xl border px-4 py-4 shadow-sm transition duration-300 ${isDown ? "border-red-200 bg-red-50/70 shadow-red-950/5 ring-1 ring-red-100" : "border-slate-200/80 bg-white hover:-translate-y-0.5 hover:border-teal-200 hover:shadow-lg"}`}
+      className={`min-w-0 rounded-xl border px-4 py-4 shadow-[0_10px_28px_rgba(13,14,18,0.04)] transition duration-300 ${isDown ? "border-red-200 bg-red-50/70 shadow-red-950/5 ring-1 ring-red-100" : "border-stone-200/90 bg-white hover:-translate-y-0.5 hover:border-[#844fba]/30 hover:shadow-[0_18px_38px_rgba(13,14,18,0.08)]"}`}
     >
       <div
         className={`grid gap-4 xl:grid-cols-[minmax(320px,1.25fr)_minmax(230px,0.8fr)_minmax(220px,0.55fr)_auto] xl:items-center ${isDown ? "border-l-4 border-red-500 pl-3" : ""}`}
       >
         <div className="min-w-0">
           <div className="flex flex-wrap items-center gap-2">
-            <h3 className="truncate text-[17px] font-black tracking-tight text-slate-950">
+            <h3 className="truncate text-[17px] font-extrabold tracking-[-0.03em] text-[#15181e]">
               {vps.name}
             </h3>
             {isDown ? (
@@ -392,9 +411,16 @@ function ServerCard({
               {vps.notes}
             </p>
           ) : null}
+          <ServerSystemInfoStrip systemInfo={systemInfo} />
         </div>
-        <ServerRuntimeMeta metric={metric} jobs={jobs} />
+        <ServerRuntimeMeta metric={metric} systemInfo={systemInfo} jobs={jobs} />
         <ServerMetricStrip metric={metric} />
+        <DockerMetricsPanel
+          vps={vps}
+          dockerMetrics={dockerMetrics}
+          busy={busy}
+          onToggle={onToggleDockerMetrics}
+        />
         <div className="flex min-w-0 flex-wrap items-start justify-start gap-2 xl:justify-end">
           {isLocalHost ? (
             <>
@@ -587,13 +613,16 @@ function ServerCard({
 
 function ServerRuntimeMeta({
   metric,
+  systemInfo,
   jobs,
 }: {
   metric?: DashboardOverview["metrics"][number];
+  systemInfo?: DashboardOverview["systemInfo"][number];
   jobs: DashboardOverview["jobs"];
 }) {
   const runningJobs = jobs.filter((job) => job.status === "running").length;
   const parts = [
+    systemInfo?.agentVersion ? `Agent ${systemInfo.agentVersion}` : null,
     metric ? `Uptime ${formatUptime(metric.uptime)}` : null,
     metric ? `Last check ${freshnessLabel(metric.collectedAt)}` : null,
     `${runningJobs} running job${runningJobs === 1 ? "" : "s"}`,
@@ -603,6 +632,150 @@ function ServerRuntimeMeta({
       <p className="truncate" title={parts.join(" / ")}>
         {parts.join(" / ")}
       </p>
+    </div>
+  );
+}
+
+function ServerSystemInfoStrip({
+  systemInfo,
+}: {
+  systemInfo?: DashboardOverview["systemInfo"][number];
+}) {
+  if (!systemInfo) {
+    return (
+      <div className="mt-3 rounded-xl border border-dashed border-slate-200 bg-slate-50/70 px-3 py-2 text-xs font-bold text-slate-400">
+        System info not reported yet.
+      </div>
+    );
+  }
+
+  const osLabel = systemInfo.os?.prettyName || systemInfo.os?.name || systemInfo.os?.family || "OS n/a";
+  const kernelParts = [systemInfo.kernel?.release, systemInfo.kernel?.arch].filter(Boolean);
+  const cpuLabel = [
+    systemInfo.cpu?.cores ? `${systemInfo.cpu.cores} cores` : null,
+    systemInfo.cpu?.model,
+  ].filter(Boolean).join(" · ") || "CPU n/a";
+  const memoryLabel = systemInfo.memory?.totalBytes
+    ? `${formatBytes(systemInfo.memory.totalBytes)} RAM`
+    : "RAM n/a";
+  const diskLabel = systemInfo.rootDisk?.totalBytes
+    ? `${formatBytes(systemInfo.rootDisk.totalBytes)} disk${systemInfo.rootDisk.fsType ? ` · ${systemInfo.rootDisk.fsType}` : ""}`
+    : "Disk n/a";
+
+  return (
+    <div className="mt-3 grid gap-2 rounded-xl border border-slate-200 bg-gradient-to-br from-slate-50 to-white px-3 py-2 text-xs text-slate-600 shadow-sm">
+      <p className="truncate font-black text-slate-800" title={osLabel}>
+        {osLabel}
+      </p>
+      <div className="flex flex-wrap gap-x-2 gap-y-1 font-bold">
+        <span className="truncate" title={kernelParts.join(" · ") || undefined}>
+          {kernelParts.length ? kernelParts.join(" · ") : "Kernel n/a"}
+        </span>
+        <span className="text-slate-300">/</span>
+        <span className="truncate" title={cpuLabel}>{cpuLabel}</span>
+        <span className="text-slate-300">/</span>
+        <span>{memoryLabel}</span>
+        <span className="text-slate-300">/</span>
+        <span>{diskLabel}</span>
+      </div>
+    </div>
+  );
+}
+
+function formatBytes(value: number): string {
+  if (!Number.isFinite(value) || value <= 0) return "n/a";
+  const units = ["B", "KB", "MB", "GB", "TB"];
+  let next = value;
+  let index = 0;
+  while (next >= 1024 && index < units.length - 1) {
+    next /= 1024;
+    index += 1;
+  }
+  return `${next >= 10 || index === 0 ? next.toFixed(0) : next.toFixed(1)} ${units[index]}`;
+}
+
+function formatDockerError(errorCode?: string): string {
+  const labels: Record<string, string> = {
+    socket_missing: "Docker socket missing",
+    permission_denied: "Permission denied",
+    timeout: "Docker timed out",
+    daemon_unreachable: "Docker daemon unreachable",
+    unsupported_os: "Unsupported OS",
+    bad_response: "Bad Docker response",
+  };
+  return labels[errorCode || ""] || "Docker unavailable";
+}
+
+function DockerMetricsPanel({
+  vps,
+  dockerMetrics,
+  busy,
+  onToggle,
+}: {
+  vps: VpsRecord;
+  dockerMetrics?: DashboardOverview["dockerMetrics"][number];
+  busy: boolean;
+  onToggle: ServersPanelProps["onToggleDockerMetrics"];
+}) {
+  const enabled = vps.dockerMetricsEnabled === true;
+  const topContainers = (dockerMetrics?.containers ?? [])
+    .slice()
+    .sort((a, b) => b.cpuPercent - a.cpuPercent)
+    .slice(0, 3);
+
+  let body: ReactNode;
+  if (!enabled) {
+    body = <p className="text-xs font-bold text-slate-500">Docker metrics off.</p>;
+  } else if (!dockerMetrics) {
+    body = <p className="text-xs font-bold text-amber-700">Waiting for Docker-capable agent.</p>;
+  } else if (!dockerMetrics.available) {
+    body = (
+      <div className="space-y-1">
+        <p className="text-xs font-black text-amber-800">{formatDockerError(dockerMetrics.errorCode)}</p>
+        <p className="text-[11px] font-semibold text-slate-500">Check Docker socket access for the agent.</p>
+      </div>
+    );
+  } else {
+    body = (
+      <div className="space-y-2">
+        <div className="flex flex-wrap gap-1.5 text-[11px] font-black text-slate-700">
+          <span className="rounded-full bg-white px-2 py-0.5 shadow-sm">{dockerMetrics.containerRunning}/{dockerMetrics.containerTotal} running</span>
+          <span className="rounded-full bg-white px-2 py-0.5 shadow-sm">CPU {dockerMetrics.cpuPercent.toFixed(1)}%</span>
+          <span className="rounded-full bg-white px-2 py-0.5 shadow-sm">RAM {formatBytes(dockerMetrics.memoryUsageBytes)}</span>
+          <span className="rounded-full bg-white px-2 py-0.5 shadow-sm">Net {formatBytes(dockerMetrics.networkRxBytes + dockerMetrics.networkTxBytes)}</span>
+          <span className="rounded-full bg-white px-2 py-0.5 shadow-sm">IO {formatBytes(dockerMetrics.blockReadBytes + dockerMetrics.blockWriteBytes)}</span>
+        </div>
+        {topContainers.length ? (
+          <div className="grid gap-1">
+            {topContainers.map((container) => (
+              <p key={container.id} className="truncate text-[11px] font-bold text-slate-600" title={`${container.name} · ${container.image} · ${container.status}`}>
+                <span className="text-slate-900">{container.name}</span> · {container.state} · {container.cpuPercent.toFixed(1)}% · {formatBytes(container.memoryUsageBytes)}
+              </p>
+            ))}
+          </div>
+        ) : null}
+      </div>
+    );
+  }
+
+  return (
+    <div className="rounded-xl border border-slate-200 bg-slate-50/90 px-3 py-2 shadow-sm">
+      <div className="mb-1.5 flex items-center justify-between gap-2">
+        <span className="text-[11px] font-black uppercase tracking-[0.12em] text-slate-500">Docker</span>
+        <Button
+          type="button"
+          size="sm"
+          variant={enabled ? "secondary" : "outline"}
+          className="h-7 rounded-lg px-2 text-[11px]"
+          disabled={busy}
+          aria-pressed={enabled}
+          aria-label={`${enabled ? "Disable" : "Enable"} Docker metrics for ${vps.name}`}
+          onClick={() => onToggle(vps)}
+        >
+          {enabled ? "On" : "Off"}
+        </Button>
+      </div>
+      {body}
     </div>
   );
 }

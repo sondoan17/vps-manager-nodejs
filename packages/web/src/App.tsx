@@ -27,6 +27,7 @@ import {
   loginWithDashboardPassword,
   logoutDashboard,
   provisionKey,
+  updateVps,
   verifyKey,
   type DashboardOverview,
   type VpsRecord,
@@ -120,6 +121,8 @@ const emptyOverview: DashboardOverview = {
   },
   servers: [],
   metrics: [],
+  systemInfo: [],
+  dockerMetrics: [],
   jobs: [],
   auditEvents: [],
   terminal: {
@@ -172,6 +175,8 @@ export function App() {
       servers,
       jobs,
       metrics,
+      systemInfo: dashboard.systemInfo ?? [],
+      dockerMetrics: dashboard.dockerMetrics ?? [],
       auditEvents,
       summary: {
         ...dashboard.summary,
@@ -248,6 +253,8 @@ export function App() {
           servers: payload.servers,
           jobs: payload.jobs,
           metrics: payload.metrics,
+          systemInfo: payload.overview.systemInfo ?? [],
+          dockerMetrics: payload.overview.dockerMetrics ?? [],
           auditEvents: payload.auditEvents,
         }));
         setRecords(payload.servers);
@@ -255,7 +262,8 @@ export function App() {
       onMetricsUpdated: (payload) => {
         setOverview((prev) => {
           const updatedMetrics = mergeMetrics(prev.metrics, payload.metrics);
-          return { ...prev, metrics: updatedMetrics };
+          const dockerMetrics = payload.dockerMetrics !== undefined ? payload.dockerMetrics : prev.dockerMetrics ?? [];
+          return { ...prev, metrics: updatedMetrics, dockerMetrics, systemInfo: payload.systemInfo ?? prev.systemInfo };
         });
       },
       onHeartbeat: (_payload) => {
@@ -404,6 +412,27 @@ export function App() {
     });
   }
 
+  async function handleToggleDockerMetrics(vps: VpsRecord) {
+    const nextEnabled = !vps.dockerMetricsEnabled;
+    if (nextEnabled) {
+      const confirmed = window.confirm(
+        "Enable Docker metrics for this server? The agent will collect container names, images, status, and resource usage. It will not collect env vars, labels, mounts, logs, or commands.",
+      );
+      if (!confirmed) return;
+    }
+
+    await runAction(
+      `${nextEnabled ? "Enabling" : "Disabling"} Docker metrics for ${vps.name}...`,
+      async () => {
+        await updateVps(vps.id, { dockerMetricsEnabled: nextEnabled });
+        setStatus({
+          message: `Docker metrics ${nextEnabled ? "enabled" : "disabled"} for ${vps.name}.`,
+          kind: "success",
+        });
+      },
+    );
+  }
+
   async function handleDelete(vps: VpsRecord) {
     await runAction(`Deleting ${vps.name}...`, async () => {
       await deleteVps(vps.id);
@@ -478,6 +507,8 @@ export function App() {
           provisionPasswords={provisionPasswords}
           createForm={createForm}
           metrics={overview.metrics}
+          systemInfo={overview.systemInfo}
+          dockerMetrics={overview.dockerMetrics}
           jobs={overview.jobs}
           onSearchChange={setServerSearch}
           onStatusFilterChange={setStatusFilter}
@@ -489,6 +520,7 @@ export function App() {
           onProvision={handleProvision}
           onVerify={handleVerify}
           onInstallAgent={handleInstallAgent}
+          onToggleDockerMetrics={handleToggleDockerMetrics}
           onDelete={handleDelete}
         />
       ) : null}
@@ -509,8 +541,8 @@ export function App() {
 
 function AuthLoadingScreen() {
   return (
-    <main className="grid min-h-screen place-items-center bg-slate-950 text-white">
-      <div className="rounded-3xl border border-white/10 bg-white/10 px-6 py-5 font-semibold shadow-2xl backdrop-blur">
+    <main className="grid min-h-screen place-items-center bg-[#0d0e12] text-white">
+      <div className="rounded-xl border border-white/10 bg-white/[0.06] px-6 py-5 font-semibold shadow-[0_18px_44px_rgba(0,0,0,0.24)] backdrop-blur">
         Checking dashboard access...
       </div>
     </main>
@@ -519,21 +551,22 @@ function AuthLoadingScreen() {
 
 function LoginGate({ password, busy, message, onPasswordChange, onSubmit }: { password: string; busy: boolean; message?: string; onPasswordChange: (value: string) => void; onSubmit: (event: FormEvent<HTMLFormElement>) => void }) {
   return (
-    <main className="relative grid min-h-screen overflow-hidden bg-gradient-to-br from-slate-950 via-indigo-950 to-cyan-950 px-4 py-8 text-white">
-      <div className="absolute inset-0 bg-[radial-gradient(circle_at_15%_10%,rgba(34,211,238,0.24),transparent_26%),radial-gradient(circle_at_90%_4%,rgba(99,102,241,0.32),transparent_28%)]" />
-      <section className="relative m-auto w-full max-w-md rounded-[2rem] border border-white/12 bg-white/10 p-6 shadow-2xl backdrop-blur-xl sm:p-8">
+    <main className="relative grid min-h-screen overflow-hidden bg-[#0d0e12] px-4 py-8 text-white">
+      <div className="absolute inset-0 bg-[radial-gradient(circle_at_15%_10%,rgba(132,79,186,0.34),transparent_28%),radial-gradient(circle_at_90%_4%,rgba(21,149,136,0.22),transparent_28%)]" />
+      <div className="absolute inset-0 opacity-[0.12] [background-image:linear-gradient(90deg,rgba(255,255,255,0.5)_1px,transparent_1px),linear-gradient(180deg,rgba(255,255,255,0.5)_1px,transparent_1px)] [background-size:42px_42px]" />
+      <section className="relative m-auto w-full max-w-md rounded-xl border border-white/12 bg-[#15181e]/90 p-6 shadow-[0_24px_70px_rgba(0,0,0,0.28)] backdrop-blur-xl sm:p-8">
         <div className="mb-6">
-          <p className="text-xs font-black uppercase tracking-[0.22em] text-cyan-200/80">Secure local console</p>
-          <h1 className="mt-2 font-display text-3xl leading-tight">Unlock VPS Ops</h1>
+          <p className="text-xs font-black uppercase tracking-[0.24em] text-[#ffb000]">Secure local console</p>
+          <h1 className="mt-2 font-display text-4xl font-extrabold leading-tight tracking-[-0.05em]">Unlock VPS Ops</h1>
           <p className="mt-3 text-sm font-semibold leading-6 text-white/70">Enter the dashboard password. The password is verified server-side against the stored credential and is never stored in browser storage.</p>
         </div>
         <form className="grid gap-4" onSubmit={onSubmit}>
           <div className="grid gap-2">
             <Label htmlFor="dashboard-password" className="text-white">Dashboard password</Label>
-            <Input id="dashboard-password" type="password" autoComplete="current-password" value={password} onChange={(event) => onPasswordChange(event.target.value)} className="h-12 border-white/15 bg-slate-950/55 text-white placeholder:text-white/40" placeholder="Enter password" autoFocus />
+            <Input id="dashboard-password" type="password" autoComplete="current-password" value={password} onChange={(event) => onPasswordChange(event.target.value)} className="h-12 rounded-md border-white/15 bg-[#0d0e12]/75 text-white placeholder:text-white/40" placeholder="Enter password" autoFocus />
           </div>
           {message ? <Alert variant="destructive" className="rounded-xl px-3 py-2 text-sm font-semibold">{message}</Alert> : null}
-          <Button type="submit" disabled={busy} className="h-12 rounded-xl bg-cyan-300 font-black text-slate-950 hover:bg-cyan-200">
+          <Button type="submit" disabled={busy} className="h-12 rounded-md bg-[#844fba] font-black text-white hover:bg-[#6f43a0]">
             {busy ? "Verifying..." : "Enter dashboard"}
           </Button>
         </form>

@@ -41,8 +41,9 @@ export default {
       },
       boxShadow: { panel: "var(--shadow-panel)" },
       fontFamily: {
-        display: ["Be Vietnam Pro", "Inter", "Segoe UI", "sans-serif"],
-        body: ["Be Vietnam Pro", "Inter", "Segoe UI", "sans-serif"],
+        display: ["Inter", "Segoe UI", "sans-serif"],
+        body: ["Inter", "Segoe UI", "sans-serif"],
+        mono: ["JetBrains Mono", "SFMono-Regular", "Consolas", "monospace"],
       },
     },
   },

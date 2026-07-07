@@ -15,6 +15,45 @@ export type VpsRecord = {
   keyProvisionedAt?: string;
   kind?: "remote" | "local";
   managedBy?: "user" | "system";
+  dockerMetricsEnabled?: boolean;
+};
+
+export type DashboardDockerContainerMetric = {
+  id: string;
+  name: string;
+  image: string;
+  state: string;
+  status?: string;
+  createdAt?: string;
+  cpuPercent: number;
+  memoryUsageBytes: number;
+  memoryLimitBytes?: number;
+  networkRxBytes: number;
+  networkTxBytes: number;
+  blockReadBytes: number;
+  blockWriteBytes: number;
+  pids: number;
+};
+
+export type DashboardDockerMetrics = {
+  vpsId: string;
+  collectedAt: string;
+  receivedAt: string;
+  agentVersion?: string;
+  schemaVersion: 1;
+  available: boolean;
+  errorCode?: "socket_missing" | "permission_denied" | "timeout" | "daemon_unreachable" | "unsupported_os" | "bad_response" | string;
+  containerTotal: number;
+  containerRunning: number;
+  cpuPercent: number;
+  memoryUsageBytes: number;
+  memoryLimitBytes?: number;
+  networkRxBytes: number;
+  networkTxBytes: number;
+  blockReadBytes: number;
+  blockWriteBytes: number;
+  pids: number;
+  containers: DashboardDockerContainerMetric[];
 };
 
 export type DashboardOverview = {
@@ -48,6 +87,39 @@ export type DashboardOverview = {
       unit?: string;
     };
   }>;
+  systemInfo: Array<{
+    vpsId: string;
+    collectedAt: string;
+    receivedAt: string;
+    agentVersion?: string;
+    os?: {
+      family?: string;
+      name?: string;
+      version?: string;
+      prettyName?: string;
+    };
+    kernel?: {
+      release?: string;
+      version?: string;
+      arch?: string;
+    };
+    cpu?: {
+      cores?: number;
+      model?: string;
+    };
+    memory?: {
+      totalBytes?: number;
+      availableBytes?: number;
+    };
+    rootDisk?: {
+      mountPoint: string;
+      fsType?: string;
+      totalBytes?: number;
+      usedBytes?: number;
+      freeBytes?: number;
+    };
+  }>;
+  dockerMetrics: DashboardDockerMetrics[];
   jobs: Array<{
     id: string;
     vpsId: string;
@@ -98,6 +170,8 @@ export type DashboardOverview = {
 };
 
 export type DashboardMetric = DashboardOverview["metrics"][number];
+export type DashboardSystemInfo = DashboardOverview["systemInfo"][number];
+export type { DashboardDockerMetrics as DashboardDockerMetric };
 export type DashboardJob = DashboardOverview["jobs"][number];
 export type AuditEvent = DashboardOverview["auditEvents"][number];
 
@@ -194,6 +268,13 @@ export function listAuditEvents() {
 export function createVps(payload: CreateVpsPayload) {
   return request<VpsRecord>("/api/vps", {
     method: "POST",
+    body: JSON.stringify(payload),
+  });
+}
+
+export function updateVps(id: string, payload: Partial<Pick<VpsRecord, "dockerMetricsEnabled">>) {
+  return request<VpsRecord>(`/api/vps/${id}`, {
+    method: "PATCH",
     body: JSON.stringify(payload),
   });
 }

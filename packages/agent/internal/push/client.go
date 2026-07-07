@@ -52,11 +52,26 @@ func (e *ErrRetryable) Error() string {
 
 func (e *ErrRetryable) Unwrap() error { return e.Err }
 
+// ConfigResponse carries runtime configuration returned by the server
+// after a successful metrics push.
+type ConfigResponse struct {
+	DockerMetricsEnabled bool `json:"dockerMetricsEnabled"`
+}
+
 // Client pushes metrics to the backend.
 type Client struct {
-	backendURL string
-	token      string
-	httpClient *http.Client
+	backendURL    string
+	token         string
+	httpClient    *http.Client
+	configHandler func(*ConfigResponse)
+}
+
+// SetConfigHandler registers a callback that receives runtime configuration
+// from the server on every successful push response. Missing or malformed
+// config (including old server responses) produces a ConfigResponse with
+// DockerMetricsEnabled=false (fail closed).
+func (c *Client) SetConfigHandler(handler func(*ConfigResponse)) {
+	c.configHandler = handler
 }
 
 // NewClient creates a new push client from config.
@@ -72,16 +87,18 @@ func NewClient(cfg *config.Config) *Client {
 
 // payload is the JSON body sent to the backend.
 type payload struct {
-	VpsId        string  `json:"vpsId,omitempty"`
-	CollectedAt  string  `json:"collectedAt"`
-	CPU          float64 `json:"cpu"`
-	Memory       float64 `json:"memory"`
-	Disk         float64 `json:"disk"`
-	LoadAverage  float64 `json:"loadAverage"`
-	NetworkRx    float64 `json:"networkRx"`
-	NetworkTx    float64 `json:"networkTx"`
-	Uptime       float64 `json:"uptime"`
-	AgentVersion string  `json:"agentVersion"`
+	VpsId        string                 `json:"vpsId,omitempty"`
+	CollectedAt  string                 `json:"collectedAt"`
+	CPU          float64                `json:"cpu"`
+	Memory       float64                `json:"memory"`
+	Disk         float64                `json:"disk"`
+	LoadAverage  float64                `json:"loadAverage"`
+	NetworkRx    float64                `json:"networkRx"`
+	NetworkTx    float64                `json:"networkTx"`
+	Uptime       float64                `json:"uptime"`
+	AgentVersion string                 `json:"agentVersion"`
+	System       *metrics.SystemInfo    `json:"system,omitempty"`
+	Docker       *metrics.DockerMetrics `json:"docker,omitempty"`
 }
 
 // Push sends metrics to the backend. It distinguishes between fatal auth
@@ -98,6 +115,8 @@ func (c *Client) Push(ctx context.Context, m *metrics.SystemMetrics) error {
 		NetworkTx:    m.NetworkTx,
 		Uptime:       m.Uptime,
 		AgentVersion: agentVersion,
+		System:       m.System,
+		Docker:       m.Docker,
 	}
 
 	body, err := json.Marshal(p)
@@ -128,14 +147,58 @@ func (c *Client) Push(ctx context.Context, m *metrics.SystemMetrics) error {
 
 	switch {
 	case resp.StatusCode >= 200 && resp.StatusCode < 300:
+		// Parse runtime config from response; fail closed on any error.
+		c.handleConfigResponse(respBody)
 		return nil
 	case resp.StatusCode == 401 || resp.StatusCode == 403:
 		return &ErrAuth{StatusCode: resp.StatusCode, Body: sanitizedBody}
+	case resp.StatusCode == 400 && m.Docker != nil:
+		// Fail closed for downgraded/old servers or schema mismatches: disable
+		// Docker collection and retry once without the optional Docker payload so
+		// core host metrics do not become fragile.
+		c.disableDockerConfig()
+		stripped := *m
+		stripped.Docker = nil
+		return c.Push(ctx, &stripped)
 	case resp.StatusCode == 400 || resp.StatusCode == 404:
 		return &ErrFatal{StatusCode: resp.StatusCode, Body: sanitizedBody}
 	default:
 		return &ErrRetryable{StatusCode: resp.StatusCode, Err: fmt.Errorf("unexpected status: %s", sanitizedBody)}
 	}
+}
+
+func (c *Client) disableDockerConfig() {
+	if c.configHandler != nil {
+		c.configHandler(&ConfigResponse{DockerMetricsEnabled: false})
+	}
+}
+
+// handleConfigResponse attempts to extract runtime config from the server
+// response body. Missing or malformed config defaults to disabled (false).
+func (c *Client) handleConfigResponse(body []byte) {
+	if c.configHandler == nil {
+		return
+	}
+
+	var response struct {
+		Data *struct {
+			Config *struct {
+				DockerMetricsEnabled bool `json:"dockerMetricsEnabled"`
+			} `json:"config"`
+		} `json:"data"`
+	}
+
+	if err := json.Unmarshal(body, &response); err != nil || response.Data == nil {
+		// Fail closed: malformed response or no data — disable Docker.
+		c.disableDockerConfig()
+		return
+	}
+
+	enabled := false
+	if response.Data.Config != nil {
+		enabled = response.Data.Config.DockerMetricsEnabled
+	}
+	c.configHandler(&ConfigResponse{DockerMetricsEnabled: enabled})
 }
 
 // MaxRetries is the maximum number of retry attempts for retryable errors.

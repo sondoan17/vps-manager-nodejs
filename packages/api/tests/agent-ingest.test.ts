@@ -217,11 +217,12 @@ describe("agent metric payload validation", () => {
     const { service } = makeService();
     const { credential } = await service.createCredential(vpsId);
 
-    const sample = await service.ingestMetric(credential, validPayload());
-    expect(sample.vpsId).toBe(vpsId);
-    expect(sample.cpu).toBe(42);
-    expect(sample.source).toBe("agent");
-    expect(sample.receivedAt).toBeDefined();
+    const result = await service.ingestMetric(credential, validPayload());
+    expect(result.sample.vpsId).toBe(vpsId);
+    expect(result.sample.cpu).toBe(42);
+    expect(result.sample.source).toBe("agent");
+    expect(result.sample.receivedAt).toBeDefined();
+    expect(result.config).toEqual({ dockerMetricsEnabled: false });
   });
 });
 
@@ -252,7 +253,8 @@ describe("POST /api/agent/metrics", () => {
     expect(res.body.data).toEqual({
       ok: true,
       vpsId,
-      receivedAt: expect.any(String)
+      receivedAt: expect.any(String),
+      config: { dockerMetricsEnabled: false }
     });
   });
 
@@ -375,6 +377,154 @@ describe("POST /api/agent/metrics", () => {
         .post("/api/agent/metrics")
         .set("Authorization", `Bearer ${validToken}`)
         .send(validPayload({ cpu: NaN }))
+        .expect(400);
+    });
+  });
+
+  describe("system info ingestion", () => {
+    it("accepts valid payload with system info", async () => {
+      const res = await request(app())
+        .post("/api/agent/metrics")
+        .set("Authorization", `Bearer ${validToken}`)
+        .send(validPayload({
+          system: {
+            os: { family: "linux", name: "Ubuntu", version: "22.04", prettyName: "Ubuntu 22.04.3 LTS" },
+            kernel: { release: "5.15.0-91-generic", version: "#101-Ubuntu SMP", arch: "x86_64" },
+            cpu: { cores: 4, model: "Intel(R) Xeon(R) Platinum 8375C CPU @ 2.90GHz" },
+            memory: { totalBytes: 8_589_934_592, availableBytes: 4_294_967_296 },
+            rootDisk: { mountPoint: "/", fsType: "ext4", totalBytes: 107_374_182_400, usedBytes: 53_687_091_200, freeBytes: 53_687_091_200 },
+          },
+        }))
+        .expect(201);
+      expect(res.body.data.ok).toBe(true);
+    });
+
+    it("accepts minimal system info (only rootDisk required fields)", async () => {
+      const res = await request(app())
+        .post("/api/agent/metrics")
+        .set("Authorization", `Bearer ${validToken}`)
+        .send(validPayload({
+          system: {
+            rootDisk: { mountPoint: "/" },
+          },
+        }))
+        .expect(201);
+      expect(res.body.data.ok).toBe(true);
+    });
+
+    it("stores system info accessible via agent repository", async () => {
+      await request(app())
+        .post("/api/agent/metrics")
+        .set("Authorization", `Bearer ${validToken}`)
+        .send(validPayload({
+          agentVersion: "2.0.0",
+          system: {
+            os: { family: "linux" },
+            cpu: { cores: 8 },
+          },
+        }))
+        .expect(201);
+
+      const agentRepo = createJsonAgentRepository(join(tempDir, "data", "agents.json"));
+      const systemInfo = await agentRepo.getSystemInfo(vpsId);
+      expect(systemInfo).toBeDefined();
+      expect(systemInfo!.vpsId).toBe(vpsId);
+      expect(systemInfo!.os?.family).toBe("linux");
+      expect(systemInfo!.cpu?.cores).toBe(8);
+      expect(systemInfo!.agentVersion).toBe("2.0.0");
+      expect(systemInfo!.collectedAt).toBeDefined();
+      expect(systemInfo!.receivedAt).toBeDefined();
+    });
+
+    it("keeps newer system info when an older collectedAt arrives later", async () => {
+      const newerCollectedAt = new Date().toISOString();
+      const olderCollectedAt = new Date(Date.now() - 60_000).toISOString();
+
+      await request(app())
+        .post("/api/agent/metrics")
+        .set("Authorization", `Bearer ${validToken}`)
+        .send(validPayload({
+          collectedAt: newerCollectedAt,
+          system: {
+            os: { family: "linux", name: "newer" },
+          },
+        }))
+        .expect(201);
+
+      await request(app())
+        .post("/api/agent/metrics")
+        .set("Authorization", `Bearer ${validToken}`)
+        .send(validPayload({
+          collectedAt: olderCollectedAt,
+          system: {
+            os: { family: "linux", name: "older" },
+          },
+        }))
+        .expect(201);
+
+      const agentRepo = createJsonAgentRepository(join(tempDir, "data", "agents.json"));
+      const systemInfo = await agentRepo.getSystemInfo(vpsId);
+      expect(systemInfo?.collectedAt).toBe(newerCollectedAt);
+      expect(systemInfo?.os?.name).toBe("newer");
+    });
+
+    it("rejects system with unknown nested fields", async () => {
+      await request(app())
+        .post("/api/agent/metrics")
+        .set("Authorization", `Bearer ${validToken}`)
+        .send(validPayload({
+          system: {
+            os: { family: "linux", extraField: "should be rejected" },
+          },
+        }))
+        .expect(400);
+    });
+
+    it("rejects system with cpu cores > 4096", async () => {
+      await request(app())
+        .post("/api/agent/metrics")
+        .set("Authorization", `Bearer ${validToken}`)
+        .send(validPayload({
+          system: {
+            cpu: { cores: 5000 },
+          },
+        }))
+        .expect(400);
+    });
+
+    it("rejects system with negative memory bytes", async () => {
+      await request(app())
+        .post("/api/agent/metrics")
+        .set("Authorization", `Bearer ${validToken}`)
+        .send(validPayload({
+          system: {
+            memory: { totalBytes: -1 },
+          },
+        }))
+        .expect(400);
+    });
+
+    it("rejects system with empty mountPoint", async () => {
+      await request(app())
+        .post("/api/agent/metrics")
+        .set("Authorization", `Bearer ${validToken}`)
+        .send(validPayload({
+          system: {
+            rootDisk: { mountPoint: "" },
+          },
+        }))
+        .expect(400);
+    });
+
+    it("rejects system with oversize os name string", async () => {
+      await request(app())
+        .post("/api/agent/metrics")
+        .set("Authorization", `Bearer ${validToken}`)
+        .send(validPayload({
+          system: {
+            os: { name: "x".repeat(600) },
+          },
+        }))
         .expect(400);
     });
   });
@@ -515,9 +665,205 @@ describe("freshness using receivedAt", () => {
     const vpsId = await createVps();
     const { service } = makeService();
     const { credential } = await service.createCredential(vpsId);
-    const sample = await service.ingestMetric(credential, validPayload());
+    const result = await service.ingestMetric(credential, validPayload());
 
-    expect(sample.receivedAt).toBeDefined();
-    expect(isFreshTimestamp(sample.receivedAt!)).toBe(true);
+    expect(result.sample.receivedAt).toBeDefined();
+    expect(isFreshTimestamp(result.sample.receivedAt!)).toBe(true);
+  });
+});
+
+// ── Docker metrics ───────────────────────────────────────────────────────
+
+function validDockerPayload(overrides?: Record<string, unknown>) {
+  return {
+    collectedAt: new Date().toISOString(),
+    agentVersion: "1.0.0",
+    schemaVersion: 1 as const,
+    available: true,
+    containerTotal: 3,
+    containerRunning: 2,
+    cpuPercent: 45.5,
+    memoryUsageBytes: 524_288_000,
+    memoryLimitBytes: 1_073_741_824,
+    networkRxBytes: 1_000_000,
+    networkTxBytes: 500_000,
+    blockReadBytes: 100_000,
+    blockWriteBytes: 50_000,
+    pids: 42,
+    containers: [
+      {
+        id: "abc123def456",
+        name: "/web-nginx",
+        image: "nginx:1.25",
+        status: "Up 3 hours",
+        state: "running",
+        createdAt: new Date().toISOString(),
+        cpuPercent: 12.3,
+        memoryUsageBytes: 65_536_000,
+        memoryLimitBytes: 268_435_456,
+        networkRxBytes: 800_000,
+        networkTxBytes: 400_000,
+        blockReadBytes: 50_000,
+        blockWriteBytes: 20_000,
+        pids: 12,
+      },
+    ],
+    ...overrides,
+  };
+}
+
+describe("Docker metrics ingestion", () => {
+  let agentService: AgentService;
+  let validToken: string;
+  let credentialId: string;
+  let vpsId: string;
+
+  beforeEach(async () => {
+    vpsId = await createVps();
+    const { service } = makeService();
+    agentService = service;
+    const result = await agentService.createCredential(vpsId);
+    validToken = result.token;
+    credentialId = result.credential.id;
+  });
+
+  it("ignores docker payload when dockerMetricsEnabled is false (default)", async () => {
+    const res = await request(app())
+      .post("/api/agent/metrics")
+      .set("Authorization", `Bearer ${validToken}`)
+      .send(validPayload({ docker: validDockerPayload() }))
+      .expect(201);
+
+    expect(res.body.data.config).toEqual({ dockerMetricsEnabled: false });
+
+    const agentRepo = createJsonAgentRepository(join(tempDir, "data", "agents.json"));
+    const stored = await agentRepo.getDockerMetrics(vpsId);
+    expect(stored).toBeUndefined();
+  });
+
+  it("stores docker metrics when dockerMetricsEnabled is true", async () => {
+    // Enable Docker metrics
+    await vpsRepo.update(vpsId, { dockerMetricsEnabled: true });
+
+    const res = await request(app())
+      .post("/api/agent/metrics")
+      .set("Authorization", `Bearer ${validToken}`)
+      .send(validPayload({ docker: validDockerPayload() }))
+      .expect(201);
+
+    expect(res.body.data.config).toEqual({ dockerMetricsEnabled: true });
+
+    const agentRepo = createJsonAgentRepository(join(tempDir, "data", "agents.json"));
+    const stored = await agentRepo.getDockerMetrics(vpsId);
+    expect(stored).toBeDefined();
+    expect(stored!.vpsId).toBe(vpsId);
+    expect(stored!.available).toBe(true);
+    expect(stored!.containerTotal).toBe(3);
+    expect(stored!.containerRunning).toBe(2);
+    expect(stored!.containers).toHaveLength(1);
+    expect(stored!.containers[0]!.name).toBe("/web-nginx");
+  });
+
+  it("stale collectedAt does not overwrite newer docker metrics", async () => {
+    await vpsRepo.update(vpsId, { dockerMetricsEnabled: true });
+
+    // Send newer payload first
+    const newerCollectedAt = new Date().toISOString();
+    await request(app())
+      .post("/api/agent/metrics")
+      .set("Authorization", `Bearer ${validToken}`)
+      .send(validPayload({
+        docker: validDockerPayload({ collectedAt: newerCollectedAt, containerTotal: 10 }),
+      }))
+      .expect(201);
+
+    // Send older payload after
+    const olderCollectedAt = new Date(Date.now() - 60_000).toISOString();
+    await request(app())
+      .post("/api/agent/metrics")
+      .set("Authorization", `Bearer ${validToken}`)
+      .send(validPayload({
+        docker: validDockerPayload({ collectedAt: olderCollectedAt, containerTotal: 5 }),
+      }))
+      .expect(201);
+
+    const agentRepo = createJsonAgentRepository(join(tempDir, "data", "agents.json"));
+    const stored = await agentRepo.getDockerMetrics(vpsId);
+    expect(stored!.containerTotal).toBe(10);
+  });
+
+  it("rejects docker payload with too many containers (>20)", async () => {
+    await vpsRepo.update(vpsId, { dockerMetricsEnabled: true });
+
+    const manyContainers = Array.from({ length: 21 }, (_, i) => ({
+      id: `c${i.toString().padStart(15, "0")}`,
+      name: `/container-${i}`,
+      image: "nginx:1.25",
+      status: "Up 1 hour",
+      state: "running",
+      createdAt: new Date().toISOString(),
+      cpuPercent: 1,
+      memoryUsageBytes: 10_000_000,
+      networkRxBytes: 1000,
+      networkTxBytes: 500,
+      blockReadBytes: 100,
+      blockWriteBytes: 50,
+      pids: 5,
+    }));
+
+    await request(app())
+      .post("/api/agent/metrics")
+      .set("Authorization", `Bearer ${validToken}`)
+      .send(validPayload({ docker: validDockerPayload({ containers: manyContainers }) }))
+      .expect(400);
+  });
+
+  it("rejects docker payload with negative values", async () => {
+    await vpsRepo.update(vpsId, { dockerMetricsEnabled: true });
+
+    await request(app())
+      .post("/api/agent/metrics")
+      .set("Authorization", `Bearer ${validToken}`)
+      .send(validPayload({ docker: validDockerPayload({ cpuPercent: -1 }) }))
+      .expect(400);
+  });
+
+  it("rejects system + docker extra fields (strict schema)", async () => {
+    await vpsRepo.update(vpsId, { dockerMetricsEnabled: true });
+
+    await request(app())
+      .post("/api/agent/metrics")
+      .set("Authorization", `Bearer ${validToken}`)
+      .send(validPayload({ docker: { ...validDockerPayload(), extraField: "rejected" } }))
+      .expect(400);
+  });
+
+  it("returns enabled config in response when dockerMetricsEnabled is true", async () => {
+    await vpsRepo.update(vpsId, { dockerMetricsEnabled: true });
+    const res = await request(app())
+      .post("/api/agent/metrics")
+      .set("Authorization", `Bearer ${validToken}`)
+      .send(validPayload())
+      .expect(201);
+    expect(res.body.data.config).toEqual({ dockerMetricsEnabled: true });
+  });
+
+  it("clears docker metrics when disabled via update", async () => {
+    // Enable and store
+    await vpsRepo.update(vpsId, { dockerMetricsEnabled: true });
+    await request(app())
+      .post("/api/agent/metrics")
+      .set("Authorization", `Bearer ${validToken}`)
+      .send(validPayload({ docker: validDockerPayload() }))
+      .expect(201);
+
+    const agentRepo = createJsonAgentRepository(join(tempDir, "data", "agents.json"));
+    expect(await agentRepo.getDockerMetrics(vpsId)).toBeDefined();
+
+    // Disable via VPS repository directly (simulates what VpsService does)
+    await vpsRepo.update(vpsId, { dockerMetricsEnabled: false });
+    await agentRepo.deleteDockerMetrics(vpsId);
+
+    expect(await agentRepo.getDockerMetrics(vpsId)).toBeUndefined();
   });
 });

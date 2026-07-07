@@ -104,17 +104,17 @@ export function DashboardShell({
 
   return (
     <main className="min-h-screen w-full max-w-full overflow-x-clip bg-background">
-      <div className="grid min-h-screen w-full min-w-0 xl:grid-cols-[18rem_minmax(0,1fr)]">
-        <aside className="hidden min-h-screen w-[18rem] shrink-0 border-r border-slate-200/80 bg-white/80 px-4 py-5 shadow-[12px_0_50px_rgba(15,23,42,0.04)] backdrop-blur-xl xl:flex xl:flex-col">
+      <div className="grid min-h-screen w-full min-w-0 xl:grid-cols-[17rem_minmax(0,1fr)]">
+        <aside className="hidden min-h-screen w-[17rem] shrink-0 border-r border-white/10 bg-[#0d0e12] px-4 py-5 text-white shadow-[12px_0_44px_rgba(13,14,18,0.08)] xl:flex xl:flex-col">
           <div className="mb-7 flex items-center gap-3 px-1">
-            <span className="grid h-11 w-11 place-items-center rounded-2xl bg-gradient-to-br from-slate-950 to-blue-900 text-white shadow-lg shadow-blue-950/20">
+            <span className="grid h-10 w-10 place-items-center rounded-md bg-[#844fba] text-white shadow-[0_12px_30px_rgba(132,79,186,0.25)]">
               <Server size={19} />
             </span>
             <div className="min-w-0">
-              <p className="truncate font-display text-lg text-slate-950">
+              <p className="truncate font-display text-base font-extrabold tracking-tight text-white">
                 VPS Ops
               </p>
-              <p className="text-[11px] font-bold uppercase tracking-[0.12em] text-slate-500">
+              <p className="text-[10px] font-bold uppercase tracking-[0.18em] text-white/45">
                 Operations console
               </p>
             </div>
@@ -134,7 +134,7 @@ export function DashboardShell({
               </NavButton>
             ))}
           </nav>
-          <div className="mt-auto flex items-start gap-2 rounded-2xl border border-slate-200 bg-slate-50/80 p-3 text-slate-500">
+          <div className="mt-auto flex items-start gap-2 rounded-lg border border-white/10 bg-white/[0.04] p-3 text-white/55">
             <HelpCircle className="mt-0.5 shrink-0" size={15} />
             <p className="text-[13px] font-semibold leading-5">
               Passwords are sent only for one-time key provisioning and are not
@@ -143,13 +143,12 @@ export function DashboardShell({
           </div>
         </aside>
         <section className="min-w-0 max-w-full overflow-hidden">
-          <div className="relative min-h-[12.5rem] max-w-full overflow-hidden bg-[linear-gradient(135deg,#020617_0%,#172554_48%,#0f766e_100%)] sm:min-h-[14rem] xl:min-h-[15.5rem]">
-            <div className="absolute inset-0 bg-[radial-gradient(circle_at_12%_10%,rgba(45,212,191,0.25),transparent_24%),radial-gradient(circle_at_88%_0%,rgba(96,165,250,0.26),transparent_26%),linear-gradient(135deg,rgba(255,255,255,0.10),transparent_42%)]" />
-            <div className="absolute inset-0 opacity-20 [background-image:linear-gradient(120deg,transparent_0%,transparent_48%,rgba(255,255,255,0.28)_49%,transparent_50%)] [background-size:34px_34px]" />
-            <div className="absolute -right-20 top-2 h-40 w-40 rounded-full bg-teal-300/25 blur-3xl" />
-            <div className="absolute left-12 top-16 h-24 w-24 rounded-full bg-indigo-300/20 blur-2xl" />
+          <div className="relative min-h-[12.5rem] max-w-full overflow-hidden bg-[#15181e] sm:min-h-[14rem] xl:min-h-[15.5rem]">
+            <div className="absolute inset-0 bg-[radial-gradient(circle_at_8%_0%,rgba(132,79,186,0.38),transparent_26%),radial-gradient(circle_at_86%_12%,rgba(21,149,136,0.24),transparent_28%),linear-gradient(120deg,rgba(255,255,255,0.08),transparent_40%)]" />
+            <div className="absolute inset-0 opacity-[0.13] [background-image:linear-gradient(90deg,rgba(255,255,255,0.5)_1px,transparent_1px),linear-gradient(180deg,rgba(255,255,255,0.5)_1px,transparent_1px)] [background-size:42px_42px]" />
+            <div className="absolute -right-16 top-0 h-44 w-44 rounded-full bg-[#844fba]/25 blur-3xl" />
             <div className="relative px-3 py-2 text-white sm:px-4 xl:px-6 xl:py-3">
-              <div className="rounded-3xl border border-white/12 bg-slate-950/28 p-2.5 shadow-2xl shadow-slate-950/20 backdrop-blur-md sm:p-3">
+              <div className="rounded-xl border border-white/10 bg-[#0d0e12]/70 p-2.5 shadow-[0_18px_44px_rgba(0,0,0,0.18)] backdrop-blur-md sm:p-3">
                 <div className="flex min-w-0 flex-col gap-3 xl:flex-row xl:items-center xl:justify-between">
                   <label className="relative min-w-0 max-w-full xl:w-80">
                     <Search
@@ -159,7 +158,7 @@ export function DashboardShell({
                     <input
                       aria-label="Global server search"
                       placeholder="Search servers..."
-                      className="h-10 w-full rounded-2xl border-0 bg-slate-950/45 pl-11 pr-4 text-sm font-semibold text-white outline-none ring-1 ring-white/20 placeholder:text-white/55 focus:bg-slate-950/60 focus:ring-4 focus:ring-teal-300/20"
+                      className="h-10 w-full rounded-md border-0 bg-white/[0.07] pl-11 pr-4 text-sm font-semibold text-white outline-none ring-1 ring-white/15 placeholder:text-white/45 focus:bg-white/[0.1] focus:ring-4 focus:ring-[#844fba]/30"
                     />
                   </label>
 
@@ -185,7 +184,7 @@ export function DashboardShell({
                   className="relative mt-2 xl:hidden"
                 >
                   <Sheet open={mobileMenuOpen} onOpenChange={setMobileMenuOpen}>
-                    <div className="flex items-center justify-between gap-3 rounded-xl bg-white/90 p-2 text-sm font-black text-primary sm:p-3">
+                    <div className="flex items-center justify-between gap-3 rounded-lg bg-white/95 p-2 text-sm font-black text-primary sm:p-3">
                       <div className="hidden min-w-0 md:block">
                         <p className="text-xs uppercase tracking-[0.16em] text-muted-foreground">
                           Current section
@@ -199,7 +198,7 @@ export function DashboardShell({
                         <button
                           type="button"
                           aria-label="Open dashboard menu"
-                          className="grid h-9 w-9 shrink-0 place-items-center rounded-xl bg-primary text-white shadow-sm transition hover:bg-primary/90 sm:h-11 sm:w-11 sm:rounded-2xl"
+                          className="grid h-9 w-9 shrink-0 place-items-center rounded-md bg-[#844fba] text-white shadow-sm transition hover:bg-[#6f43a0] sm:h-11 sm:w-11"
                         >
                           <Menu size={20} />
                         </button>
@@ -241,10 +240,10 @@ export function DashboardShell({
               )}
             >
               <div className="min-w-0 max-w-3xl">
-                <p className="text-[10px] font-black uppercase tracking-[0.2em] text-white/65 sm:text-xs sm:tracking-[0.22em]">
+                <p className="text-[10px] font-black uppercase tracking-[0.24em] text-white/50 sm:text-xs">
                   VPS command center
                 </p>
-                <h1 className="mt-1 break-words font-display text-xl leading-none sm:text-3xl">
+                <h1 className="mt-2 break-words font-display text-2xl font-extrabold leading-none tracking-[-0.04em] sm:text-4xl">
                   {activeView === "servers"
                     ? "Servers"
                     : activeView === "jobs"
@@ -291,7 +290,7 @@ export function DashboardShell({
           </div>
           <div
             className={cn(
-              "relative min-w-0 max-w-full overflow-hidden px-3 pb-5 sm:px-5 xl:px-8",
+              "relative min-w-0 max-w-full overflow-hidden px-3 pb-8 sm:px-5 xl:px-8",
               activeView === "overview"
                 ? "-mt-10 pt-0 sm:-mt-12"
                 : activeView === "servers"
@@ -361,7 +360,7 @@ function UserMenu({ onLogout }: { onLogout?: () => void }) {
       <DropdownMenuTrigger asChild>
         <button
           type="button"
-          className="inline-flex h-10 w-10 shrink-0 items-center rounded-2xl text-sm font-black text-primary transition hover:bg-white/25"
+          className="inline-flex h-10 w-10 shrink-0 items-center rounded-md text-sm font-black text-primary transition hover:bg-white/25"
           aria-label="Open user menu"
         >
           <Avatar className="h-10 w-10">
@@ -374,7 +373,7 @@ function UserMenu({ onLogout }: { onLogout?: () => void }) {
           </Avatar>
         </button>
       </DropdownMenuTrigger>
-      <DropdownMenuContent className="w-56 rounded-2xl" align="end">
+      <DropdownMenuContent className="w-56 rounded-lg" align="end">
         <DropdownMenuLabel>
           <div className="grid gap-1">
             <span>Local admin</span>
@@ -426,7 +425,7 @@ function IconButton({
     <button
       type="button"
       aria-label={label}
-      className="grid h-11 w-11 shrink-0 place-items-center rounded-2xl bg-white/90 text-primary shadow-sm transition hover:bg-white"
+      className="grid h-10 w-10 shrink-0 place-items-center rounded-md bg-white/90 text-primary shadow-sm transition hover:bg-white"
       {...props}
     >
       {children}
@@ -450,21 +449,21 @@ function NavButton({
     <button
       type="button"
       className={cn(
-        "inline-flex min-w-0 items-center gap-3 rounded-xl px-3 py-2.5 text-left text-[13px] font-black uppercase tracking-[0.04em] transition",
+        "inline-flex min-w-0 items-center gap-3 rounded-md px-3 py-2.5 text-left text-[12px] font-extrabold uppercase tracking-[0.08em] transition",
         mobile ? "w-auto shrink-0 bg-white" : "w-full",
         active
-          ? "bg-slate-950 text-white shadow-lg shadow-slate-950/15"
+          ? "bg-white text-[#0d0e12] shadow-[0_10px_28px_rgba(255,255,255,0.08)]"
           : mobile
             ? "text-primary hover:bg-secondary"
-            : "text-muted-foreground hover:bg-slate-100 hover:text-primary",
+            : "text-white/58 hover:bg-white/[0.07] hover:text-white",
         className,
       )}
       {...props}
     >
       <span
         className={cn(
-          "grid h-8 w-8 shrink-0 place-items-center rounded-lg",
-          active ? "bg-white/15" : "bg-slate-100 text-slate-600",
+          "grid h-8 w-8 shrink-0 place-items-center rounded-md",
+          active ? "bg-[#844fba]/12 text-[#844fba]" : "bg-white/[0.06] text-white/55",
         )}
       >
         <Icon size={16} />

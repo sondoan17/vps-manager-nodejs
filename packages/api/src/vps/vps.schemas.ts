@@ -13,7 +13,14 @@ export const createVpsSchema = z.object({
   password: z.string().min(1).max(4096).optional()
 });
 
-export const updateVpsSchema = createVpsSchema.omit({ password: true }).partial();
+export const updateVpsSchema = createVpsSchema.omit({ password: true }).partial().extend({
+  dockerMetricsEnabled: z.boolean().optional(),
+});
+
+/** Strict schema for local/system-managed VPS: only dockerMetricsEnabled allowed. */
+export const updateLocalVpsSchema = z.object({
+  dockerMetricsEnabled: z.boolean(),
+}).strict();
 
 export const provisionKeySchema = z.object({
   password: z.string().min(1).max(4096)

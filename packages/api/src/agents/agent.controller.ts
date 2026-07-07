@@ -1,10 +1,11 @@
 import { Body, Controller, Inject, Post, Req } from "@nestjs/common";
 import type { Request } from "express";
 import type { AgentMetricPayload } from "./agent.models.js";
-import { AgentService } from "./agent.service.js";
+import { AgentService, type IngestMetricResult } from "./agent.service.js";
 
 /**
- * Minimal response for successful metric ingest.
+ * Extended response for successful metric ingest.
+ * Returns runtime config so the agent can learn dashboard intent.
  * Never exposes credential ids or token details.
  */
 type AgentIngestResponse = {
@@ -12,6 +13,9 @@ type AgentIngestResponse = {
     ok: true;
     vpsId: string;
     receivedAt: string;
+    config: {
+      dockerMetricsEnabled: boolean;
+    };
   };
 };
 
@@ -34,13 +38,14 @@ export class AgentController {
     // 2. Ingest the metric payload
     // ZodError from schema validation propagates to the global exception filter
     // and results in a 400 Bad Request.
-    const sample = await this.agentService.ingestMetric(credential, body, req.ip);
+    const { sample, config } = await this.agentService.ingestMetric(credential, body, req.ip);
 
     return {
       data: {
         ok: true,
         vpsId: sample.vpsId,
         receivedAt: sample.receivedAt!,
+        config,
       },
     };
   }

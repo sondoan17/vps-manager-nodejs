@@ -1,5 +1,5 @@
 import { nanoid } from "nanoid";
-import type { AgentCredential, AgentState } from "../../agents/agent.models.js";
+import type { AgentCredential, AgentDockerMetrics, AgentState, AgentSystemInfo } from "../../agents/agent.models.js";
 import { readJsonFile, readModifyWriteJsonFile, withFileLock, writeJsonFile } from "./json-file.js";
 
 // ── Type ────────────────────────────────────────────────────────────────
@@ -13,6 +13,15 @@ export type AgentRepository = {
 
   getState(vpsId: string): Promise<AgentState | undefined>;
   upsertState(state: AgentState): Promise<AgentState>;
+
+  upsertSystemInfo(info: AgentSystemInfo): Promise<AgentSystemInfo>;
+  getSystemInfo(vpsId: string): Promise<AgentSystemInfo | undefined>;
+  listSystemInfo(): Promise<AgentSystemInfo[]>;
+
+  upsertDockerMetrics(metrics: AgentDockerMetrics): Promise<AgentDockerMetrics>;
+  getDockerMetrics(vpsId: string): Promise<AgentDockerMetrics | undefined>;
+  listDockerMetrics(): Promise<AgentDockerMetrics[]>;
+  deleteDockerMetrics(vpsId: string): Promise<boolean>;
 };
 
 // ── Storage shape ───────────────────────────────────────────────────────
@@ -21,6 +30,8 @@ export type AgentRepository = {
 type AgentFile = {
   credentials: AgentCredential[];
   states: Record<string, AgentState>;
+  systemInfo?: Record<string, AgentSystemInfo>;
+  dockerMetrics?: Record<string, AgentDockerMetrics>;
 };
 
 // ── Factory ─────────────────────────────────────────────────────────────
@@ -89,6 +100,83 @@ export function createJsonAgentRepository(filePath = "data/agents.json"): AgentR
           return data;
         },
       ).then(() => state);
+    },
+
+    async upsertSystemInfo(info) {
+      let stored = info;
+      return readModifyWriteJsonFile<AgentFile>(
+        filePath,
+        { credentials: [], states: {} },
+        (data) => {
+          if (!data.systemInfo) data.systemInfo = {};
+          const current = data.systemInfo[info.vpsId];
+          if (current && new Date(current.collectedAt).getTime() > new Date(info.collectedAt).getTime()) {
+            stored = current;
+            return data;
+          }
+          data.systemInfo[info.vpsId] = info;
+          stored = info;
+          return data;
+        },
+      ).then(() => stored);
+    },
+
+    async getSystemInfo(vpsId) {
+      const data = await readJsonFile<AgentFile>(filePath, { credentials: [], states: {} });
+      return data.systemInfo?.[vpsId];
+    },
+
+    async listSystemInfo() {
+      const data = await readJsonFile<AgentFile>(filePath, { credentials: [], states: {} });
+      return Object.values(data.systemInfo ?? {});
+    },
+
+    async upsertDockerMetrics(metrics) {
+      let stored = metrics;
+      await readModifyWriteJsonFile<AgentFile>(
+        filePath,
+        { credentials: [], states: {} },
+        (data) => {
+          if (!data.dockerMetrics) data.dockerMetrics = {};
+          const current = data.dockerMetrics[metrics.vpsId];
+          if (current && new Date(current.collectedAt).getTime() > new Date(metrics.collectedAt).getTime()) {
+            stored = current;
+            return data;
+          }
+          data.dockerMetrics[metrics.vpsId] = metrics;
+          stored = metrics;
+          return data;
+        },
+      );
+      return stored;
+    },
+
+    async getDockerMetrics(vpsId) {
+      const data = await readJsonFile<AgentFile>(filePath, { credentials: [], states: {} });
+      return data.dockerMetrics?.[vpsId];
+    },
+
+    async listDockerMetrics() {
+      const data = await readJsonFile<AgentFile>(filePath, { credentials: [], states: {} });
+      return Object.values(data.dockerMetrics ?? {});
+    },
+
+    async deleteDockerMetrics(vpsId) {
+      let deleted = false;
+      await readModifyWriteJsonFile<AgentFile>(
+        filePath,
+        { credentials: [], states: {} },
+        (data) => {
+          if (!data.dockerMetrics) return data;
+          if (data.dockerMetrics[vpsId]) {
+            // eslint-disable-next-line @typescript-eslint/no-dynamic-delete
+            delete data.dockerMetrics[vpsId];
+            deleted = true;
+          }
+          return data;
+        },
+      );
+      return deleted;
     },
   };
 }

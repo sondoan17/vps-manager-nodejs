@@ -4,10 +4,12 @@ import (
 	"context"
 	"fmt"
 	"math"
+	"net/http"
 	"os"
 	"runtime"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 )
 
@@ -18,13 +20,15 @@ var (
 
 // SystemMetrics represents a single snapshot of system metrics.
 type SystemMetrics struct {
-	CPU         float64 `json:"cpu"`
-	Memory      float64 `json:"memory"`
-	Disk        float64 `json:"disk"`
-	LoadAverage float64 `json:"loadAverage"`
-	NetworkRx   float64 `json:"networkRx"`
-	NetworkTx   float64 `json:"networkTx"`
-	Uptime      float64 `json:"uptime"`
+	CPU         float64        `json:"cpu"`
+	Memory      float64        `json:"memory"`
+	Disk        float64        `json:"disk"`
+	LoadAverage float64        `json:"loadAverage"`
+	NetworkRx   float64        `json:"networkRx"`
+	NetworkTx   float64        `json:"networkTx"`
+	Uptime      float64        `json:"uptime"`
+	System      *SystemInfo    `json:"system,omitempty"`
+	Docker      *DockerMetrics `json:"docker,omitempty"`
 }
 
 // CPUStats holds raw CPU time values from /proc/stat.
@@ -51,6 +55,13 @@ type Collector struct {
 	prevNetRx   float64
 	prevNetTx   float64
 	prevNetTime time.Time
+
+	// Docker metrics collection (thread-safe, off by default).
+	dockerEnabled    bool
+	dockerMu         sync.RWMutex
+	dockerHTTPClient *http.Client
+	dockerBaseURL    string
+	dockerSocketPath string
 }
 
 // NewCollector creates a new Collector.
@@ -104,6 +115,14 @@ func (c *Collector) Collect(ctx context.Context) (*SystemMetrics, error) {
 		return nil, fmt.Errorf("disk: %w", err)
 	}
 	metrics.Disk = disk
+
+	// System info is best-effort — do not fail the whole collection.
+	metrics.System = collectSystemInfo()
+
+	// Docker metrics are best-effort; never fail host metrics collection.
+	if c.isDockerEnabled() {
+		metrics.Docker = c.collectDocker(ctx)
+	}
 
 	return metrics, nil
 }

@@ -117,8 +117,8 @@ export function createAppModule(deps: AppDependencies = {}): DynamicModule {
       },
       {
         provide: VpsService,
-        inject: [VPS_REPOSITORY, KEY_SERVICE, SshService, AuditService, APP_CONFIG, AgentInstallerService],
-        useFactory: (store: VpsRepository, keys: KeyService, ssh: SshService, audit: AuditService, appConfig: AppConfig, installer: AgentInstallerService) => new VpsService(store, keys, ssh, audit, appConfig, installer)
+        inject: [VPS_REPOSITORY, KEY_SERVICE, SshService, AuditService, APP_CONFIG, AgentInstallerService, AGENT_REPOSITORY],
+        useFactory: (store: VpsRepository, keys: KeyService, ssh: SshService, audit: AuditService, appConfig: AppConfig, installer: AgentInstallerService, agentRepo: AgentRepository) => new VpsService(store, keys, ssh, audit, appConfig, installer, agentRepo)
       }
     ]
   };

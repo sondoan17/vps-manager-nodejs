@@ -25,6 +25,7 @@ export function withVpsDefaults(record: VpsRecord): VpsRecord {
     tags: normalized.tags ?? [],
     status: normalized.status ?? "unknown",
     kind: normalized.kind ?? "remote",
-    managedBy: normalized.managedBy ?? "user"
+    managedBy: normalized.managedBy ?? "user",
+    dockerMetricsEnabled: normalized.dockerMetricsEnabled ?? false,
   };
 }

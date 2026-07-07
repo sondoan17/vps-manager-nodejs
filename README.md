@@ -85,7 +85,9 @@ The installer:
 7. Bootstraps an agent credential and config
 8. Installs the systemd agent via `install-local-agent.sh`
 
-Options: `--help`, `--dry-run`, `--app-dir`, `--app-port`, `--api-port`, `--api-image`, `--web-image`, `--backend-url`, `--allow-insecure-backend-url`, `--dashboard-password-file`, `--install-docker`, `--skip-pull`, `--skip-agent`, `--rotate-agent`.
+Options: `--help`, `--dry-run`, `--app-dir`, `--app-port`, `--api-port`, `--api-image`, `--web-image`, `--backend-url`, `--allow-insecure-backend-url`, `--dashboard-password-file`, `--install-docker`, `--skip-pull`, `--skip-agent`, `--rotate-agent`, `--enable-docker-metrics-access`.
+
+Docker metrics are off by default and can be toggled per server from the dashboard. To let the host systemd agent read Docker metrics, install it with `--enable-docker-metrics-access`; this adds `SupplementaryGroups=docker` to the service unit. The Docker group is root-equivalent, so only enable this on hosts where you accept that permission. The Docker collector reports bounded container names, image names, status, and resource usage only; it does not collect env vars, labels, mounts, logs, or commands.
 
 ### Docker App Only (without host agent)
 
@@ -107,6 +109,8 @@ docker compose -f /opt/vps-manager/docker-compose.yml exec -T api node dist/scri
 docker cp $(docker compose -f /opt/vps-manager/docker-compose.yml ps -q api):/app/agent/vps-agent-linux-amd64 /tmp/vps-agent
 
 sudo ./scripts/install-local-agent.sh --binary /tmp/vps-agent --config "$AGENT_CONFIG"
+# Optional Docker metrics access:
+# sudo ./scripts/install-local-agent.sh --binary /tmp/vps-agent --config "$AGENT_CONFIG" --enable-docker-metrics-access
 KEEP_CREDENTIAL_ID="$(sed -n 's/.*"token"[[:space:]]*:[[:space:]]*"vma_\([^"]*\)_.*/\1/p' "$AGENT_CONFIG" | head -1)"
 docker compose -f /opt/vps-manager/docker-compose.yml exec -T api node dist/scripts/revoke-agent-credentials.js \
   --vps-id vps_local_host \

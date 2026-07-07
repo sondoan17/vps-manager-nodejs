@@ -826,6 +826,72 @@ describe("React dashboard", () => {
       expect(sessionStorage.length).toBe(0);
     });
 
+    it("merges Docker metrics from live updates and toggles intent safely", async () => {
+      const server = { ...demoServerRecords[0], dockerMetricsEnabled: true };
+      renderAppWithLiveEvents({
+        dashboard: demoDashboard,
+        servers: [server],
+        jobs: [],
+        metrics: [],
+        auditEvents: [],
+      });
+
+      await screen.findByText("Demo mode: simulated servers, no real SSH connections.");
+      await userEvent.click(screen.getAllByRole("button", { name: "Servers" })[0]);
+      expect(await screen.findByText("Waiting for Docker-capable agent.")).toBeInTheDocument();
+
+      mockEventSourceInstance?.dispatchEvent("metrics.updated", makeEnvelope("metrics.updated", {
+        metrics: [],
+        dockerMetrics: [{
+          vpsId: "vps-1",
+          collectedAt: new Date().toISOString(),
+          receivedAt: new Date().toISOString(),
+          schemaVersion: 1,
+          available: true,
+          containerTotal: 2,
+          containerRunning: 1,
+          cpuPercent: 12.5,
+          memoryUsageBytes: 268435456,
+          networkRxBytes: 1024,
+          networkTxBytes: 2048,
+          blockReadBytes: 4096,
+          blockWriteBytes: 8192,
+          pids: 9,
+          containers: [{
+            id: "abc123",
+            name: "api",
+            image: "app:latest",
+            state: "running",
+            status: "Up 2 minutes",
+            cpuPercent: 10,
+            memoryUsageBytes: 134217728,
+            networkRxBytes: 100,
+            networkTxBytes: 200,
+            blockReadBytes: 300,
+            blockWriteBytes: 400,
+            pids: 4,
+          }],
+        }],
+      }));
+
+      expect(await screen.findByText("1/2 running")).toBeInTheDocument();
+      expect(screen.getByText(/api/)).toBeInTheDocument();
+
+      fetchMock
+        .mockResolvedValueOnce({ ok: true, status: 200, json: async () => ({ data: { ...server, dockerMetricsEnabled: false } }) })
+        .mockResolvedValueOnce({ ok: true, status: 200, json: async () => ({ data: { ...demoDashboard, dockerMetrics: [] } }) })
+        .mockResolvedValueOnce({ ok: true, status: 200, json: async () => ({ data: [{ ...server, dockerMetricsEnabled: false }] }) })
+        .mockResolvedValueOnce({ ok: true, status: 200, json: async () => ({ data: [] }) })
+        .mockResolvedValueOnce({ ok: true, status: 200, json: async () => ({ data: [] }) })
+        .mockResolvedValueOnce({ ok: true, status: 200, json: async () => ({ data: [] }) });
+
+      await userEvent.click(screen.getByRole("button", { name: "Disable Docker metrics for web-01" }));
+      await waitFor(() => expect(fetchMock).toHaveBeenCalledWith("/api/vps/vps-1", expect.objectContaining({ method: "PATCH" })));
+      expect(window.confirm).not.toHaveBeenCalled();
+      expect(localStorage.length).toBe(0);
+      expect(sessionStorage.length).toBe(0);
+    });
+
     it("unknown event types are ignored without crashing", async () => {
       renderAppWithLiveEvents({
         dashboard: demoDashboard,

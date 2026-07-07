@@ -25,6 +25,8 @@ export type MonitoringSnapshotPayload = {
 
 export type MetricsUpdatedPayload = {
   metrics: DashboardOverview["metrics"];
+  systemInfo?: DashboardOverview["systemInfo"];
+  dockerMetrics?: DashboardOverview["dockerMetrics"];
 };
 
 export type MonitoringHeartbeatPayload = Record<string, never>;

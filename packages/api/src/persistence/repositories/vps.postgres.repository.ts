@@ -19,6 +19,7 @@ type VpsRow = {
   key_provisioned_at: Date | string | null;
   kind: string | null;
   managed_by: string | null;
+  docker_metrics_enabled: boolean | null;
   created_at: Date | string;
   updated_at: Date | string;
 };
@@ -39,8 +40,8 @@ export function createPostgresVpsRepository(pool: DatabasePool): VpsRepository {
       const now = new Date();
       const id = `vps_${nanoid(12)}`;
       const result = await pool.query<VpsRow>(
-        `INSERT INTO vps (id, name, host, port, username, provider, region, tags, status, notes, kind, managed_by, created_at, updated_at)
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $13)
+        `INSERT INTO vps (id, name, host, port, username, provider, region, tags, status, notes, kind, managed_by, docker_metrics_enabled, created_at, updated_at)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $14)
          RETURNING *`,
         [
           id,
@@ -55,6 +56,7 @@ export function createPostgresVpsRepository(pool: DatabasePool): VpsRepository {
           input.notes ?? null,
           "remote",
           "user",
+          false,
           now
         ]
       );
@@ -69,10 +71,11 @@ export function createPostgresVpsRepository(pool: DatabasePool): VpsRepository {
         const result = await client.query<VpsRow>(
           `UPDATE vps
            SET name = $2, host = $3, port = $4, username = $5, provider = $6, region = $7,
-               tags = $8, status = $9, notes = $10, kind = $12, managed_by = $13, updated_at = $11
+               tags = $8, status = $9, notes = $10, kind = $12, managed_by = $13,
+               docker_metrics_enabled = $14, updated_at = $11
            WHERE id = $1
            RETURNING *`,
-          [id, next.name, next.host, next.port, next.username, next.provider ?? "unknown", next.region ?? null, next.tags ?? [], next.status ?? "unknown", next.notes ?? null, new Date(), next.kind ?? null, next.managedBy ?? null]
+          [id, next.name, next.host, next.port, next.username, next.provider ?? "unknown", next.region ?? null, next.tags ?? [], next.status ?? "unknown", next.notes ?? null, new Date(), next.kind ?? null, next.managedBy ?? null, next.dockerMetricsEnabled ?? false]
         );
         return result.rows[0] ? rowToVps(result.rows[0]) : undefined;
       });
@@ -92,8 +95,8 @@ export function createPostgresVpsRepository(pool: DatabasePool): VpsRepository {
     async ensureLocalHost(input: EnsureLocalHostInput) {
       const now = new Date();
       const result = await pool.query<VpsRow>(
-        `INSERT INTO vps (id, name, host, port, username, provider, region, tags, status, notes, kind, managed_by, created_at, updated_at)
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $13)
+        `INSERT INTO vps (id, name, host, port, username, provider, region, tags, status, notes, kind, managed_by, docker_metrics_enabled, created_at, updated_at)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $14)
          ON CONFLICT (id) DO UPDATE SET
            name = EXCLUDED.name,
            host = EXCLUDED.host,
@@ -105,6 +108,7 @@ export function createPostgresVpsRepository(pool: DatabasePool): VpsRepository {
            notes = EXCLUDED.notes,
            kind = EXCLUDED.kind,
            managed_by = EXCLUDED.managed_by,
+           docker_metrics_enabled = COALESCE(vps.docker_metrics_enabled, EXCLUDED.docker_metrics_enabled),
            updated_at = EXCLUDED.updated_at
          RETURNING *`,
         [
@@ -120,6 +124,7 @@ export function createPostgresVpsRepository(pool: DatabasePool): VpsRepository {
           input.notes ?? null,
           input.kind ?? "local",
           input.managedBy ?? "system",
+          false,
           now
         ]
       );
@@ -151,6 +156,7 @@ function rowToVps(row: VpsRow): VpsRecord {
     keyProvisionedAt: optionalIsoString(row.key_provisioned_at),
     kind: (row.kind as VpsRecord["kind"]) ?? undefined,
     managedBy: (row.managed_by as VpsRecord["managedBy"]) ?? undefined,
+    dockerMetricsEnabled: row.docker_metrics_enabled ?? false,
     createdAt: requiredIsoString(row.created_at),
     updatedAt: requiredIsoString(row.updated_at)
   });

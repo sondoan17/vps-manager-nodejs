@@ -46,6 +46,7 @@ SERVICE_NAME="${SERVICE_NAME_DEFAULT}"
 SERVICE_USER="${SERVICE_USER_DEFAULT}"
 DRY_RUN=false
 UNINSTALL=false
+ENABLE_DOCKER_ACCESS=false
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
@@ -61,6 +62,8 @@ while [[ $# -gt 0 ]]; do
       DRY_RUN=true; shift ;;
     --uninstall)
       UNINSTALL=true; shift ;;
+    --enable-docker-metrics-access)
+      ENABLE_DOCKER_ACCESS=true; shift ;;
     --help)
       echo "Usage: sudo ./install-local-agent.sh --binary <path> --config <path> [options]"
       echo ""
@@ -69,6 +72,11 @@ while [[ $# -gt 0 ]]; do
       echo "  --config <path>       Path to the agent config JSON file (required for install)."
       echo "  --service-name <name> Systemd service name (default: ${SERVICE_NAME_DEFAULT})."
       echo "  --service-user <user> System user for the service (default: ${SERVICE_USER_DEFAULT})."
+      echo "  --enable-docker-metrics-access"
+      echo "                        Add 'docker' group to the systemd service (SupplementaryGroups)."
+      echo "                        Docker group access is root-equivalent; only needed if Docker"
+      echo "                        metrics are enabled via the dashboard. Fails if docker group"
+      echo "                        does not exist on the system."
       echo "  --dry-run             Print what would be done without making changes."
       echo "  --uninstall           Stop, disable, and remove the agent."
       echo "  --help                Show this help."
@@ -191,6 +199,24 @@ else
   fi
 fi
 
+# ── Docker group check ─────────────────────────────────────────────────────
+
+DOCKER_SUPPLEMENTARY_GROUPS=""
+if [[ "$ENABLE_DOCKER_ACCESS" == "true" ]]; then
+  if getent group docker &>/dev/null; then
+    DOCKER_SUPPLEMENTARY_GROUPS="docker"
+    echo "[Docker] Docker group found: will add SupplementaryGroups=docker to the systemd unit."
+    echo "  WARNING: The docker group is root-equivalent. Only enable this if you"
+    echo "  intend to use the Docker metrics dashboard toggle."
+  else
+    echo "Error: --enable-docker-metrics-access was specified but the 'docker' group does not" >&2
+    echo "  exist on this system. Install Docker first so the group is created:" >&2
+    echo "    curl -fsSL https://get.docker.com | sh" >&2
+    echo "  Or omit the flag to install without Docker socket access." >&2
+    exit 1
+  fi
+fi
+
 # ── Install ───────────────────────────────────────────────────────────────
 
 echo "[Install] Installing VPS Manager Agent..."
@@ -240,7 +266,12 @@ else
   echo "  Installed config: ${CONFIG_FILE}"
 fi
 
-# Write systemd unit
+# Write systemd unit (conditionally include SupplementaryGroups)
+SUPP_GROUPS_LINE=""
+if [[ -n "$DOCKER_SUPPLEMENTARY_GROUPS" ]]; then
+  SUPP_GROUPS_LINE="SupplementaryGroups=${DOCKER_SUPPLEMENTARY_GROUPS}"
+fi
+
 UNIT_CONTENT=$(
   cat <<UNIT
 [Unit]
@@ -255,6 +286,7 @@ StartLimitBurst=5
 Type=simple
 User=${SERVICE_USER}
 Group=${SERVICE_USER}
+${SUPP_GROUPS_LINE}
 ExecStart=${BINARY_DEST} -config ${CONFIG_FILE}
 Restart=always
 RestartSec=10

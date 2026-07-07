@@ -13,6 +13,7 @@ export type VpsRecord = {
   keyProvisionedAt?: string;
   kind?: "remote" | "local";
   managedBy?: "user" | "system";
+  dockerMetricsEnabled?: boolean;
   createdAt: string;
   updatedAt: string;
 };
@@ -30,4 +31,6 @@ export type CreateVpsInput = {
   password?: string;
 };
 
-export type UpdateVpsInput = Partial<Omit<CreateVpsInput, "password">>;
+export type UpdateVpsInput = Partial<Omit<CreateVpsInput, "password">> & {
+  dockerMetricsEnabled?: boolean;
+};

@@ -1,4 +1,4 @@
-import { BadRequestException, Injectable } from "@nestjs/common";
+import { BadRequestException, Inject, Injectable } from "@nestjs/common";
 import { AuditService } from "../audit/audit.service.js";
 import type { AppConfig } from "../config/app-config.js";
 import { demoServers } from "../demo/demo-fixtures.js";
@@ -6,8 +6,10 @@ import { DemoMutationBlockedError, VpsNotFoundError } from "../common/errors.js"
 import type { KeyService } from "../ssh/keyService.js";
 import { SshService } from "../ssh/ssh.service.js";
 import type { VpsRepository } from "../persistence/repositories/vps.repository.js";
-import { createVpsSchema, installAgentSchema, provisionKeySchema, updateVpsSchema } from "./vps.schemas.js";
+import { createVpsSchema, installAgentSchema, provisionKeySchema, updateLocalVpsSchema, updateVpsSchema } from "./vps.schemas.js";
 import { AgentInstallerService } from "../agents/agent-installer.service.js";
+import { AGENT_REPOSITORY } from "../tokens.js";
+import type { AgentRepository } from "../persistence/repositories/agent.repository.js";
 
 @Injectable()
 export class VpsService {
@@ -18,6 +20,7 @@ export class VpsService {
     private readonly audit: AuditService,
     private readonly config: AppConfig,
     private readonly agentInstaller: AgentInstallerService,
+    @Inject(AGENT_REPOSITORY) private readonly agentRepository: AgentRepository,
   ) {}
 
   async list() {
@@ -36,6 +39,11 @@ export class VpsService {
     }
   }
 
+  /** Check if VPS is local/system-managed */
+  private isLocalSystemManaged(vps: { kind?: string; managedBy?: string }): boolean {
+    return vps.kind === "local" || vps.managedBy === "system";
+  }
+
   async create(body: unknown) {
     this.assertNotDemo();
     const record = await this.store.create(createVpsSchema.parse(body));
@@ -51,8 +59,70 @@ export class VpsService {
 
   async update(id: string, body: unknown) {
     this.assertNotDemo();
-    this.assertRemoteUserManaged(await this.get(id));
-    const updated = await this.store.update(id, updateVpsSchema.parse(body));
+    const vps = await this.get(id);
+
+    // For local/system-managed hosts: only allow exactly { dockerMetricsEnabled: boolean }
+    if (this.isLocalSystemManaged(vps)) {
+      const localPatch = updateLocalVpsSchema.parse(body);
+      const oldValue = vps.dockerMetricsEnabled ?? false;
+      const newValue = localPatch.dockerMetricsEnabled;
+
+      if (oldValue === newValue) {
+        // No change; just return current record
+        return vps;
+      }
+
+      const updated = await this.store.update(id, { dockerMetricsEnabled: newValue });
+      if (!updated) throw new VpsNotFoundError();
+
+      // Clear Docker metrics on disable
+      if (!newValue) {
+        await this.agentRepository.deleteDockerMetrics(id).catch(() => {
+          // Best effort clear
+        });
+      }
+
+      await this.audit.record({
+        actor: "system",
+        action: "vps.docker_metrics.update",
+        resourceType: "vps",
+        resourceId: id,
+        result: "success",
+        metadata: { old: { dockerMetricsEnabled: oldValue }, new: { dockerMetricsEnabled: newValue } },
+      });
+      return updated;
+    }
+
+    // For remote/user-managed hosts: normal update but also allow dockerMetricsEnabled
+    const parsedBody = updateVpsSchema.parse(body);
+    const hasDockerToggle = parsedBody && "dockerMetricsEnabled" in parsedBody;
+
+    if (hasDockerToggle) {
+      const oldValue = vps.dockerMetricsEnabled ?? false;
+      const newValue = parsedBody.dockerMetricsEnabled as boolean;
+
+      // Clear Docker metrics on disable
+      if (oldValue && !newValue) {
+        await this.agentRepository.deleteDockerMetrics(id).catch(() => {
+          // Best effort clear
+        });
+      }
+
+      const updated = await this.store.update(id, parsedBody);
+      if (!updated) throw new VpsNotFoundError();
+
+      await this.audit.record({
+        actor: "system",
+        action: oldValue !== newValue ? "vps.docker_metrics.update" : "vps.update",
+        resourceType: "vps",
+        resourceId: id,
+        result: "success",
+        metadata: hasDockerToggle ? { old: { dockerMetricsEnabled: oldValue }, new: { dockerMetricsEnabled: newValue } } : undefined,
+      });
+      return updated;
+    }
+
+    const updated = await this.store.update(id, parsedBody);
     if (!updated) throw new VpsNotFoundError();
     await this.audit.record({ actor: "system", action: "vps.update", resourceType: "vps", resourceId: id, result: "success" });
     return updated;

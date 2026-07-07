@@ -37,6 +37,12 @@ func main() {
 	collector := metrics.NewCollector()
 	pushClient := push.NewClient(cfg)
 
+	// Wire server response config callback so dashboard toggle updates the
+	// collector's Docker metrics state on every successful push.
+	pushClient.SetConfigHandler(func(cfg *push.ConfigResponse) {
+		collector.SetDockerMetricsEnabled(cfg.DockerMetricsEnabled)
+	})
+
 	runner := run.New(cfg, collector, pushClient)
 
 	ctx, cancel := context.WithCancel(context.Background())

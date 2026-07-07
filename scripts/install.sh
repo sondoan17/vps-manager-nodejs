@@ -57,6 +57,7 @@ DRY_RUN=false
 GENERATED_PASSWORD=""
 AGENT_SERVICE_NAME="vps-manager-agent"
 AGENT_CONFIG_FILE="/etc/vps-manager-agent/config.json"
+ENABLE_DOCKER_METRICS_ACCESS=false
 TMP_FILES=()
 
 cleanup_tmp_files() {
@@ -99,6 +100,11 @@ while [[ $# -gt 0 ]]; do
       echo "  --skip-pull               Do not pull images before starting (use local images)."
       echo "  --skip-agent              Skip host systemd agent installation."
       echo "  --rotate-agent            Rotate local agent token/config."
+      echo "  --enable-docker-metrics-access"
+      echo "                            Add docker group to the systemd agent service unit"
+      echo "                            (SupplementaryGroups). Docker group access is"
+      echo "                            root-equivalent; only needed if Docker metrics are"
+      echo "                            enabled via the dashboard."
       exit 0 ;;
     --dry-run) DRY_RUN=true; shift ;;
     --app-dir) APP_DIR="$2"; shift 2 ;;
@@ -113,6 +119,7 @@ while [[ $# -gt 0 ]]; do
     --skip-pull) SKIP_PULL=true; shift ;;
     --skip-agent) SKIP_AGENT=true; shift ;;
     --rotate-agent) ROTATE_AGENT=true; shift ;;
+    --enable-docker-metrics-access) ENABLE_DOCKER_METRICS_ACCESS=true; shift ;;
     *)
       echo "Error: Unknown argument: $1"
       echo "Usage: sudo $0 [options]"
@@ -509,11 +516,16 @@ else
     fi
 
     if [[ -n "$INSTALL_SCRIPT" ]] || [[ "$DRY_RUN" == "true" ]]; then
+      AGENT_INSTALL_ARGS=(--binary "$AGENT_BIN_TMP" --config "$AGENT_CONFIG_TMP" --service-name "$AGENT_SERVICE_NAME")
+      if [[ "$ENABLE_DOCKER_METRICS_ACCESS" == "true" ]]; then
+        AGENT_INSTALL_ARGS+=(--enable-docker-metrics-access)
+      fi
+
       if [[ "$DRY_RUN" == "true" ]]; then
-        echo "  [DRY-RUN] Would run: ${INSTALL_SCRIPT} --binary ${AGENT_BIN_TMP} --config ${AGENT_CONFIG_TMP} --service-name ${AGENT_SERVICE_NAME}"
+        echo "  [DRY-RUN] Would run: ${INSTALL_SCRIPT} ${AGENT_INSTALL_ARGS[*]}"
         echo "  [DRY-RUN] Would clean up temp files."
       else
-        bash "$INSTALL_SCRIPT" --binary "$AGENT_BIN_TMP" --config "$AGENT_CONFIG_TMP" --service-name "$AGENT_SERVICE_NAME"
+        bash "$INSTALL_SCRIPT" "${AGENT_INSTALL_ARGS[@]}"
         if [[ "$AGENT_CONFIG_CREATED" == "true" ]]; then
           TOKEN_LINE="$(sed -n 's/.*"token"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' "$AGENT_CONFIG_TMP" | head -1)"
           KEEP_CREDENTIAL_ID="${TOKEN_LINE#vma_}"

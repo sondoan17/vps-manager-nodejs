@@ -118,6 +118,8 @@ describe("database migrations", () => {
       "005_dashboard_admin_credentials.sql",
       "006_rate_limit_buckets.sql",
       "007_local_host_fields.sql",
+      "008_system_info.sql",
+      "009_docker_metrics.sql",
     ]);
     expect(migrations[0]?.sql).toContain("CREATE TABLE IF NOT EXISTS vps");
     expect(migrations[1]?.sql).toContain("metric_samples_vps_effective_idx");
@@ -126,6 +128,9 @@ describe("database migrations", () => {
     expect(migrations[4]?.sql).toContain("CREATE TABLE IF NOT EXISTS dashboard_admin_credentials");
     expect(migrations[5]?.sql).toContain("CREATE TABLE IF NOT EXISTS rate_limit_buckets");
     expect(migrations[6]?.sql).toContain("ALTER TABLE vps ADD COLUMN IF NOT EXISTS kind");
+    expect(migrations[7]?.sql).toContain("CREATE TABLE IF NOT EXISTS agent_system_info");
+    expect(migrations[8]?.sql).toContain("ALTER TABLE vps ADD COLUMN IF NOT EXISTS docker_metrics_enabled");
+    expect(migrations[8]?.sql).toContain("CREATE TABLE IF NOT EXISTS agent_docker_metrics");
   });
 
   it("excludes optional migrations unless requested", async () => {
@@ -138,6 +143,8 @@ describe("database migrations", () => {
       "005_dashboard_admin_credentials.sql",
       "006_rate_limit_buckets.sql",
       "007_local_host_fields.sql",
+      "008_system_info.sql",
+      "009_docker_metrics.sql",
     ]);
     expect(selectMigrations(migrations, true).map((migration) => migration.id)).toEqual([
       "001_core_schema.sql",
@@ -147,6 +154,8 @@ describe("database migrations", () => {
       "005_dashboard_admin_credentials.sql",
       "006_rate_limit_buckets.sql",
       "007_local_host_fields.sql",
+      "008_system_info.sql",
+      "009_docker_metrics.sql",
     ]);
   });
 });

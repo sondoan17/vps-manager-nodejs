@@ -163,24 +163,24 @@ function HeroStat({
 }) {
   const tones = {
     healthy:
-      "border-emerald-400/25 bg-[linear-gradient(135deg,#020617,#064e3b)] text-white before:bg-emerald-300 text-emerald-100",
-    work: "border-amber-400/25 bg-[linear-gradient(135deg,#111827,#92400e)] text-white before:bg-amber-300 text-amber-100",
-    load: "border-blue-400/25 bg-[linear-gradient(135deg,#020617,#1e3a8a)] text-white before:bg-blue-300 text-blue-100",
+      "border-white/10 bg-[#15181e] text-white before:bg-[#36c275] text-emerald-100",
+    work: "border-white/10 bg-[#15181e] text-white before:bg-[#ffb000] text-amber-100",
+    load: "border-white/10 bg-[#15181e] text-white before:bg-[#844fba] text-violet-100",
   };
   return (
     <article
-      className={`${tones[tone]} before:absolute before:inset-x-0 before:top-0 before:h-1 relative min-h-28 min-w-0 overflow-hidden rounded-[1.4rem] border p-4 pt-5 shadow-panel transition duration-300 hover:-translate-y-0.5 sm:min-h-32`}
+      className={`${tones[tone]} before:absolute before:inset-x-0 before:top-0 before:h-1 relative min-h-28 min-w-0 overflow-hidden rounded-xl border p-4 pt-5 shadow-panel transition duration-300 hover:-translate-y-0.5 sm:min-h-32`}
     >
       <div className="absolute -right-10 -top-12 h-24 w-24 rounded-full bg-current/10 blur-2xl" />
       <div className="relative flex min-w-0 items-start justify-between gap-3">
         <div className="min-w-0">
-          <p className="truncate text-xs font-black uppercase tracking-[0.16em] text-slate-400">
+          <p className="truncate text-[11px] font-black uppercase tracking-[0.2em] text-white/45">
             {label}
           </p>
-          <h2 className="mt-1 truncate font-display text-2xl text-white sm:text-[1.7rem]">
+          <h2 className="mt-2 truncate font-display text-2xl font-extrabold tracking-[-0.04em] text-white sm:text-[1.8rem]">
             {title}
           </h2>
-          <p className="mt-1 truncate text-[15px] font-semibold leading-6 text-slate-300">
+          <p className="mt-1 truncate text-[14px] font-semibold leading-6 text-white/58">
             {detail}
           </p>
         </div>
@@ -235,7 +235,7 @@ function TrendCard({
   const isHot = max != null && threshold != null ? max >= threshold : false;
   return (
     <Card
-      className={`min-w-0 overflow-hidden border-slate-200/80 bg-white/88 shadow-panel backdrop-blur transition duration-300 hover:-translate-y-0.5 hover:shadow-xl ${isHot ? "ring-2 ring-orange-200" : ""}`}
+      className={`min-w-0 overflow-hidden rounded-xl border-stone-200/80 bg-white/95 shadow-panel backdrop-blur transition duration-300 hover:-translate-y-0.5 hover:shadow-[0_20px_44px_rgba(13,14,18,0.08)] ${isHot ? "ring-2 ring-orange-200" : ""}`}
     >
       <CardContent className="p-4">
         <div className="flex min-w-0 items-start justify-between gap-3">
