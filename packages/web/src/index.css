@@ -4,27 +4,27 @@
 
 @layer base {
   :root {
-    --background: 38 30% 96%;
-    --foreground: 224 19% 10%;
+    --background: 0 0% 96%;
+    --foreground: 0 0% 5%;
     --card: 0 0% 100%;
-    --card-foreground: 224 19% 10%;
-    --primary: 225 14% 10%;
+    --card-foreground: 0 0% 5%;
+    --primary: 0 0% 5%;
     --primary-foreground: 0 0% 100%;
-    --secondary: 36 28% 90%;
-    --secondary-foreground: 225 14% 14%;
-    --muted: 38 24% 91%;
-    --muted-foreground: 224 9% 39%;
-    --accent: 262 92% 58%;
+    --secondary: 0 0% 91%;
+    --secondary-foreground: 0 0% 8%;
+    --muted: 0 0% 93%;
+    --muted-foreground: 0 0% 34%;
+    --accent: 0 0% 5%;
     --accent-foreground: 0 0% 100%;
-    --destructive: 350 72% 45%;
+    --destructive: 0 0% 16%;
     --destructive-foreground: 10 100% 96%;
-    --border: 38 18% 82%;
-    --input: 38 18% 82%;
-    --ring: 262 92% 58%;
-    --radius-sm: 0.25rem;
-    --radius-md: 0.5rem;
-    --radius-lg: 0.875rem;
-    --shadow-panel: 0 16px 42px rgb(13 14 18 / 0.05);
+    --border: 0 0% 82%;
+    --input: 0 0% 82%;
+    --ring: 0 0% 5%;
+    --radius-sm: 0.125rem;
+    --radius-md: 0.25rem;
+    --radius-lg: 0.5rem;
+    --shadow-panel: 0 1px 0 rgb(0 0 0 / 0.08), 0 18px 46px rgb(0 0 0 / 0.06);
   }
 
   * {
@@ -34,12 +34,12 @@
   body {
     @apply m-0 min-h-screen bg-background font-body text-foreground antialiased;
     background:
-      linear-gradient(90deg, rgb(13 14 18 / 0.035) 1px, transparent 1px),
-      linear-gradient(180deg, rgb(13 14 18 / 0.035) 1px, transparent 1px),
-      radial-gradient(circle at 12% 0%, rgb(98 72 255 / 0.08), transparent 30rem),
-      linear-gradient(180deg, rgb(247 245 239), rgb(240 237 229)),
+      linear-gradient(90deg, rgb(0 0 0 / 0.045) 1px, transparent 1px),
+      linear-gradient(180deg, rgb(0 0 0 / 0.045) 1px, transparent 1px),
+      radial-gradient(circle at 12% 0%, rgb(0 0 0 / 0.1), transparent 30rem),
+      linear-gradient(180deg, rgb(250 250 250), rgb(237 237 237)),
       hsl(var(--background));
-    background-size: 42px 42px, 42px 42px, auto, auto;
+    background-size: 44px 44px, 44px 44px, auto, auto;
   }
 
   body::before {
@@ -47,9 +47,9 @@
     position: fixed;
     inset: 0;
     pointer-events: none;
-    opacity: 0.35;
-    background-image: radial-gradient(rgb(13 14 18 / 0.16) 0.5px, transparent 0.5px);
-    background-size: 14px 14px;
+    opacity: 0.42;
+    background-image: radial-gradient(rgb(0 0 0 / 0.18) 0.5px, transparent 0.5px);
+    background-size: 16px 16px;
     mask-image: linear-gradient(to bottom, black, transparent 55%);
   }
 
@@ -60,6 +60,6 @@
   }
 
   :focus-visible {
-    @apply outline-none ring-4 ring-accent/25 ring-offset-2 ring-offset-background;
+    @apply outline-none ring-4 ring-primary/15 ring-offset-2 ring-offset-background;
   }
 }

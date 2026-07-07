@@ -466,7 +466,7 @@ export function App() {
   const statusAlert = (
     <Alert
       variant={status.kind}
-      className="rounded-xl px-3 py-2 text-sm font-semibold"
+      className="rounded-md px-3 py-2 text-sm font-semibold"
     >
       {status.message}
     </Alert>
@@ -541,8 +541,8 @@ export function App() {
 
 function AuthLoadingScreen() {
   return (
-    <main className="grid min-h-screen place-items-center bg-[#0d0e12] text-white">
-      <div className="rounded-xl border border-white/10 bg-white/[0.06] px-6 py-5 font-semibold shadow-[0_18px_44px_rgba(0,0,0,0.24)] backdrop-blur">
+    <main className="grid min-h-screen place-items-center bg-[#000000] text-white">
+      <div className="rounded-md border border-white/10 bg-white/[0.06] px-6 py-5 font-semibold shadow-[0_18px_44px_rgba(0,0,0,0.24)] backdrop-blur">
         Checking dashboard access...
       </div>
     </main>
@@ -551,22 +551,22 @@ function AuthLoadingScreen() {
 
 function LoginGate({ password, busy, message, onPasswordChange, onSubmit }: { password: string; busy: boolean; message?: string; onPasswordChange: (value: string) => void; onSubmit: (event: FormEvent<HTMLFormElement>) => void }) {
   return (
-    <main className="relative grid min-h-screen overflow-hidden bg-[#0d0e12] px-4 py-8 text-white">
-      <div className="absolute inset-0 bg-[radial-gradient(circle_at_15%_10%,rgba(132,79,186,0.34),transparent_28%),radial-gradient(circle_at_90%_4%,rgba(21,149,136,0.22),transparent_28%)]" />
+    <main className="relative grid min-h-screen overflow-hidden bg-[#000000] px-4 py-8 text-white">
+      <div className="absolute inset-0 bg-[radial-gradient(circle_at_15%_10%,rgba(255,255,255,0.34),transparent_28%),radial-gradient(circle_at_90%_4%,rgba(255,255,255,0.22),transparent_28%)]" />
       <div className="absolute inset-0 opacity-[0.12] [background-image:linear-gradient(90deg,rgba(255,255,255,0.5)_1px,transparent_1px),linear-gradient(180deg,rgba(255,255,255,0.5)_1px,transparent_1px)] [background-size:42px_42px]" />
-      <section className="relative m-auto w-full max-w-md rounded-xl border border-white/12 bg-[#15181e]/90 p-6 shadow-[0_24px_70px_rgba(0,0,0,0.28)] backdrop-blur-xl sm:p-8">
+      <section className="relative m-auto w-full max-w-md rounded-md border border-white/12 bg-[#000000]/90 p-6 shadow-[0_24px_70px_rgba(0,0,0,0.28)] backdrop-blur-xl sm:p-8">
         <div className="mb-6">
-          <p className="text-xs font-black uppercase tracking-[0.24em] text-[#ffb000]">Secure local console</p>
-          <h1 className="mt-2 font-display text-4xl font-extrabold leading-tight tracking-[-0.05em]">Unlock VPS Ops</h1>
+          <p className="text-xs font-black uppercase tracking-[0.24em] text-[#a3a3a3]">Secure local console</p>
+          <h1 className="mt-2 font-display text-4xl font-bold leading-tight tracking-[-0.05em]">Unlock VPS Ops</h1>
           <p className="mt-3 text-sm font-semibold leading-6 text-white/70">Enter the dashboard password. The password is verified server-side against the stored credential and is never stored in browser storage.</p>
         </div>
         <form className="grid gap-4" onSubmit={onSubmit}>
           <div className="grid gap-2">
             <Label htmlFor="dashboard-password" className="text-white">Dashboard password</Label>
-            <Input id="dashboard-password" type="password" autoComplete="current-password" value={password} onChange={(event) => onPasswordChange(event.target.value)} className="h-12 rounded-md border-white/15 bg-[#0d0e12]/75 text-white placeholder:text-white/40" placeholder="Enter password" autoFocus />
+            <Input id="dashboard-password" type="password" autoComplete="current-password" value={password} onChange={(event) => onPasswordChange(event.target.value)} className="h-12 rounded-md border-white/15 bg-[#000000]/75 text-white placeholder:text-white/40" placeholder="Enter password" autoFocus />
           </div>
-          {message ? <Alert variant="destructive" className="rounded-xl px-3 py-2 text-sm font-semibold">{message}</Alert> : null}
-          <Button type="submit" disabled={busy} className="h-12 rounded-md bg-[#844fba] font-black text-white hover:bg-[#6f43a0]">
+          {message ? <Alert variant="destructive" className="rounded-md px-3 py-2 text-sm font-semibold">{message}</Alert> : null}
+          <Button type="submit" disabled={busy} className="h-12 rounded-md bg-[#000000] font-black text-white hover:bg-[#1f1f1f]">
             {busy ? "Verifying..." : "Enter dashboard"}
           </Button>
         </form>
