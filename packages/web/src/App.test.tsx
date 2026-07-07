@@ -174,7 +174,7 @@ describe("React dashboard", () => {
 
     render(<App />);
 
-    expect(await screen.findByText("Operations dashboard")).toBeInTheDocument();
+    expect(await screen.findByText("Infrastructure reference")).toBeInTheDocument();
     expect(
       screen.getByText(
         "Passwords are sent only for one-time key provisioning and are not stored in browser storage.",
@@ -326,7 +326,7 @@ describe("React dashboard", () => {
       });
 
     render(<App />);
-    await screen.findByText("Operations dashboard");
+    await screen.findByText("Infrastructure reference");
     await userEvent.click(
       screen.getAllByRole("button", { name: "Servers" })[0],
     );
