@@ -206,7 +206,7 @@ export function DashboardShell({
                     </div>
                     <SheetContent
                       side="right"
-                      className="w-[88vw] max-w-sm border-0 bg-white/[0.03] p-5"
+                      className="w-[88vw] max-w-sm border-l border-white/[0.12] bg-[#1b1e24] p-5 text-[#ffffff]"
                     >
                       <SheetHeader className="mb-5 text-left">
                         <SheetTitle>Dashboard menu</SheetTitle>
@@ -290,7 +290,7 @@ export function DashboardShell({
           </div>
           <div
             className={cn(
-              "relative min-w-0 max-w-full overflow-hidden px-3 pb-8 sm:px-5 xl:px-8",
+              "relative isolate min-w-0 max-w-full overflow-hidden px-3 pb-8 before:absolute before:inset-x-0 before:top-0 before:z-0 before:h-16 before:bg-[#1f2228] sm:px-5 xl:px-8",
               activeView === "overview"
                 ? "-mt-10 pt-0 sm:-mt-12"
                 : activeView === "servers"
@@ -298,7 +298,7 @@ export function DashboardShell({
                   : "pt-5",
             )}
           >
-            {children}
+            <div className="relative z-10">{children}</div>
           </div>
         </section>
       </div>
@@ -449,7 +449,7 @@ function NavButton({
         "inline-flex min-w-0 items-center gap-3 rounded-none border border-transparent px-3 py-2.5 text-left text-[12px] font-normal uppercase tracking-[0.08em] transition",
         mobile ? "w-auto shrink-0 bg-white/[0.03]" : "w-full",
         active
-          ? "border-[#ffffff] bg-[#ffffff] text-white shadow-none"
+          ? "border-[#ffffff] bg-[#ffffff] text-[#1f2228] shadow-none"
           : mobile
             ? "text-primary hover:bg-secondary"
             : "text-white/50 hover:border-white/10 hover:bg-white/[0.03] hover:text-[#ffffff]",
@@ -460,7 +460,7 @@ function NavButton({
       <span
         className={cn(
           "grid h-8 w-8 shrink-0 place-items-center rounded-none",
-          active ? "bg-white/[0.03] text-[#ffffff]" : "bg-white/[0.03] text-white/50",
+          active ? "bg-[#1f2228] text-[#ffffff]" : "bg-white/[0.03] text-white/50",
         )}
       >
         <Icon size={16} />
