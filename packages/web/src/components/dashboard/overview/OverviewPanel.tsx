@@ -163,9 +163,9 @@ function HeroStat({
 }) {
   const tones = {
     healthy:
-      "border-white/10 bg-[#000000] text-white before:bg-[#ffffff] text-neutral-100",
-    work: "border-white/10 bg-[#000000] text-white before:bg-[#a3a3a3] text-neutral-100",
-    load: "border-white/10 bg-[#000000] text-white before:bg-[#000000] text-neutral-100",
+      "border-white/10 bg-[#161612] text-white before:bg-[#ffcc00] text-neutral-100",
+    work: "border-white/10 bg-[#161612] text-white before:bg-[#fff0a3] text-neutral-100",
+    load: "border-white/10 bg-[#161612] text-white before:bg-[#161612] text-neutral-100",
   };
   return (
     <article
@@ -215,10 +215,10 @@ function TrendCard({
   tone: "cyan" | "violet" | "amber" | "slate";
 }) {
   const stroke = {
-    cyan: "#06b6d4",
-    violet: "#6366f1",
-    amber: "#d97706",
-    slate: "#334155",
+    cyan: "#161612",
+    violet: "#5f4b00",
+    amber: "#c49b00",
+    slate: "#8a7a2f",
   }[tone];
   const points = trend?.points ?? [];
   const normalized = points.map((point) => Math.min(92, Math.max(8, point)));
@@ -235,30 +235,30 @@ function TrendCard({
   const isHot = max != null && threshold != null ? max >= threshold : false;
   return (
     <Card
-      className={`min-w-0 overflow-hidden rounded-md border-neutral-200/80 bg-white/95 shadow-panel backdrop-blur transition duration-300 hover:-translate-y-0.5 hover:shadow-[0_20px_44px_rgba(13,14,18,0.08)] ${isHot ? "ring-2 ring-neutral-200" : ""}`}
+      className={`min-w-0 overflow-hidden rounded-md border-[#ded8bd]/80 bg-white/95 shadow-panel backdrop-blur transition duration-300 hover:-translate-y-0.5 hover:shadow-[0_20px_44px_rgba(13,14,18,0.08)] ${isHot ? "ring-2 ring-[#ffed8a]" : ""}`}
     >
       <CardContent className="p-4">
         <div className="flex min-w-0 items-start justify-between gap-3">
           <div className="min-w-0">
-            <p className="truncate text-xs font-black uppercase tracking-[0.14em] text-neutral-500">
+            <p className="truncate text-xs font-black uppercase tracking-[0.14em] text-[#746d59]">
               {label}
             </p>
-            <strong className="mt-1 block truncate text-2xl font-black text-neutral-950">
+            <strong className="mt-1 block truncate text-2xl font-black text-[#161612]">
               {value}
             </strong>
-            <p className="mt-1 truncate text-[15px] font-semibold leading-6 text-neutral-500">
+            <p className="mt-1 truncate text-[15px] font-semibold leading-6 text-[#746d59]">
               {detail}
             </p>
           </div>
-          <span className="grid h-10 w-10 shrink-0 place-items-center rounded-md border border-neutral-200 bg-neutral-50 text-neutral-700 shadow-sm">
+          <span className="grid h-10 w-10 shrink-0 place-items-center rounded-md border border-[#ded8bd] bg-[#fffdf2] text-[#4a4532] shadow-sm">
             <Icon size={18} />
           </span>
         </div>
         {trend ? (
           <>
-            <div className="mt-3 flex items-center justify-between gap-2 text-xs font-black uppercase tracking-[0.08em] text-neutral-500">
+            <div className="mt-3 flex items-center justify-between gap-2 text-xs font-black uppercase tracking-[0.08em] text-[#746d59]">
               <span>Last {range}</span>
-              <span className={isHot ? "text-neutral-600" : "text-neutral-500"}>
+              <span className={isHot ? "text-[#5f5946]" : "text-[#746d59]"}>
                 threshold {threshold}%
               </span>
             </div>
@@ -273,13 +273,13 @@ function TrendCard({
                 y1="14"
                 x2="100"
                 y2="14"
-                stroke={isHot ? "#f97316" : "#cbd5e1"}
+                stroke={isHot ? "#c49b00" : "#ded8bd"}
                 strokeDasharray="4 4"
               />
               <polyline
                 points={polyline}
                 fill="none"
-                stroke={isHot ? "#f97316" : stroke}
+                stroke={isHot ? "#c49b00" : stroke}
                 strokeWidth="3"
                 strokeLinecap="round"
                 strokeLinejoin="round"
@@ -289,17 +289,17 @@ function TrendCard({
                 y1="44"
                 x2="100"
                 y2="44"
-                stroke="#e2e8f0"
+                stroke="#efe6b7"
                 strokeDasharray="4 4"
               />
             </svg>
-            <div className="mt-1 flex items-center justify-between text-sm font-bold leading-6 text-neutral-500">
+            <div className="mt-1 flex items-center justify-between text-sm font-bold leading-6 text-[#746d59]">
               <span>min {min}%</span>
               <span>max {max}%</span>
             </div>
           </>
         ) : (
-          <div className="mt-3 rounded-sm border border-dashed border-neutral-200 bg-neutral-50 px-3 py-4 text-sm font-bold text-neutral-400">
+          <div className="mt-3 rounded-sm border border-dashed border-[#ded8bd] bg-[#fffdf2] px-3 py-4 text-sm font-bold text-[#9b9278]">
             No backend trend data
           </div>
         )}

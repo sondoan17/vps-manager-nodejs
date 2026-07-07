@@ -9,20 +9,20 @@ const badgeVariants = cva(
     variants: {
       variant: {
         default:
-          "border-transparent bg-[#000000] text-white hover:bg-[#000000]",
+          "border-[#161612] bg-[#161612] text-[#ffcc00] hover:bg-[#161612]",
         secondary:
-          "border-transparent bg-neutral-100 text-secondary-foreground hover:bg-neutral-100",
+          "border-[#ded8bd] bg-[#fff7cc] text-[#161612] hover:bg-[#fff7cc]",
         destructive:
-          "border-transparent bg-destructive text-destructive-foreground hover:bg-destructive/80",
+          "border-[#5f4b00] bg-[#5f4b00] text-white hover:bg-[#5f4b00]",
         outline: "text-foreground",
         ready:
-          "border-neutral-800/15 bg-[#ffffff] text-[#000000] hover:bg-[#ffffff]",
+          "border-[#161612]/25 bg-[#ffcc00] text-[#161612] hover:bg-[#ffcc00]",
         pending:
-          "border-neutral-800/15 bg-[#a3a3a3] text-[#000000] hover:bg-[#a3a3a3]",
+          "border-[#c49b00]/40 bg-[#fff7cc] text-[#5f4b00] hover:bg-[#fff7cc]",
         success:
-          "border-neutral-800/20 bg-neutral-600 text-white hover:bg-neutral-600",
+          "border-[#161612]/25 bg-[#5f4b00] text-white hover:bg-[#5f4b00]",
         warning:
-          "border-neutral-800/20 bg-neutral-500 text-neutral-950 hover:bg-neutral-500",
+          "border-[#161612]/25 bg-[#ffcc00] text-[#161612] hover:bg-[#ffcc00]",
       },
     },
     defaultVariants: {

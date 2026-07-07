@@ -41,8 +41,8 @@ export default {
       },
       boxShadow: { panel: "var(--shadow-panel)" },
       fontFamily: {
-        display: ["IBM Plex Sans", "Aptos Display", "Segoe UI", "sans-serif"],
-        body: ["IBM Plex Sans", "Aptos", "Segoe UI", "sans-serif"],
+        display: ["IBM Plex Sans", "Source Sans 3", "Segoe UI", "sans-serif"],
+        body: ["IBM Plex Sans", "Source Sans 3", "Segoe UI", "sans-serif"],
         mono: ["JetBrains Mono", "SFMono-Regular", "Consolas", "monospace"],
       },
     },
