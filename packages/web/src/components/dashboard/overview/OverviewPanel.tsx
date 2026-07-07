@@ -23,7 +23,7 @@ import { JobsPanel } from "../jobs/JobsPanel";
 export function DemoBanner({ overview }: { overview: DashboardOverview }) {
   if (!overview.banner) return null;
   return (
-    <Alert className="mb-4 rounded-md border-0 bg-[#101111]/75 text-primary shadow-sm ring-1 ring-primary/10">
+    <Alert className="mb-4 rounded-none border-0 bg-white/[0.03]/75 text-primary shadow-none ring-1 ring-primary/10">
       {overview.banner}
     </Alert>
   );
@@ -163,28 +163,28 @@ function HeroStat({
 }) {
   const tones = {
     healthy:
-      "border-white/[0.06] bg-[#101111] text-[#f9f9f9] before:bg-[#f9f9f9]",
-    work: "border-white/[0.06] bg-[#101111] text-[#f9f9f9] before:bg-neutral-300",
-    load: "border-white/[0.06] bg-[#101111] text-[#f9f9f9] before:bg-[#f9f9f9]",
+      "border-white/10 bg-white/[0.03] text-[#ffffff] before:bg-[#ffffff]",
+    work: "border-white/10 bg-white/[0.03] text-[#ffffff] before:bg-neutral-300",
+    load: "border-white/10 bg-white/[0.03] text-[#ffffff] before:bg-[#ffffff]",
   };
   return (
     <article
-      className={`${tones[tone]} before:absolute before:inset-x-0 before:top-0 before:h-1 relative min-h-28 min-w-0 overflow-hidden rounded-md border p-4 pt-5 shadow-panel transition duration-300 hover:-translate-y-0.5 sm:min-h-32`}
+      className={`${tones[tone]} before:absolute before:inset-x-0 before:top-0 before:h-1 relative min-h-28 min-w-0 overflow-hidden rounded-none border p-4 pt-5 shadow-none transition duration-300  sm:min-h-32`}
     >
-      <div className="absolute -right-10 -top-12 h-24 w-24 rounded-full bg-current/10 blur-2xl" />
+      <div className="absolute -right-10 -top-12 h-24 w-24 rounded-none bg-current/10 blur-2xl" />
       <div className="relative flex min-w-0 items-start justify-between gap-3">
         <div className="min-w-0">
-          <p className="truncate text-[11px] font-semibold uppercase tracking-[0.2em] text-[#9c9c9d]">
+          <p className="truncate text-[11px] font-normal uppercase tracking-[0.2em] text-white/50">
             {label}
           </p>
-          <h2 className="mt-2 truncate font-display text-2xl font-semibold tracking-[0px] text-[#f9f9f9] sm:text-[1.8rem]">
+          <h2 className="mt-2 truncate font-display text-2xl font-normal tracking-normal text-[#ffffff] sm:text-[1.8rem]">
             {title}
           </h2>
-          <p className="mt-1 truncate text-[14px] font-semibold leading-6 text-[#9c9c9d]">
+          <p className="mt-1 truncate text-[14px] font-normal leading-6 text-white/50">
             {detail}
           </p>
         </div>
-        <span className="grid h-10 w-10 shrink-0 place-items-center rounded-md border border-white/[0.06] bg-[#101111] text-[#f9f9f9]">
+        <span className="grid h-10 w-10 shrink-0 place-items-center rounded-none border border-white/10 bg-white/[0.03] text-[#ffffff]">
           <Icon size={20} />
         </span>
       </div>
@@ -215,10 +215,10 @@ function TrendCard({
   tone: "cyan" | "violet" | "amber" | "slate";
 }) {
   const stroke = {
-    cyan: "#55b3ff",
-    violet: "#FF6363",
-    amber: "#ffbc33",
-    slate: "#9c9c9d",
+    cyan: "#ffffff",
+    violet: "#ffffff",
+    amber: "#ffffff",
+    slate: "rgba(255,255,255,0.5)",
   }[tone];
   const points = trend?.points ?? [];
   const normalized = points.map((point) => Math.min(92, Math.max(8, point)));
@@ -235,30 +235,30 @@ function TrendCard({
   const isHot = max != null && threshold != null ? max >= threshold : false;
   return (
     <Card
-      className={`min-w-0 overflow-hidden rounded-md border-0 bg-[#101111] shadow-panel backdrop-blur transition duration-300 hover:-translate-y-0.5 hover:shadow-[0_20px_44px_rgba(13,14,18,0.08)] ${isHot ? "ring-2 ring-white/[0.08]" : ""}`}
+      className={`min-w-0 overflow-hidden rounded-none border-0 bg-white/[0.03] shadow-none  transition duration-300  hover:border-white/20 ${isHot ? "ring-2 ring-white/10" : ""}`}
     >
       <CardContent className="p-4">
         <div className="flex min-w-0 items-start justify-between gap-3">
           <div className="min-w-0">
-            <p className="truncate text-xs font-semibold uppercase tracking-[0.14em] text-[#9c9c9d]">
+            <p className="truncate text-xs font-normal uppercase tracking-[0.14em] text-white/50">
               {label}
             </p>
-            <strong className="mt-1 block truncate text-2xl font-semibold text-[#f9f9f9]">
+            <strong className="mt-1 block truncate text-2xl font-normal text-[#ffffff]">
               {value}
             </strong>
-            <p className="mt-1 truncate text-[15px] font-semibold leading-6 text-[#9c9c9d]">
+            <p className="mt-1 truncate text-[15px] font-normal leading-6 text-white/50">
               {detail}
             </p>
           </div>
-          <span className="grid h-10 w-10 shrink-0 place-items-center rounded-md border-0 bg-[#101111] shadow-[rgba(0,0,0,0.08)_0px_0px_0px_1px] text-[#cecece] shadow-sm">
+          <span className="grid h-10 w-10 shrink-0 place-items-center rounded-none border-0 bg-white/[0.03] shadow-none text-white/70 shadow-none">
             <Icon size={18} />
           </span>
         </div>
         {trend ? (
           <>
-            <div className="mt-3 flex items-center justify-between gap-2 text-xs font-semibold uppercase tracking-[0.08em] text-[#9c9c9d]">
+            <div className="mt-3 flex items-center justify-between gap-2 text-xs font-normal uppercase tracking-[0.08em] text-white/50">
               <span>Last {range}</span>
-              <span className={isHot ? "text-[#4d4d4d]" : "text-[#9c9c9d]"}>
+              <span className={isHot ? "text-white/50" : "text-white/50"}>
                 threshold {threshold}%
               </span>
             </div>
@@ -273,13 +273,13 @@ function TrendCard({
                 y1="14"
                 x2="100"
                 y2="14"
-                stroke={isHot ? "#FF6363" : "rgba(255,255,255,0.08)"}
+                stroke={isHot ? "#ffffff" : "rgba(255,255,255,0.08)"}
                 strokeDasharray="4 4"
               />
               <polyline
                 points={polyline}
                 fill="none"
-                stroke={isHot ? "#FF6363" : stroke}
+                stroke={isHot ? "#ffffff" : stroke}
                 strokeWidth="3"
                 strokeLinecap="round"
                 strokeLinejoin="round"
@@ -293,13 +293,13 @@ function TrendCard({
                 strokeDasharray="4 4"
               />
             </svg>
-            <div className="mt-1 flex items-center justify-between text-sm font-semibold leading-6 text-[#9c9c9d]">
+            <div className="mt-1 flex items-center justify-between text-sm font-normal leading-6 text-white/50">
               <span>min {min}%</span>
               <span>max {max}%</span>
             </div>
           </>
         ) : (
-          <div className="mt-3 rounded-md border border-dashed border-white/[0.06] bg-[#101111] px-3 py-4 text-sm font-semibold text-[#808080]">
+          <div className="mt-3 rounded-none border border-dashed border-white/10 bg-white/[0.03] px-3 py-4 text-sm font-normal text-white/30">
             No backend trend data
           </div>
         )}

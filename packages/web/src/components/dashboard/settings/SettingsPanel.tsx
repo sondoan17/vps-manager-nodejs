@@ -42,7 +42,7 @@ export function SettingsPanel({ overview }: { overview: DashboardOverview }) {
           </CardDescription>
         </CardHeader>
         <CardContent>
-          <p className="text-sm font-semibold leading-6 text-muted-foreground">
+          <p className="text-sm font-normal leading-6 text-muted-foreground">
             Use the account menu in the top bar to log out and revoke the current session.
           </p>
         </CardContent>

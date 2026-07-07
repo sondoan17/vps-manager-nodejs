@@ -5,24 +5,24 @@ import { cva, type VariantProps } from "class-variance-authority";
 import { cn } from "@/lib/utils";
 
 const buttonVariants = cva(
-  "inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-md text-sm font-semibold ring-offset-background transition-all duration-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50 [&_svg]:pointer-events-none [&_svg]:size-4 [&_svg]:shrink-0",
+  "inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-none text-sm font-normal ring-offset-background transition-all duration-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50 [&_svg]:pointer-events-none [&_svg]:size-4 [&_svg]:shrink-0",
   {
     variants: {
       variant: {
-        default: "rounded-full bg-[#101111]/85 text-[#18191a] shadow-[rgba(255,255,255,0.1)_0px_1px_0px_0px_inset,rgba(0,0,0,0.2)_0px_-1px_0px_0px_inset] hover:bg-[#101111] hover:opacity-90",
+        default: "rounded-none bg-white/[0.03] text-[#1f2228] shadow-none hover:bg-white/[0.03] hover:opacity-90",
         destructive:
           "bg-destructive text-destructive-foreground hover:bg-destructive/90",
         outline:
-          "border border-white/[0.08] bg-transparent text-[#f9f9f9] shadow-[rgba(255,255,255,0.05)_0px_1px_0px_0px_inset] hover:opacity-60",
+          "border border-white/10 bg-transparent text-[#ffffff] shadow-none hover:opacity-60",
         secondary:
-          "border border-white/[0.08] bg-[#101111] text-[#f9f9f9] shadow-[rgba(255,255,255,0.05)_0px_1px_0px_0px_inset] hover:opacity-60",
-        ghost: "text-[#9c9c9d] hover:text-white hover:opacity-60",
+          "border border-white/10 bg-white/[0.03] text-[#ffffff] shadow-none hover:opacity-60",
+        ghost: "text-white/50 hover:text-white hover:opacity-60",
         link: "text-primary underline-offset-4 hover:underline",
       },
       size: {
         default: "h-10 px-4 py-2",
-        sm: "h-9 rounded-md px-3",
-        lg: "h-11 rounded-md px-8",
+        sm: "h-9 rounded-none px-3",
+        lg: "h-11 rounded-none px-8",
         icon: "h-10 w-10",
       },
     },

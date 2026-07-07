@@ -105,17 +105,17 @@ export function DashboardShell({
   return (
     <main className="min-h-screen w-full max-w-full overflow-x-clip bg-background">
       <div className="grid min-h-screen w-full min-w-0 xl:grid-cols-[17rem_minmax(0,1fr)]">
-        <aside className="hidden min-h-screen w-[17rem] shrink-0 border-r border-white/[0.06] bg-[#07080a]/95 px-4 py-5 text-[#f9f9f9] shadow-[inset_-1px_0_0_rgba(255,255,255,0.04)] xl:flex xl:flex-col">
+        <aside className="hidden min-h-screen w-[17rem] shrink-0 border-r border-white/10 bg-[#1f2228] px-4 py-5 text-[#ffffff] shadow-none xl:flex xl:flex-col">
           <div className="mb-7 flex items-center gap-3 px-1">
-            <span className="grid h-10 w-10 place-items-center rounded-xl border border-white/[0.08] bg-[#101111] text-[#FF6363] shadow-[rgba(255,255,255,0.08)_0px_1px_0px_0px_inset,rgba(0,0,0,0.35)_0px_8px_24px]">
+            <span className="grid h-10 w-10 place-items-center rounded-none border border-white/10 bg-white/[0.03] text-[#ffffff] shadow-none">
               <Server size={19} />
             </span>
             <div className="min-w-0">
-              <p className="truncate font-display text-base font-semibold tracking-[0.1px] text-[#f9f9f9]">
+              <p className="truncate font-display text-base font-normal tracking-normal text-[#ffffff]">
                 VPS Ops
               </p>
-              <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-[#9c9c9d]">
-                Command ops
+              <p className="text-[10px] font-normal uppercase tracking-[0.18em] text-white/50">
+                Model ops
               </p>
             </div>
           </div>
@@ -134,31 +134,31 @@ export function DashboardShell({
               </NavButton>
             ))}
           </nav>
-          <div className="mt-auto flex items-start gap-2 rounded-md border border-white/[0.06] bg-[#101111] p-3 text-[#9c9c9d] shadow-[rgb(27,28,30)_0px_0px_0px_1px,rgb(7,8,10)_0px_0px_0px_1px_inset]">
+          <div className="mt-auto flex items-start gap-2 rounded-none border border-white/10 bg-white/[0.03] p-3 text-white/50 shadow-none">
             <HelpCircle className="mt-0.5 shrink-0" size={15} />
-            <p className="text-[13px] font-semibold leading-5">
+            <p className="text-[13px] font-normal leading-5">
               Passwords are sent only for one-time key provisioning and are not
               stored in browser storage.
             </p>
           </div>
         </aside>
         <section className="min-w-0 max-w-full overflow-hidden">
-          <div className="relative min-h-[12.5rem] max-w-full overflow-hidden border-b border-white/[0.06] bg-[#07080a] sm:min-h-[14rem] xl:min-h-[15.5rem]">
-            <div className="absolute inset-0 bg-[radial-gradient(circle_at_10%_0%,rgba(255,99,99,0.22),transparent_30%),radial-gradient(circle_at_84%_10%,rgba(85,179,255,0.12),transparent_28%),linear-gradient(180deg,rgba(255,255,255,0.035),transparent_44%)]" />
-            <div className="absolute inset-0 opacity-[0.36] [background-image:linear-gradient(90deg,rgba(255,255,255,0.05)_1px,transparent_1px),linear-gradient(180deg,rgba(255,255,255,0.05)_1px,transparent_1px)] [background-size:48px_48px]" />
-            <div className="absolute inset-x-8 top-0 h-px bg-gradient-to-r from-transparent via-[#FF6363]/45 to-transparent" />
-            <div className="relative px-3 py-2 text-[#f9f9f9] sm:px-4 xl:px-6 xl:py-3">
-              <div className="rounded-2xl border border-white/[0.06] bg-[#101111]/85 p-2.5 shadow-[rgb(27,28,30)_0px_0px_0px_1px,rgb(7,8,10)_0px_0px_0px_1px_inset,rgba(0,0,0,0.35)_0px_12px_36px] backdrop-blur-md sm:p-3">
+          <div className="relative min-h-[12.5rem] max-w-full overflow-hidden border-b border-white/10 bg-[#1f2228] sm:min-h-[14rem] xl:min-h-[15.5rem]">
+            <div className="absolute inset-0 bg-transparent" />
+            <div className="absolute inset-0 hidden" />
+            <div className="absolute inset-x-8 top-0 h-px bg-white/20" />
+            <div className="relative px-3 py-2 text-[#ffffff] sm:px-4 xl:px-6 xl:py-3">
+              <div className="rounded-none border border-white/10 bg-white/[0.03] p-2.5 shadow-none  sm:p-3">
                 <div className="flex min-w-0 flex-col gap-3 xl:flex-row xl:items-center xl:justify-between">
                   <label className="relative min-w-0 max-w-full xl:w-80">
                     <Search
-                      className="absolute left-4 top-1/2 -translate-y-1/2 text-[#9c9c9d]"
+                      className="absolute left-4 top-1/2 -translate-y-1/2 text-white/50"
                       size={17}
                     />
                     <input
                       aria-label="Global server search"
                       placeholder="Search servers..."
-                      className="h-10 w-full rounded-md border-0 bg-[#07080a] pl-11 pr-4 text-sm font-medium text-[#f9f9f9] outline-none ring-1 ring-white/[0.08] placeholder:text-[#6a6b6c] focus:ring-4 focus:ring-[rgba(85,179,255,0.15)]"
+                      className="h-10 w-full rounded-none border-0 bg-[#1f2228] pl-11 pr-4 text-sm font-medium text-[#ffffff] outline-none ring-1 ring-white/10 placeholder:text-white/30 focus:ring-4 focus:ring-blue-500/50"
                     />
                   </label>
 
@@ -184,7 +184,7 @@ export function DashboardShell({
                   className="relative mt-2 xl:hidden"
                 >
                   <Sheet open={mobileMenuOpen} onOpenChange={setMobileMenuOpen}>
-                    <div className="flex items-center justify-between gap-3 rounded-lg border-0 bg-[#101111] shadow-[rgba(0,0,0,0.08)_0px_0px_0px_1px] p-2 text-sm font-semibold text-primary sm:p-3">
+                    <div className="flex items-center justify-between gap-3 rounded-none border-0 bg-white/[0.03] shadow-none p-2 text-sm font-normal text-primary sm:p-3">
                       <div className="hidden min-w-0 md:block">
                         <p className="text-xs uppercase tracking-[0.16em] text-muted-foreground">
                           Current section
@@ -198,7 +198,7 @@ export function DashboardShell({
                         <button
                           type="button"
                           aria-label="Open dashboard menu"
-                          className="grid h-9 w-9 shrink-0 place-items-center rounded-md bg-[#101111]/80 text-[#18191a] shadow-[rgba(255,255,255,0.1)_0px_1px_0px_0px_inset,rgba(0,0,0,0.2)_0px_-1px_0px_0px_inset] transition hover:bg-[#101111] hover:opacity-90 sm:h-11 sm:w-11"
+                          className="grid h-9 w-9 shrink-0 place-items-center rounded-none bg-white text-[#1f2228] shadow-none transition hover:bg-white/[0.03] hover:opacity-90 sm:h-11 sm:w-11"
                         >
                           <Menu size={20} />
                         </button>
@@ -206,7 +206,7 @@ export function DashboardShell({
                     </div>
                     <SheetContent
                       side="right"
-                      className="w-[88vw] max-w-sm border-0 bg-[#101111] p-5"
+                      className="w-[88vw] max-w-sm border-0 bg-white/[0.03] p-5"
                     >
                       <SheetHeader className="mb-5 text-left">
                         <SheetTitle>Dashboard menu</SheetTitle>
@@ -233,17 +233,17 @@ export function DashboardShell({
             </div>
             <div
               className={cn(
-                "relative flex min-w-0 max-w-full items-start px-4 text-[#f9f9f9] sm:px-8 xl:px-10",
+                "relative flex min-w-0 max-w-full items-start px-4 text-[#ffffff] sm:px-8 xl:px-10",
                 activeView === "servers"
                   ? "pb-5 pt-0 sm:pb-7 sm:pt-1"
                   : "pb-8 pt-0 sm:pb-14 sm:pt-3",
               )}
             >
               <div className="min-w-0 max-w-3xl">
-                <p className="text-[10px] font-semibold uppercase tracking-[0.24em] text-[#9c9c9d] sm:text-xs">
-                  VPS command center
+                <p className="text-[10px] font-normal uppercase tracking-[0.24em] text-white/50 sm:text-xs">
+                  VPS control plane
                 </p>
-                <h1 className="mt-2 break-words font-display text-2xl font-semibold leading-none tracking-[0px] sm:text-4xl">
+                <h1 className="mt-2 break-words font-display text-2xl font-normal leading-none tracking-normal sm:text-4xl">
                   {activeView === "servers"
                     ? "Servers"
                     : activeView === "jobs"
@@ -254,34 +254,34 @@ export function DashboardShell({
                           ? "Audit"
                           : activeView === "terminal"
                             ? terminalTitle
-                            : "Command dashboard"}
+                            : "Operations dashboard"}
                 </h1>
                 {activeView === "servers" ? (
-                  <p className="mt-1 max-w-2xl text-xs font-semibold leading-4 text-[#9c9c9d] sm:mt-1.5 sm:text-sm sm:leading-5">
+                  <p className="mt-1 max-w-2xl text-xs font-normal leading-4 text-white/50 sm:mt-1.5 sm:text-sm sm:leading-5">
                     Manage VPS access, SSH keys, health checks, and
                     provisioning.
                   </p>
                 ) : null}
                 {activeView === "jobs" ? (
-                  <p className="mt-1 max-w-2xl text-xs font-semibold leading-4 text-[#9c9c9d] sm:mt-1.5 sm:text-sm sm:leading-5">
+                  <p className="mt-1 max-w-2xl text-xs font-normal leading-4 text-white/50 sm:mt-1.5 sm:text-sm sm:leading-5">
                     Track provisioning, metrics collection, key verification,
                     and background tasks.
                   </p>
                 ) : null}
                 {activeView === "metrics" ? (
-                  <p className="mt-1 max-w-2xl text-xs font-semibold leading-4 text-[#9c9c9d] sm:mt-1.5 sm:text-sm sm:leading-5">
+                  <p className="mt-1 max-w-2xl text-xs font-normal leading-4 text-white/50 sm:mt-1.5 sm:text-sm sm:leading-5">
                     Monitor CPU, memory, disk, load, and telemetry freshness
                     across servers.
                   </p>
                 ) : null}
                 {activeView === "audit" ? (
-                  <p className="mt-1 max-w-2xl text-xs font-semibold leading-4 text-[#9c9c9d] sm:mt-1.5 sm:text-sm sm:leading-5">
+                  <p className="mt-1 max-w-2xl text-xs font-normal leading-4 text-white/50 sm:mt-1.5 sm:text-sm sm:leading-5">
                     Review operational events, security actions, SSH access, and
                     job activity.
                   </p>
                 ) : null}
                 {activeView === "terminal" ? (
-                  <p className="mt-1 max-w-2xl text-xs font-semibold leading-4 text-[#9c9c9d] sm:mt-1.5 sm:text-sm sm:leading-5">
+                  <p className="mt-1 max-w-2xl text-xs font-normal leading-4 text-white/50 sm:mt-1.5 sm:text-sm sm:leading-5">
                     {terminalDescription}
                   </p>
                 ) : null}
@@ -332,7 +332,7 @@ function LiveBadge({ state }: { state: LiveConnectionState }) {
     : state.status === "reconnecting" ? "Reconnecting"
     : "Stale";
 
-  const dotColor = state.status === "live" ? "bg-[#07080a]" : "bg-[#9c9c9d]";
+  const dotColor = state.status === "live" ? "bg-[#1f2228]" : "bg-[rgba(255,255,255,0.5)]";
 
   const badgeVariant = state.status === "live" ? "ready"
     : state.status === "connecting" ? "pending"
@@ -340,7 +340,7 @@ function LiveBadge({ state }: { state: LiveConnectionState }) {
 
   return (
     <Badge variant={badgeVariant as any} className="gap-1.5 text-[11px] uppercase">
-      <span className={`h-1.5 w-1.5 rounded-full ${dotColor}`} />
+      <span className={`h-1.5 w-1.5 rounded-none ${dotColor}`} />
       {label}
       {state.status !== "connecting" && "latestEventAt" in state && state.latestEventAt ? (
         <span className="ml-1 text-[10px] font-normal opacity-70">
@@ -357,7 +357,7 @@ function UserMenu({ onLogout }: { onLogout?: () => void }) {
       <DropdownMenuTrigger asChild>
         <button
           type="button"
-          className="inline-flex h-10 w-10 shrink-0 items-center rounded-md text-sm font-semibold text-primary transition hover:bg-[#101111]/25"
+          className="inline-flex h-10 w-10 shrink-0 items-center rounded-none text-sm font-normal text-primary transition hover:bg-white/[0.03]/25"
           aria-label="Open user menu"
         >
           <Avatar className="h-10 w-10">
@@ -370,7 +370,7 @@ function UserMenu({ onLogout }: { onLogout?: () => void }) {
           </Avatar>
         </button>
       </DropdownMenuTrigger>
-      <DropdownMenuContent className="w-56 rounded-md" align="end">
+      <DropdownMenuContent className="w-56 rounded-none" align="end">
         <DropdownMenuLabel>
           <div className="grid gap-1">
             <span>Local admin</span>
@@ -398,7 +398,7 @@ function UserMenu({ onLogout }: { onLogout?: () => void }) {
         </DropdownMenuGroup>
         <DropdownMenuSeparator />
         <DropdownMenuItem
-          className={onLogout ? "text-[#f9f9f9]" : "text-muted-foreground"}
+          className={onLogout ? "text-[#ffffff]" : "text-muted-foreground"}
           onSelect={onLogout}
           disabled={!onLogout}
         >
@@ -422,7 +422,7 @@ function IconButton({
     <button
       type="button"
       aria-label={label}
-      className="grid h-10 w-10 shrink-0 place-items-center rounded-md bg-[#101111]/90 text-primary shadow-sm transition hover:bg-[#101111]"
+      className="grid h-10 w-10 shrink-0 place-items-center rounded-none bg-white/[0.03]/90 text-primary shadow-none transition hover:bg-white/[0.03]"
       {...props}
     >
       {children}
@@ -446,21 +446,21 @@ function NavButton({
     <button
       type="button"
       className={cn(
-        "inline-flex min-w-0 items-center gap-3 rounded-md border border-transparent px-3 py-2.5 text-left text-[12px] font-semibold uppercase tracking-[0.08em] transition",
-        mobile ? "w-auto shrink-0 bg-[#101111]" : "w-full",
+        "inline-flex min-w-0 items-center gap-3 rounded-none border border-transparent px-3 py-2.5 text-left text-[12px] font-normal uppercase tracking-[0.08em] transition",
+        mobile ? "w-auto shrink-0 bg-white/[0.03]" : "w-full",
         active
-          ? "border-[#f9f9f9] bg-[#f9f9f9] text-white shadow-sm"
+          ? "border-[#ffffff] bg-[#ffffff] text-white shadow-none"
           : mobile
             ? "text-primary hover:bg-secondary"
-            : "text-[#9c9c9d] hover:border-white/[0.1] hover:bg-[#101111] hover:text-[#f9f9f9]",
+            : "text-white/50 hover:border-white/10 hover:bg-white/[0.03] hover:text-[#ffffff]",
         className,
       )}
       {...props}
     >
       <span
         className={cn(
-          "grid h-8 w-8 shrink-0 place-items-center rounded-md",
-          active ? "bg-[#101111] text-[#f9f9f9]" : "bg-[#101111] text-[#9c9c9d]",
+          "grid h-8 w-8 shrink-0 place-items-center rounded-none",
+          active ? "bg-white/[0.03] text-[#ffffff]" : "bg-white/[0.03] text-white/50",
         )}
       >
         <Icon size={16} />
