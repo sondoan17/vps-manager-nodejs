@@ -163,9 +163,9 @@ function HeroStat({
 }) {
   const tones = {
     healthy:
-      "border-white/10 bg-[#161612] text-white before:bg-[#ffcc00] text-neutral-100",
-    work: "border-white/10 bg-[#161612] text-white before:bg-[#fff0a3] text-neutral-100",
-    load: "border-white/10 bg-[#161612] text-white before:bg-[#161612] text-neutral-100",
+      "border-[#ebebeb] bg-white text-[#171717] before:bg-[#171717]",
+    work: "border-[#ebebeb] bg-white text-[#171717] before:bg-neutral-300",
+    load: "border-[#ebebeb] bg-white text-[#171717] before:bg-[#171717]",
   };
   return (
     <article
@@ -174,17 +174,17 @@ function HeroStat({
       <div className="absolute -right-10 -top-12 h-24 w-24 rounded-full bg-current/10 blur-2xl" />
       <div className="relative flex min-w-0 items-start justify-between gap-3">
         <div className="min-w-0">
-          <p className="truncate text-[11px] font-black uppercase tracking-[0.2em] text-white/45">
+          <p className="truncate text-[11px] font-semibold uppercase tracking-[0.2em] text-[#666666]">
             {label}
           </p>
-          <h2 className="mt-2 truncate font-display text-2xl font-bold tracking-[-0.04em] text-white sm:text-[1.8rem]">
+          <h2 className="mt-2 truncate font-display text-2xl font-semibold tracking-[-0.06em] text-[#171717] sm:text-[1.8rem]">
             {title}
           </h2>
-          <p className="mt-1 truncate text-[14px] font-semibold leading-6 text-white/58">
+          <p className="mt-1 truncate text-[14px] font-semibold leading-6 text-[#666666]">
             {detail}
           </p>
         </div>
-        <span className="grid h-10 w-10 shrink-0 place-items-center rounded-md border border-white/10 bg-white/10 text-current">
+        <span className="grid h-10 w-10 shrink-0 place-items-center rounded-md border border-[#ebebeb] bg-[#fafafa] text-[#171717]">
           <Icon size={20} />
         </span>
       </div>
@@ -215,10 +215,10 @@ function TrendCard({
   tone: "cyan" | "violet" | "amber" | "slate";
 }) {
   const stroke = {
-    cyan: "#161612",
-    violet: "#5f4b00",
-    amber: "#c49b00",
-    slate: "#8a7a2f",
+    cyan: "#000000",
+    violet: "#111111",
+    amber: "#000000",
+    slate: "#444444",
   }[tone];
   const points = trend?.points ?? [];
   const normalized = points.map((point) => Math.min(92, Math.max(8, point)));
@@ -235,30 +235,30 @@ function TrendCard({
   const isHot = max != null && threshold != null ? max >= threshold : false;
   return (
     <Card
-      className={`min-w-0 overflow-hidden rounded-md border-[#ded8bd]/80 bg-white/95 shadow-panel backdrop-blur transition duration-300 hover:-translate-y-0.5 hover:shadow-[0_20px_44px_rgba(13,14,18,0.08)] ${isHot ? "ring-2 ring-[#ffed8a]" : ""}`}
+      className={`min-w-0 overflow-hidden rounded-md border-0 bg-white shadow-panel backdrop-blur transition duration-300 hover:-translate-y-0.5 hover:shadow-[0_20px_44px_rgba(13,14,18,0.08)] ${isHot ? "ring-2 ring-[#ebebeb]" : ""}`}
     >
       <CardContent className="p-4">
         <div className="flex min-w-0 items-start justify-between gap-3">
           <div className="min-w-0">
-            <p className="truncate text-xs font-black uppercase tracking-[0.14em] text-[#746d59]">
+            <p className="truncate text-xs font-semibold uppercase tracking-[0.14em] text-[#666666]">
               {label}
             </p>
-            <strong className="mt-1 block truncate text-2xl font-black text-[#161612]">
+            <strong className="mt-1 block truncate text-2xl font-semibold text-[#171717]">
               {value}
             </strong>
-            <p className="mt-1 truncate text-[15px] font-semibold leading-6 text-[#746d59]">
+            <p className="mt-1 truncate text-[15px] font-semibold leading-6 text-[#666666]">
               {detail}
             </p>
           </div>
-          <span className="grid h-10 w-10 shrink-0 place-items-center rounded-md border border-[#ded8bd] bg-[#fffdf2] text-[#4a4532] shadow-sm">
+          <span className="grid h-10 w-10 shrink-0 place-items-center rounded-md border-0 bg-white shadow-[rgba(0,0,0,0.08)_0px_0px_0px_1px] text-neutral-700 shadow-sm">
             <Icon size={18} />
           </span>
         </div>
         {trend ? (
           <>
-            <div className="mt-3 flex items-center justify-between gap-2 text-xs font-black uppercase tracking-[0.08em] text-[#746d59]">
+            <div className="mt-3 flex items-center justify-between gap-2 text-xs font-semibold uppercase tracking-[0.08em] text-[#666666]">
               <span>Last {range}</span>
-              <span className={isHot ? "text-[#5f5946]" : "text-[#746d59]"}>
+              <span className={isHot ? "text-[#4d4d4d]" : "text-[#666666]"}>
                 threshold {threshold}%
               </span>
             </div>
@@ -273,13 +273,13 @@ function TrendCard({
                 y1="14"
                 x2="100"
                 y2="14"
-                stroke={isHot ? "#c49b00" : "#ded8bd"}
+                stroke={isHot ? "#000000" : "#e5e5e5"}
                 strokeDasharray="4 4"
               />
               <polyline
                 points={polyline}
                 fill="none"
-                stroke={isHot ? "#c49b00" : stroke}
+                stroke={isHot ? "#000000" : stroke}
                 strokeWidth="3"
                 strokeLinecap="round"
                 strokeLinejoin="round"
@@ -289,17 +289,17 @@ function TrendCard({
                 y1="44"
                 x2="100"
                 y2="44"
-                stroke="#efe6b7"
+                stroke="#e5e5e5"
                 strokeDasharray="4 4"
               />
             </svg>
-            <div className="mt-1 flex items-center justify-between text-sm font-bold leading-6 text-[#746d59]">
+            <div className="mt-1 flex items-center justify-between text-sm font-semibold leading-6 text-[#666666]">
               <span>min {min}%</span>
               <span>max {max}%</span>
             </div>
           </>
         ) : (
-          <div className="mt-3 rounded-sm border border-dashed border-[#ded8bd] bg-[#fffdf2] px-3 py-4 text-sm font-bold text-[#9b9278]">
+          <div className="mt-3 rounded-md border border-dashed border-[#ebebeb] bg-white px-3 py-4 text-sm font-semibold text-[#808080]">
             No backend trend data
           </div>
         )}

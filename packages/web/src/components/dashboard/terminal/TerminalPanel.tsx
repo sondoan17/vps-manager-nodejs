@@ -44,40 +44,40 @@ export function TerminalPanel({
 
   return (
     <div className="grid min-w-0 gap-4 xl:grid-cols-[minmax(0,1fr)_20rem]">
-      <Card className="min-w-0 overflow-hidden border-neutral-800 bg-[#020617] text-neutral-100 shadow-2xl shadow-[#161612]/20">
+      <Card className="min-w-0 overflow-hidden border-neutral-800 bg-[#020617] text-neutral-100 shadow-2xl shadow-black/20">
         <CardHeader className="border-b border-neutral-800 bg-[#0f172a]">
           <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
             <div className="min-w-0">
-              <div className="mb-2 inline-flex items-center gap-2 rounded-full border border-[#aa9c67]/25 bg-neutral-400/10 px-3 py-1 text-[11px] font-black uppercase tracking-[0.16em] text-neutral-300">
+              <div className="mb-2 inline-flex items-center gap-2 rounded-full border border-[#a3a3a3]/25 bg-neutral-400/10 px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.16em] text-neutral-300">
                 <ShieldCheck size={14} /> Read-only whitelist
               </div>
               <CardTitle className="flex items-center gap-2 font-mono text-xl text-white">
                 <TerminalSquare className="text-neutral-300" size={22} />
                 {terminal.label}
               </CardTitle>
-              <CardDescription className="mt-2 max-w-2xl text-[#9b9278]">
+              <CardDescription className="mt-2 max-w-2xl text-[#808080]">
                 Safe commands only: {commands.join(", ")}. No stored
                 password and no write, restart, install, or shell escape access.
               </CardDescription>
             </div>
             <div className="rounded-md border border-neutral-700 bg-neutral-950/70 px-4 py-3 font-mono text-xs text-neutral-300">
-              <p className="text-[#746d59]">session</p>
+              <p className="text-[#666666]">session</p>
               <p className="mt-1 text-neutral-300">{connectionText}</p>
-              <p className="mt-1 text-[#9b9278]">server metadata not tracked</p>
+              <p className="mt-1 text-[#808080]">server metadata not tracked</p>
             </div>
           </div>
         </CardHeader>
 
         <CardContent className="space-y-4 p-4 sm:p-5">
           <div className="grid gap-3 rounded-md border border-neutral-800 bg-neutral-950/80 p-3 lg:grid-cols-[13rem_minmax(0,1fr)_auto] lg:items-end">
-            <label className="grid gap-1.5 text-xs font-black uppercase tracking-[0.12em] text-[#746d59]">
+            <label className="grid gap-1.5 text-xs font-semibold uppercase tracking-[0.12em] text-[#666666]">
               Server
               <div className="flex h-11 items-center gap-2 rounded-md border border-neutral-700 bg-[#020617] px-3 font-mono text-sm normal-case tracking-normal text-neutral-100">
                 <Server size={15} className="text-neutral-300" />
                 {serverLabel}
               </div>
             </label>
-            <label className="grid min-w-0 gap-1.5 text-xs font-black uppercase tracking-[0.12em] text-[#746d59]">
+            <label className="grid min-w-0 gap-1.5 text-xs font-semibold uppercase tracking-[0.12em] text-[#666666]">
               Command preset / input
               <div className="flex h-11 min-w-0 items-center rounded-md border border-neutral-700 bg-[#020617] px-3 font-mono text-sm text-neutral-100 ring-1 ring-neutral-300/10">
                 <span className="mr-2 text-neutral-300">$</span>
@@ -85,13 +85,13 @@ export function TerminalPanel({
               </div>
             </label>
             <div className="flex flex-wrap gap-2">
-              <button className="inline-flex h-11 cursor-not-allowed items-center gap-2 rounded-md bg-neutral-800 px-4 text-sm font-black text-[#9b9278] opacity-60" type="button" disabled title="Run is not available in read-only mode">
+              <button className="inline-flex h-11 cursor-not-allowed items-center gap-2 rounded-md bg-neutral-800 px-4 text-sm font-semibold text-[#808080] opacity-60" type="button" disabled title="Run is not available in read-only mode">
                 <Play size={15} /> Run
               </button>
-              <button className="inline-flex h-11 cursor-not-allowed items-center gap-2 rounded-md border border-neutral-700 px-3 text-sm font-bold text-[#746d59] opacity-60" type="button" disabled title="Output clearing is not available in read-only mode">
+              <button className="inline-flex h-11 cursor-not-allowed items-center gap-2 rounded-md border border-neutral-700 px-3 text-sm font-semibold text-[#666666] opacity-60" type="button" disabled title="Output clearing is not available in read-only mode">
                 <Trash2 size={15} /> Clear output
               </button>
-              <button className="inline-flex h-11 cursor-not-allowed items-center gap-2 rounded-md border border-neutral-700 px-3 text-sm font-bold text-[#746d59] opacity-60" type="button" disabled title="Output copying is not available in read-only mode">
+              <button className="inline-flex h-11 cursor-not-allowed items-center gap-2 rounded-md border border-neutral-700 px-3 text-sm font-semibold text-[#666666] opacity-60" type="button" disabled title="Output copying is not available in read-only mode">
                 <Copy size={15} /> Copy output
               </button>
             </div>
@@ -106,7 +106,7 @@ export function TerminalPanel({
           </div>
 
           <ScrollArea className="h-[34rem] max-w-full rounded-md border border-neutral-800 bg-[#020617] shadow-inner">
-            <div className="flex items-center justify-between border-b border-neutral-800 bg-[#0f172a] px-4 py-2 font-mono text-xs text-[#9b9278]">
+            <div className="flex items-center justify-between border-b border-neutral-800 bg-[#0f172a] px-4 py-2 font-mono text-xs text-[#808080]">
               <span>output.log</span>
               <span>{terminal.sessions.length} session{terminal.sessions.length === 1 ? "" : "s"} · no audit reference</span>
             </div>
@@ -115,14 +115,14 @@ export function TerminalPanel({
                 `$ ${session.command}\n${session.output}\n\n`
               )).join("")}
               <span className="text-neutral-300">$</span>
-              <span className="text-[#746d59]"> waiting for whitelisted command</span>
+              <span className="text-[#666666]"> waiting for whitelisted command</span>
             </pre>
           </ScrollArea>
         </CardContent>
       </Card>
 
       <aside className="grid gap-4">
-        <Card className="border-[#ded8bd]">
+        <Card className="border-[#ebebeb]">
           <CardHeader>
             <CardTitle className="flex items-center gap-2 text-base">
               <History size={17} /> Command history
@@ -131,23 +131,23 @@ export function TerminalPanel({
           </CardHeader>
           <CardContent className="space-y-2">
             {commands.slice(0, 5).map((item) => (
-              <div key={item} className="rounded-md bg-[#fff7cc] p-3 font-mono text-xs text-[#4a4532]">
+              <div key={item} className="rounded-md bg-[#fafafa] p-3 font-mono text-xs text-neutral-700">
                 $ {item}
               </div>
             ))}
           </CardContent>
         </Card>
 
-        <Card className="border-[#ded8bd] bg-[#fffdf2]">
+        <Card className="border-[#ebebeb] bg-white">
           <CardHeader>
-            <CardTitle className="flex items-center gap-2 text-base text-[#161612]">
+            <CardTitle className="flex items-center gap-2 text-base text-[#171717]">
               <Clipboard size={17} /> Audit trail
             </CardTitle>
             <CardDescription className="text-[#2f2d22]/75">
               Session metadata is not tracked in this view.
             </CardDescription>
           </CardHeader>
-          <CardContent className="space-y-3 text-sm text-[#161612]">
+          <CardContent className="space-y-3 text-sm text-[#171717]">
             <Meta icon={<Server size={15} />} label="Server" value={serverLabel} />
             <Meta icon={<CheckCircle2 size={15} />} label="Actor" value={actor} />
             <Meta icon={<Clock3 size={15} />} label="Duration" value={duration} />
@@ -162,7 +162,7 @@ export function TerminalPanel({
 function Meta({ icon, label, value }: { icon: ReactNode; label: string; value: string }) {
   return (
     <div className="flex items-center justify-between gap-3 rounded-md bg-white/70 px-3 py-2">
-      <span className="inline-flex items-center gap-2 font-bold text-[#2f2d22]">{icon}{label}</span>
+      <span className="inline-flex items-center gap-2 font-semibold text-[#2f2d22]">{icon}{label}</span>
       <span className="truncate font-mono text-xs">{value}</span>
     </div>
   );

@@ -105,17 +105,17 @@ export function DashboardShell({
   return (
     <main className="min-h-screen w-full max-w-full overflow-x-clip bg-background">
       <div className="grid min-h-screen w-full min-w-0 xl:grid-cols-[17rem_minmax(0,1fr)]">
-        <aside className="hidden min-h-screen w-[17rem] shrink-0 border-r border-white/10 bg-[#161612] px-4 py-5 text-white shadow-[12px_0_44px_rgba(13,14,18,0.08)] xl:flex xl:flex-col">
+        <aside className="hidden min-h-screen w-[17rem] shrink-0 border-r border-[#ebebeb] bg-white px-4 py-5 text-[#171717] shadow-none xl:flex xl:flex-col">
           <div className="mb-7 flex items-center gap-3 px-1">
-            <span className="grid h-10 w-10 place-items-center rounded-sm bg-[#ffcc00] text-[#161612] shadow-[0_12px_30px_rgba(255,204,0,0.22)]">
+            <span className="grid h-10 w-10 place-items-center rounded-md border border-[#171717] bg-[#171717] text-white shadow-none">
               <Server size={19} />
             </span>
             <div className="min-w-0">
-              <p className="truncate font-display text-base font-bold tracking-tight text-white">
+              <p className="truncate font-display text-base font-semibold tracking-tight text-[#171717]">
                 VPS Ops
               </p>
-              <p className="text-[10px] font-bold uppercase tracking-[0.18em] text-[#ffcc00]/70">
-                Technical operations
+              <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-[#666666]">
+                Deploy control
               </p>
             </div>
           </div>
@@ -134,7 +134,7 @@ export function DashboardShell({
               </NavButton>
             ))}
           </nav>
-          <div className="mt-auto flex items-start gap-2 rounded-sm border border-white/10 bg-white/[0.04] p-3 text-white/55">
+          <div className="mt-auto flex items-start gap-2 rounded-md border border-[#ebebeb] bg-[#fafafa] p-3 text-[#4d4d4d]">
             <HelpCircle className="mt-0.5 shrink-0" size={15} />
             <p className="text-[13px] font-semibold leading-5">
               Passwords are sent only for one-time key provisioning and are not
@@ -143,22 +143,22 @@ export function DashboardShell({
           </div>
         </aside>
         <section className="min-w-0 max-w-full overflow-hidden">
-          <div className="relative min-h-[12.5rem] max-w-full overflow-hidden bg-[#161612] sm:min-h-[14rem] xl:min-h-[15.5rem]">
-            <div className="absolute inset-0 bg-[radial-gradient(circle_at_8%_0%,rgba(255,204,0,0.38),transparent_26%),radial-gradient(circle_at_86%_12%,rgba(255,244,179,0.24),transparent_28%),linear-gradient(120deg,rgba(255,255,255,0.08),transparent_40%)]" />
-            <div className="absolute inset-0 opacity-[0.13] [background-image:linear-gradient(90deg,rgba(255,255,255,0.5)_1px,transparent_1px),linear-gradient(180deg,rgba(255,255,255,0.5)_1px,transparent_1px)] [background-size:42px_42px]" />
-            <div className="absolute -right-16 top-0 h-44 w-44 rounded-full bg-[#161612]/25 blur-3xl" />
-            <div className="relative px-3 py-2 text-white sm:px-4 xl:px-6 xl:py-3">
-              <div className="rounded-md border border-white/10 bg-[#161612]/70 p-2.5 shadow-[0_18px_44px_rgba(0,0,0,0.18)] backdrop-blur-md sm:p-3">
+          <div className="relative min-h-[12.5rem] max-w-full overflow-hidden border-b border-[#ebebeb] bg-white sm:min-h-[14rem] xl:min-h-[15.5rem]">
+            <div className="absolute inset-0 bg-[radial-gradient(circle_at_50%_0%,rgba(0,0,0,0.055),transparent_30%),linear-gradient(180deg,rgba(255,255,255,0.92),transparent_42%)]" />
+            <div className="absolute inset-0 opacity-[0.55] [background-image:linear-gradient(90deg,rgba(0,0,0,0.06)_1px,transparent_1px),linear-gradient(180deg,rgba(0,0,0,0.06)_1px,transparent_1px)] [background-size:48px_48px]" />
+            <div className="absolute inset-x-8 top-0 h-px bg-gradient-to-r from-transparent via-black/20 to-transparent" />
+            <div className="relative px-3 py-2 text-[#171717] sm:px-4 xl:px-6 xl:py-3">
+              <div className="rounded-lg border-0 bg-white p-2.5 shadow-[rgba(0,0,0,0.08)_0px_0px_0px_1px,rgba(0,0,0,0.04)_0px_2px_2px,#fafafa_0px_0px_0px_1px] backdrop-blur-md sm:p-3">
                 <div className="flex min-w-0 flex-col gap-3 xl:flex-row xl:items-center xl:justify-between">
                   <label className="relative min-w-0 max-w-full xl:w-80">
                     <Search
-                      className="absolute left-4 top-1/2 -translate-y-1/2 text-white/55"
+                      className="absolute left-4 top-1/2 -translate-y-1/2 text-[#666666]"
                       size={17}
                     />
                     <input
                       aria-label="Global server search"
                       placeholder="Search servers..."
-                      className="h-10 w-full rounded-md border-0 bg-white/[0.07] pl-11 pr-4 text-sm font-semibold text-white outline-none ring-1 ring-white/15 placeholder:text-[#ffcc00]/70 focus:bg-white/[0.1] focus:ring-4 focus:ring-[#ffcc00]/35"
+                      className="h-10 w-full rounded-md border-0 bg-white pl-11 pr-4 text-sm font-medium text-[#171717] outline-none ring-1 ring-[#ebebeb] placeholder:text-[#808080] focus:ring-2 focus:ring-black/20"
                     />
                   </label>
 
@@ -184,7 +184,7 @@ export function DashboardShell({
                   className="relative mt-2 xl:hidden"
                 >
                   <Sheet open={mobileMenuOpen} onOpenChange={setMobileMenuOpen}>
-                    <div className="flex items-center justify-between gap-3 rounded-sm bg-[#fff7cc] p-2 text-sm font-black text-primary sm:p-3">
+                    <div className="flex items-center justify-between gap-3 rounded-lg border-0 bg-white shadow-[rgba(0,0,0,0.08)_0px_0px_0px_1px] p-2 text-sm font-semibold text-primary sm:p-3">
                       <div className="hidden min-w-0 md:block">
                         <p className="text-xs uppercase tracking-[0.16em] text-muted-foreground">
                           Current section
@@ -198,7 +198,7 @@ export function DashboardShell({
                         <button
                           type="button"
                           aria-label="Open dashboard menu"
-                          className="grid h-9 w-9 shrink-0 place-items-center rounded-md bg-[#161612] text-white shadow-sm transition hover:bg-[#2b2a21] sm:h-11 sm:w-11"
+                          className="grid h-9 w-9 shrink-0 place-items-center rounded-md bg-[#171717] text-white shadow-sm transition hover:bg-black sm:h-11 sm:w-11"
                         >
                           <Menu size={20} />
                         </button>
@@ -233,17 +233,17 @@ export function DashboardShell({
             </div>
             <div
               className={cn(
-                "relative flex min-w-0 max-w-full items-start px-4 text-white sm:px-8 xl:px-10",
+                "relative flex min-w-0 max-w-full items-start px-4 text-[#171717] sm:px-8 xl:px-10",
                 activeView === "servers"
                   ? "pb-5 pt-0 sm:pb-7 sm:pt-1"
                   : "pb-8 pt-0 sm:pb-14 sm:pt-3",
               )}
             >
               <div className="min-w-0 max-w-3xl">
-                <p className="text-[10px] font-black uppercase tracking-[0.24em] text-[#ffcc00]/75 sm:text-xs">
-                  VPS reference console
+                <p className="text-[10px] font-semibold uppercase tracking-[0.24em] text-[#666666] sm:text-xs">
+                  VPS deployment console
                 </p>
-                <h1 className="mt-2 break-words font-display text-2xl font-bold leading-none tracking-[-0.04em] sm:text-4xl">
+                <h1 className="mt-2 break-words font-display text-2xl font-semibold leading-none tracking-[-0.06em] sm:text-4xl">
                   {activeView === "servers"
                     ? "Servers"
                     : activeView === "jobs"
@@ -254,34 +254,34 @@ export function DashboardShell({
                           ? "Audit"
                           : activeView === "terminal"
                             ? terminalTitle
-                            : "Infrastructure reference"}
+                            : "Operations dashboard"}
                 </h1>
                 {activeView === "servers" ? (
-                  <p className="mt-1 max-w-2xl text-xs font-semibold leading-4 text-white/72 sm:mt-1.5 sm:text-sm sm:leading-5">
+                  <p className="mt-1 max-w-2xl text-xs font-semibold leading-4 text-[#4d4d4d] sm:mt-1.5 sm:text-sm sm:leading-5">
                     Manage VPS access, SSH keys, health checks, and
                     provisioning.
                   </p>
                 ) : null}
                 {activeView === "jobs" ? (
-                  <p className="mt-1 max-w-2xl text-xs font-semibold leading-4 text-white/72 sm:mt-1.5 sm:text-sm sm:leading-5">
+                  <p className="mt-1 max-w-2xl text-xs font-semibold leading-4 text-[#4d4d4d] sm:mt-1.5 sm:text-sm sm:leading-5">
                     Track provisioning, metrics collection, key verification,
                     and background tasks.
                   </p>
                 ) : null}
                 {activeView === "metrics" ? (
-                  <p className="mt-1 max-w-2xl text-xs font-semibold leading-4 text-white/72 sm:mt-1.5 sm:text-sm sm:leading-5">
+                  <p className="mt-1 max-w-2xl text-xs font-semibold leading-4 text-[#4d4d4d] sm:mt-1.5 sm:text-sm sm:leading-5">
                     Monitor CPU, memory, disk, load, and telemetry freshness
                     across servers.
                   </p>
                 ) : null}
                 {activeView === "audit" ? (
-                  <p className="mt-1 max-w-2xl text-xs font-semibold leading-4 text-white/72 sm:mt-1.5 sm:text-sm sm:leading-5">
+                  <p className="mt-1 max-w-2xl text-xs font-semibold leading-4 text-[#4d4d4d] sm:mt-1.5 sm:text-sm sm:leading-5">
                     Review operational events, security actions, SSH access, and
                     job activity.
                   </p>
                 ) : null}
                 {activeView === "terminal" ? (
-                  <p className="mt-1 max-w-2xl text-xs font-semibold leading-4 text-white/72 sm:mt-1.5 sm:text-sm sm:leading-5">
+                  <p className="mt-1 max-w-2xl text-xs font-semibold leading-4 text-[#4d4d4d] sm:mt-1.5 sm:text-sm sm:leading-5">
                     {terminalDescription}
                   </p>
                 ) : null}
@@ -332,7 +332,7 @@ function LiveBadge({ state }: { state: LiveConnectionState }) {
     : state.status === "reconnecting" ? "Reconnecting"
     : "Stale";
 
-  const dotColor = state.status === "live" ? "bg-[#ffcc00]" : "bg-[#8a7a2f]";
+  const dotColor = state.status === "live" ? "bg-[#000000]" : "bg-[#444444]";
 
   const badgeVariant = state.status === "live" ? "ready"
     : state.status === "connecting" ? "pending"
@@ -357,7 +357,7 @@ function UserMenu({ onLogout }: { onLogout?: () => void }) {
       <DropdownMenuTrigger asChild>
         <button
           type="button"
-          className="inline-flex h-10 w-10 shrink-0 items-center rounded-md text-sm font-black text-primary transition hover:bg-white/25"
+          className="inline-flex h-10 w-10 shrink-0 items-center rounded-md text-sm font-semibold text-primary transition hover:bg-white/25"
           aria-label="Open user menu"
         >
           <Avatar className="h-10 w-10">
@@ -370,7 +370,7 @@ function UserMenu({ onLogout }: { onLogout?: () => void }) {
           </Avatar>
         </button>
       </DropdownMenuTrigger>
-      <DropdownMenuContent className="w-56 rounded-sm" align="end">
+      <DropdownMenuContent className="w-56 rounded-md" align="end">
         <DropdownMenuLabel>
           <div className="grid gap-1">
             <span>Local admin</span>
@@ -398,7 +398,7 @@ function UserMenu({ onLogout }: { onLogout?: () => void }) {
         </DropdownMenuGroup>
         <DropdownMenuSeparator />
         <DropdownMenuItem
-          className={onLogout ? "text-[#5f4b00]" : "text-muted-foreground"}
+          className={onLogout ? "text-[#171717]" : "text-muted-foreground"}
           onSelect={onLogout}
           disabled={!onLogout}
         >
@@ -446,13 +446,13 @@ function NavButton({
     <button
       type="button"
       className={cn(
-        "inline-flex min-w-0 items-center gap-3 rounded-sm border border-transparent px-3 py-2.5 text-left text-[12px] font-bold uppercase tracking-[0.08em] transition",
+        "inline-flex min-w-0 items-center gap-3 rounded-md border border-transparent px-3 py-2.5 text-left text-[12px] font-semibold uppercase tracking-[0.08em] transition",
         mobile ? "w-auto shrink-0 bg-white" : "w-full",
         active
-          ? "bg-[#ffcc00] text-[#161612] shadow-[0_10px_28px_rgba(255,255,255,0.08)]"
+          ? "border-[#171717] bg-[#171717] text-white shadow-sm"
           : mobile
             ? "text-primary hover:bg-secondary"
-            : "text-white/62 hover:border-[#ffcc00]/30 hover:bg-[#ffcc00]/10 hover:text-white",
+            : "text-[#4d4d4d] hover:border-[#d4d4d4] hover:bg-[#fafafa] hover:text-[#171717]",
         className,
       )}
       {...props}
@@ -460,7 +460,7 @@ function NavButton({
       <span
         className={cn(
           "grid h-8 w-8 shrink-0 place-items-center rounded-md",
-          active ? "bg-[#161612]/12 text-[#161612]" : "bg-white/[0.06] text-white/55",
+          active ? "bg-white text-[#171717]" : "bg-[#fafafa] text-[#666666]",
         )}
       >
         <Icon size={16} />
