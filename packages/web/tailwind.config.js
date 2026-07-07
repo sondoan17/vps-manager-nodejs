@@ -41,9 +41,9 @@ export default {
       },
       boxShadow: { panel: "var(--shadow-panel)" },
       fontFamily: {
-        display: ["IBM Plex Sans", "Source Sans 3", "Segoe UI", "sans-serif"],
-        body: ["IBM Plex Sans", "Source Sans 3", "Segoe UI", "sans-serif"],
-        mono: ["JetBrains Mono", "SFMono-Regular", "Consolas", "monospace"],
+        display: ["Geist", "Arial", "Apple Color Emoji", "Segoe UI Emoji", "Segoe UI Symbol", "sans-serif"],
+        body: ["Geist", "Arial", "Apple Color Emoji", "Segoe UI Emoji", "Segoe UI Symbol", "sans-serif"],
+        mono: ["Geist Mono", "ui-monospace", "SFMono-Regular", "Roboto Mono", "Menlo", "Monaco", "Liberation Mono", "Courier New", "monospace"],
       },
     },
   },
