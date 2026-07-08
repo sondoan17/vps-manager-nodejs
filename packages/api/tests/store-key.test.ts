@@ -24,10 +24,14 @@ describe("VPS store", () => {
       host: "203.0.113.10",
       port: 22,
       username: "root",
-      password: "secret-password"
+      password: "secret-password",
     });
 
-    expect(created).toMatchObject({ name: "demo", host: "203.0.113.10", username: "root" });
+    expect(created).toMatchObject({
+      name: "demo",
+      host: "203.0.113.10",
+      username: "root",
+    });
     expect(JSON.stringify(created)).not.toContain("secret-password");
 
     const reloaded = createVpsStore(join(tempDir, "data", "vps.json"));
@@ -36,7 +40,12 @@ describe("VPS store", () => {
 
   it("marks key provisioning without storing public key material", async () => {
     const store = createVpsStore(join(tempDir, "data", "vps.json"));
-    const created = await store.create({ name: "demo", host: "203.0.113.10", port: 22, username: "root" });
+    const created = await store.create({
+      name: "demo",
+      host: "203.0.113.10",
+      port: 22,
+      username: "root",
+    });
 
     const updated = await store.markKeyProvisioned(created.id);
 

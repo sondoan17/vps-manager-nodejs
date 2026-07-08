@@ -1,6 +1,4 @@
-import {
-  Badge,
-} from "../../ui/badge";
+import { Badge } from "../../ui/badge";
 import {
   Card,
   CardContent,
@@ -38,12 +36,15 @@ export function SettingsPanel({ overview }: { overview: DashboardOverview }) {
         <CardHeader>
           <CardTitle>Dashboard access</CardTitle>
           <CardDescription>
-            Local mode uses a secure HttpOnly cookie session. Dashboard passwords are verified server-side against the stored credential and are never saved in browser storage.
+            Local mode uses a secure HttpOnly cookie session. Dashboard
+            passwords are verified server-side against the stored credential and
+            are never saved in browser storage.
           </CardDescription>
         </CardHeader>
         <CardContent>
           <p className="text-sm font-normal leading-6 text-muted-foreground">
-            Use the account menu in the top bar to log out and revoke the current session.
+            Use the account menu in the top bar to log out and revoke the
+            current session.
           </p>
         </CardContent>
       </Card>

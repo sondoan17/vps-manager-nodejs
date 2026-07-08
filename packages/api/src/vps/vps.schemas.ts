@@ -10,22 +10,27 @@ export const createVpsSchema = z.object({
   tags: z.array(z.string().trim().min(1).max(40)).max(20).optional(),
   status: z.enum(["unknown", "healthy", "warning", "unreachable"]).optional(),
   notes: z.string().trim().max(1000).optional(),
-  password: z.string().min(1).max(4096).optional()
+  password: z.string().min(1).max(4096).optional(),
 });
 
-export const updateVpsSchema = createVpsSchema.omit({ password: true }).partial().extend({
-  dockerMetricsEnabled: z.boolean().optional(),
-});
+export const updateVpsSchema = createVpsSchema
+  .omit({ password: true })
+  .partial()
+  .extend({
+    dockerMetricsEnabled: z.boolean().optional(),
+  });
 
 /** Strict schema for local/system-managed VPS: only dockerMetricsEnabled allowed. */
-export const updateLocalVpsSchema = z.object({
-  dockerMetricsEnabled: z.boolean(),
-}).strict();
+export const updateLocalVpsSchema = z
+  .object({
+    dockerMetricsEnabled: z.boolean(),
+  })
+  .strict();
 
 export const provisionKeySchema = z.object({
-  password: z.string().min(1).max(4096)
+  password: z.string().min(1).max(4096),
 });
 
 export const installAgentSchema = z.object({
-  password: z.string().min(1).max(4096).optional()
+  password: z.string().min(1).max(4096).optional(),
 });

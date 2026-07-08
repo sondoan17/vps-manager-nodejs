@@ -11,7 +11,10 @@ const locks = new Map<string, Promise<void>>();
  * Acquire a per-file lock, execute `fn`, then release.
  * All concurrent callers for the same file path are queued and run serially.
  */
-export async function withFileLock<T>(filePath: string, fn: () => Promise<T>): Promise<T> {
+export async function withFileLock<T>(
+  filePath: string,
+  fn: () => Promise<T>,
+): Promise<T> {
   const prev = locks.get(filePath) ?? Promise.resolve();
   let release: () => void;
   const next = new Promise<void>((resolve) => {
@@ -35,7 +38,10 @@ function uniqueTempPath(filePath: string): string {
 
 // ── Public API ──────────────────────────────────────────────────────────
 
-export async function readJsonFile<T>(filePath: string, fallback: T): Promise<T> {
+export async function readJsonFile<T>(
+  filePath: string,
+  fallback: T,
+): Promise<T> {
   try {
     return JSON.parse(await readFile(filePath, "utf8")) as T;
   } catch (error: unknown) {
@@ -44,10 +50,15 @@ export async function readJsonFile<T>(filePath: string, fallback: T): Promise<T>
   }
 }
 
-export async function writeJsonFile<T>(filePath: string, data: T): Promise<void> {
+export async function writeJsonFile<T>(
+  filePath: string,
+  data: T,
+): Promise<void> {
   await mkdir(dirname(filePath), { recursive: true });
   const tempPath = uniqueTempPath(filePath);
-  await writeFile(tempPath, `${JSON.stringify(data, null, 2)}\n`, { mode: 0o600 });
+  await writeFile(tempPath, `${JSON.stringify(data, null, 2)}\n`, {
+    mode: 0o600,
+  });
   await rename(tempPath, filePath);
 }
 
@@ -55,7 +66,10 @@ export async function writeJsonFile<T>(filePath: string, data: T): Promise<void>
  * Serialized variant: ensures exclusive access per file path so that
  * concurrent read-modify-write cycles do not interleave.
  */
-export async function writeJsonFileSerialized<T>(filePath: string, data: T): Promise<void> {
+export async function writeJsonFileSerialized<T>(
+  filePath: string,
+  data: T,
+): Promise<void> {
   return withFileLock(filePath, () => writeJsonFile(filePath, data));
 }
 

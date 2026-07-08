@@ -1,7 +1,11 @@
 import { Controller, Get, Inject, Query, UseGuards } from "@nestjs/common";
 import { DashboardSessionGuard } from "../auth/dashboard-session.guard.js";
 import { OriginGuard } from "../auth/origin-guard.js";
-import { buildPageMeta, parsePagination, type PaginationQuery } from "../common/pagination.js";
+import {
+  buildPageMeta,
+  parsePagination,
+  type PaginationQuery,
+} from "../common/pagination.js";
 import { JobService } from "./job.service.js";
 
 @Controller("api/jobs")

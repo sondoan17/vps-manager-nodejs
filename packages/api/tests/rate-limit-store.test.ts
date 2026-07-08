@@ -2,7 +2,10 @@ import express from "express";
 import request from "supertest";
 import { describe, expect, it } from "vitest";
 import { createLoginRateLimit } from "../src/common/login-rate-limit.middleware.js";
-import { createInMemoryRateLimitStore, createPostgresRateLimitStore } from "../src/common/rate-limit-store.js";
+import {
+  createInMemoryRateLimitStore,
+  createPostgresRateLimitStore,
+} from "../src/common/rate-limit-store.js";
 import { createAppModule, DATABASE_POOL } from "../src/app.module.js";
 import type { AppConfig } from "../src/config/app-config.js";
 
@@ -89,7 +92,7 @@ describe("PostgresRateLimitStore (mocked pool)", () => {
         capturedSql = sql;
         capturedParams = params;
         return {
-        rows: [{ count: 3, reset_at: resetAt }],
+          rows: [{ count: 3, reset_at: resetAt }],
         };
       },
       end: async () => {},
@@ -110,12 +113,16 @@ describe("PostgresRateLimitStore (mocked pool)", () => {
 
   it("throws on query error so middleware can fail closed with 503", async () => {
     const mockPool = {
-      query: async () => { throw new Error("DB connection failed"); },
+      query: async () => {
+        throw new Error("DB connection failed");
+      },
       end: async () => {},
     } as never;
 
     const store = createPostgresRateLimitStore(mockPool);
-    await expect(store.consume("login:127.0.0.1", 60_000, 5)).rejects.toThrow("DB connection failed");
+    await expect(store.consume("login:127.0.0.1", 60_000, 5)).rejects.toThrow(
+      "DB connection failed",
+    );
   });
 });
 
@@ -126,11 +133,13 @@ describe("rate limit middleware fail-closed behavior", () => {
       req.requestId = "req_rate_limit_test";
       next();
     });
-    app.use(createLoginRateLimit({
-      async consume() {
-        throw new Error("DB unavailable");
-      },
-    }));
+    app.use(
+      createLoginRateLimit({
+        async consume() {
+          throw new Error("DB unavailable");
+        },
+      }),
+    );
     app.post("/api/auth/login", (_req, res) => res.status(204).end());
 
     const response = await request(app).post("/api/auth/login").expect(503);
@@ -158,7 +167,10 @@ describe("Postgres pool wiring", () => {
     const providers = module.providers ?? [];
     const databasePoolProvider = providers.find(
       (provider): provider is { provide: symbol; useValue: unknown } =>
-        typeof provider === "object" && provider !== null && "provide" in provider && provider.provide === DATABASE_POOL,
+        typeof provider === "object" &&
+        provider !== null &&
+        "provide" in provider &&
+        provider.provide === DATABASE_POOL,
     );
 
     expect(databasePoolProvider?.useValue).toBe(suppliedPool);

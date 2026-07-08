@@ -58,13 +58,13 @@ Create a JSON config file:
 
 **Config fields:**
 
-| Field               | Description                            | Constraints        |
-|---------------------|----------------------------------------|--------------------|
-| `backendUrl`        | Backend API base URL                   | Absolute URL, required |
-| `vpsId`             | VPS identifier                         | Non-empty, required |
-| `token`             | Agent authentication token (`vma_...`) | Non-empty, required |
-| `intervalSeconds`   | Collection interval in seconds         | >= 1              |
-| `requestTimeoutSeconds` | HTTP request timeout               | > 0               |
+| Field                   | Description                            | Constraints            |
+| ----------------------- | -------------------------------------- | ---------------------- |
+| `backendUrl`            | Backend API base URL                   | Absolute URL, required |
+| `vpsId`                 | VPS identifier                         | Non-empty, required    |
+| `token`                 | Agent authentication token (`vma_...`) | Non-empty, required    |
+| `intervalSeconds`       | Collection interval in seconds         | >= 1                   |
+| `requestTimeoutSeconds` | HTTP request timeout                   | > 0                    |
 
 ### Run once (test/debug)
 
@@ -105,15 +105,15 @@ The agent will collect metrics every `intervalSeconds` and push them to the back
 
 ## Metrics Collected
 
-| Metric       | Source              | Description                      |
-|-------------|---------------------|----------------------------------|
-| CPU         | `/proc/stat`        | Usage % (delta over interval)    |
-| Memory      | `/proc/meminfo`     | Used %                           |
-| Disk        | `statfs("/")`       | Used % for root filesystem       |
-| Load        | `/proc/loadavg`     | 1-minute load average            |
-| Network Rx  | `/proc/net/dev`     | Bytes/sec (non-loopback, rate over interval) |
-| Network Tx  | `/proc/net/dev`     | Bytes/sec (non-loopback, rate over interval) |
-| Uptime      | `/proc/uptime`      | System uptime in seconds         |
+| Metric     | Source          | Description                                  |
+| ---------- | --------------- | -------------------------------------------- |
+| CPU        | `/proc/stat`    | Usage % (delta over interval)                |
+| Memory     | `/proc/meminfo` | Used %                                       |
+| Disk       | `statfs("/")`   | Used % for root filesystem                   |
+| Load       | `/proc/loadavg` | 1-minute load average                        |
+| Network Rx | `/proc/net/dev` | Bytes/sec (non-loopback, rate over interval) |
+| Network Tx | `/proc/net/dev` | Bytes/sec (non-loopback, rate over interval) |
+| Uptime     | `/proc/uptime`  | System uptime in seconds                     |
 
 ## Architecture
 

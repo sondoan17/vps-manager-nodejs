@@ -57,7 +57,11 @@ afterEach(async () => {
 function app(overrides?: Partial<AppConfig>) {
   const config = { ...localConfig, ...overrides };
   return createApp({
-    config: { ...config, dataDir: join(tempDir, "data"), privateDir: join(tempDir, "private") },
+    config: {
+      ...config,
+      dataDir: join(tempDir, "data"),
+      privateDir: join(tempDir, "private"),
+    },
     store: createVpsStore(join(tempDir, "data", "vps.json")),
     keys: createKeyService(join(tempDir, "private", "keys")),
     audit: createJsonAuditRepository(join(tempDir, "data", "audit.json")),
@@ -66,7 +70,9 @@ function app(overrides?: Partial<AppConfig>) {
 
 /** Seed a password credential into the JSON store for a given app. */
 async function seedCredential(password: string) {
-  const repo = createJsonAdminCredentialRepository(join(tempDir, "data", "admin-credential.json"));
+  const repo = createJsonAdminCredentialRepository(
+    join(tempDir, "data", "admin-credential.json"),
+  );
   const passwordHash = hashPassword(password);
   await repo.upsert({
     passwordHash,
@@ -80,7 +86,9 @@ async function seedCredential(password: string) {
 describe("password hashing", () => {
   it("hashPassword produces a valid scrypt string", () => {
     const hash = hashPassword(TEST_PASSWORD);
-    expect(hash).toMatch(/^scrypt\$[0-9a-f]+\$[0-9a-f]+\$[0-9a-f]+\$[A-Za-z0-9_-]+\$[A-Za-z0-9_-]+$/);
+    expect(hash).toMatch(
+      /^scrypt\$[0-9a-f]+\$[0-9a-f]+\$[0-9a-f]+\$[A-Za-z0-9_-]+\$[A-Za-z0-9_-]+$/,
+    );
   });
 
   it("verifyPassword returns true for the correct password", () => {
@@ -96,26 +104,44 @@ describe("password hashing", () => {
   it("verifyPassword returns false for malformed stored hash", () => {
     expect(verifyPassword(TEST_PASSWORD, "invalid:hash")).toBe(false);
     expect(verifyPassword(TEST_PASSWORD, "")).toBe(false);
-    expect(verifyPassword(TEST_PASSWORD, null as unknown as string)).toBe(false);
+    expect(verifyPassword(TEST_PASSWORD, null as unknown as string)).toBe(
+      false,
+    );
     expect(verifyPassword(TEST_PASSWORD, "scrypt$4000")).toBe(false);
-    expect(verifyPassword(TEST_PASSWORD, "scrypt$4000$8$1$salt$hash$extra")).toBe(false);
+    expect(
+      verifyPassword(TEST_PASSWORD, "scrypt$4000$8$1$salt$hash$extra"),
+    ).toBe(false);
   });
 
   it("verifyPassword returns false for extreme/unsafe scrypt params without throwing", () => {
     // N not a power of 2
-    expect(verifyPassword(TEST_PASSWORD, "scrypt$4001$8$1$dGVzdA$dGVzdA")).toBe(false);
+    expect(verifyPassword(TEST_PASSWORD, "scrypt$4001$8$1$dGVzdA$dGVzdA")).toBe(
+      false,
+    );
     // N too small
-    expect(verifyPassword(TEST_PASSWORD, "scrypt$100$8$1$dGVzdA$dGVzdA")).toBe(false);
+    expect(verifyPassword(TEST_PASSWORD, "scrypt$100$8$1$dGVzdA$dGVzdA")).toBe(
+      false,
+    );
     // N too large
-    expect(verifyPassword(TEST_PASSWORD, "scrypt$200000$8$1$dGVzdA$dGVzdA")).toBe(false);
+    expect(
+      verifyPassword(TEST_PASSWORD, "scrypt$200000$8$1$dGVzdA$dGVzdA"),
+    ).toBe(false);
     // r out of bounds
-    expect(verifyPassword(TEST_PASSWORD, "scrypt$4000$999$1$dGVzdA$dGVzdA")).toBe(false);
+    expect(
+      verifyPassword(TEST_PASSWORD, "scrypt$4000$999$1$dGVzdA$dGVzdA"),
+    ).toBe(false);
     // p out of bounds
-    expect(verifyPassword(TEST_PASSWORD, "scrypt$4000$8$999$dGVzdA$dGVzdA")).toBe(false);
+    expect(
+      verifyPassword(TEST_PASSWORD, "scrypt$4000$8$999$dGVzdA$dGVzdA"),
+    ).toBe(false);
     // salt too short
-    expect(verifyPassword(TEST_PASSWORD, "scrypt$4000$8$1$dGVzdA$dGVzdGVzdA")).toBe(false);
+    expect(
+      verifyPassword(TEST_PASSWORD, "scrypt$4000$8$1$dGVzdA$dGVzdGVzdA"),
+    ).toBe(false);
     // hash too short
-    expect(verifyPassword(TEST_PASSWORD, "scrypt$4000$8$1$dGVzdGFkdmFsdWU$dGVzdA")).toBe(false);
+    expect(
+      verifyPassword(TEST_PASSWORD, "scrypt$4000$8$1$dGVzdGFkdmFsdWU$dGVzdA"),
+    ).toBe(false);
   });
 
   it("produces different hashes for same password (random salt)", () => {
@@ -140,7 +166,9 @@ describe("skip-if-same logic", () => {
   });
 
   function makeRepo() {
-    return createJsonAdminCredentialRepository(join(subDir, "admin-credential.json"));
+    return createJsonAdminCredentialRepository(
+      join(subDir, "admin-credential.json"),
+    );
   }
 
   it("skips update when stored hash matches provided password", async () => {
@@ -170,7 +198,9 @@ describe("skip-if-same logic", () => {
 
     const existing = await repo.get();
     expect(existing).toBeDefined();
-    expect(verifyPassword("second-password-67890", existing!.passwordHash)).toBe(false);
+    expect(
+      verifyPassword("second-password-67890", existing!.passwordHash),
+    ).toBe(false);
 
     const newHash = hashPassword("second-password-67890");
     await repo.upsert({
@@ -181,7 +211,9 @@ describe("skip-if-same logic", () => {
 
     const updated = await repo.get();
     expect(updated!.passwordHash).not.toBe(oldHash);
-    expect(verifyPassword("second-password-67890", updated!.passwordHash)).toBe(true);
+    expect(verifyPassword("second-password-67890", updated!.passwordHash)).toBe(
+      true,
+    );
   });
 
   it("also works when credential file does not exist (first-time set)", async () => {
@@ -250,7 +282,11 @@ describe("POST /api/auth/login", () => {
       .expect(201);
 
     // AuthStatus shape
-    expect(res.body.data).toMatchObject({ mode: "local", authenticated: true, authRequired: true });
+    expect(res.body.data).toMatchObject({
+      mode: "local",
+      authenticated: true,
+      authRequired: true,
+    });
     expect(res.body.data.session).toBeDefined();
     expect(res.body.data.session.id).toMatch(/^sess_/);
 
@@ -309,9 +345,14 @@ describe("POST /api/auth/login rate limiting", () => {
 describe("POST /api/auth/logout", () => {
   /** Create a session directly and return the cookie header value. */
   async function createSession(): Promise<string> {
-    const repo = createJsonSessionRepository(join(tempDir, "data", "sessions.json"));
+    const repo = createJsonSessionRepository(
+      join(tempDir, "data", "sessions.json"),
+    );
     const raw = "b".repeat(64);
-    const hash = createHash("sha256").update(raw).update(SESSION_SECRET).digest("hex");
+    const hash = createHash("sha256")
+      .update(raw)
+      .update(SESSION_SECRET)
+      .digest("hex");
     await repo.create({
       tokenHash: hash,
       expiresAt: new Date(Date.now() + 86_400_000).toISOString(),
@@ -373,9 +414,14 @@ describe("POST /api/auth/logout", () => {
 
 describe("GET /api/auth/me", () => {
   async function createSession(): Promise<string> {
-    const repo = createJsonSessionRepository(join(tempDir, "data", "sessions.json"));
+    const repo = createJsonSessionRepository(
+      join(tempDir, "data", "sessions.json"),
+    );
     const raw = "c".repeat(64);
-    const hash = createHash("sha256").update(raw).update(SESSION_SECRET).digest("hex");
+    const hash = createHash("sha256")
+      .update(raw)
+      .update(SESSION_SECRET)
+      .digest("hex");
     await repo.create({
       tokenHash: hash,
       expiresAt: new Date(Date.now() + 86_400_000).toISOString(),
@@ -385,22 +431,38 @@ describe("GET /api/auth/me", () => {
 
   it("returns unauthenticated status when no cookie", async () => {
     const res = await request(app()).get("/api/auth/me").expect(200);
-    expect(res.body.data).toEqual({ mode: "local", authenticated: false, authRequired: true });
+    expect(res.body.data).toEqual({
+      mode: "local",
+      authenticated: false,
+      authRequired: true,
+    });
   });
 
   it("returns authenticated status with valid cookie", async () => {
     const server = app();
     const cookie = await createSession();
-    const res = await request(server).get("/api/auth/me").set("Cookie", cookie).expect(200);
-    expect(res.body.data).toMatchObject({ mode: "local", authenticated: true, authRequired: true });
+    const res = await request(server)
+      .get("/api/auth/me")
+      .set("Cookie", cookie)
+      .expect(200);
+    expect(res.body.data).toMatchObject({
+      mode: "local",
+      authenticated: true,
+      authRequired: true,
+    });
     expect(res.body.data.session.id).toMatch(/^sess_/);
   });
 
   it("returns unauthenticated for expired sessions", async () => {
     const server = app();
-    const repo = createJsonSessionRepository(join(tempDir, "data", "sessions.json"));
+    const repo = createJsonSessionRepository(
+      join(tempDir, "data", "sessions.json"),
+    );
     const raw = "expired";
-    const hash = createHash("sha256").update(raw).update(SESSION_SECRET).digest("hex");
+    const hash = createHash("sha256")
+      .update(raw)
+      .update(SESSION_SECRET)
+      .digest("hex");
     await repo.create({
       tokenHash: hash,
       expiresAt: new Date(Date.now() - 1000).toISOString(),

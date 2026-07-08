@@ -82,7 +82,7 @@ jobs:
         if: steps.changes.outputs.agent == 'true'
         uses: actions/setup-go@v5
         with:
-          go-version: '1.23.x'
+          go-version: "1.23.x"
           cache-dependency-path: packages/agent/go.mod
 
       - name: Test Go agent
@@ -415,4 +415,3 @@ jobs:
           $SSH "cd '$DEPLOY_PATH' && docker compose up -d --remove-orphans"
           $SSH "cd '$DEPLOY_PATH' && docker compose ps"
           $SSH "for i in \$(seq 1 30); do curl -fsS http://127.0.0.1:3000/api/health && exit 0; sleep 2; done; docker compose -f '$DEPLOY_PATH/docker-compose.yml' logs --tail=80; exit 1"
-

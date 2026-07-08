@@ -12,7 +12,9 @@ type SessionRow = {
   ip_address: string | null;
 };
 
-export function createPostgresSessionRepository(pool: DatabasePool): SessionRepository {
+export function createPostgresSessionRepository(
+  pool: DatabasePool,
+): SessionRepository {
   return {
     async create(input) {
       const id = `sess_${nanoid(12)}`;
@@ -20,7 +22,13 @@ export function createPostgresSessionRepository(pool: DatabasePool): SessionRepo
       await pool.query(
         `INSERT INTO dashboard_sessions (id, token_hash, expires_at, created_at, ip_address)
          VALUES ($1, $2, $3, $4, $5)`,
-        [id, input.tokenHash, input.expiresAt, createdAt, input.ipAddress ?? null],
+        [
+          id,
+          input.tokenHash,
+          input.expiresAt,
+          createdAt,
+          input.ipAddress ?? null,
+        ],
       );
       return { ...input, id, createdAt };
     },
@@ -35,7 +43,10 @@ export function createPostgresSessionRepository(pool: DatabasePool): SessionRepo
     },
 
     async revoke(id) {
-      await pool.query("UPDATE dashboard_sessions SET revoked_at = NOW() WHERE id = $1", [id]);
+      await pool.query(
+        "UPDATE dashboard_sessions SET revoked_at = NOW() WHERE id = $1",
+        [id],
+      );
     },
 
     async revokeAll() {
@@ -46,7 +57,9 @@ export function createPostgresSessionRepository(pool: DatabasePool): SessionRepo
     },
 
     async cleanup() {
-      const result = await pool.query("DELETE FROM dashboard_sessions WHERE expires_at < NOW()");
+      const result = await pool.query(
+        "DELETE FROM dashboard_sessions WHERE expires_at < NOW()",
+      );
       return result.rowCount ?? 0;
     },
   };

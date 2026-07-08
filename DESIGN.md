@@ -8,16 +8,16 @@ A warm operational command center for self-hosted infrastructure: technical, tru
 
 ### Palette
 
-| Role | Token | Light | Usage |
-|------|-------|-------|-------|
-| Surface/primary | `--background` | `38 34% 94%` | Main page background |
-| Surface/card | `--card` | `43 100% 97%` | Panels and cards |
-| Text/primary | `--foreground` | `30 21% 7%` | Headlines and body |
-| Text/secondary | `--muted-foreground` | `31 12% 38%` | Captions and helper copy |
-| Border/default | `--border` | `37 25% 80%` | Card and input outlines |
-| Accent/command | `--primary` | `174 67% 18%` | Primary actions and healthy state |
-| Accent/operations | `--accent` | `25 59% 47%` | Operational labels and warning emphasis |
-| Status/error | `--destructive` | `6 63% 38%` | Destructive actions and unreachable state |
+| Role              | Token                | Light         | Usage                                     |
+| ----------------- | -------------------- | ------------- | ----------------------------------------- |
+| Surface/primary   | `--background`       | `38 34% 94%`  | Main page background                      |
+| Surface/card      | `--card`             | `43 100% 97%` | Panels and cards                          |
+| Text/primary      | `--foreground`       | `30 21% 7%`   | Headlines and body                        |
+| Text/secondary    | `--muted-foreground` | `31 12% 38%`  | Captions and helper copy                  |
+| Border/default    | `--border`           | `37 25% 80%`  | Card and input outlines                   |
+| Accent/command    | `--primary`          | `174 67% 18%` | Primary actions and healthy state         |
+| Accent/operations | `--accent`           | `25 59% 47%`  | Operational labels and warning emphasis   |
+| Status/error      | `--destructive`      | `6 63% 38%`   | Destructive actions and unreachable state |
 
 ### Rules
 
@@ -27,14 +27,14 @@ Use Tailwind theme tokens that resolve to these CSS variables. Do not add raw he
 
 ### Scale
 
-| Level | Size | Weight | Line Height | Usage |
-|-------|------|--------|-------------|-------|
-| Display | 48-72px | 800-900 | 1.05 | Page title |
-| H2 | 24-32px | 800 | 1.2 | Section headings |
-| H3 | 18-22px | 800 | 1.3 | Card titles |
-| Body | 16px | 400-600 | 1.6 | Default text |
-| Body/sm | 14px | 400-600 | 1.5 | Metadata |
-| Overline | 12px | 900 | 1.3 | Uppercase labels |
+| Level    | Size    | Weight  | Line Height | Usage            |
+| -------- | ------- | ------- | ----------- | ---------------- |
+| Display  | 48-72px | 800-900 | 1.05        | Page title       |
+| H2       | 24-32px | 800     | 1.2         | Section headings |
+| H3       | 18-22px | 800     | 1.3         | Card titles      |
+| Body     | 16px    | 400-600 | 1.6         | Default text     |
+| Body/sm  | 14px    | 400-600 | 1.5         | Metadata         |
+| Overline | 12px    | 900     | 1.3         | Uppercase labels |
 
 ### Font Stack
 

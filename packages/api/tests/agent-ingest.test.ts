@@ -61,14 +61,18 @@ async function createVps(): Promise<string> {
     name: "test-vps",
     host: "10.0.0.1",
     port: 22,
-    username: "root"
+    username: "root",
   });
   return record.id;
 }
 
 function makeService() {
-  const agentRepo = createJsonAgentRepository(join(tempDir, "data", "agents.json"));
-  const metricRepo = createJsonMetricRepository(join(tempDir, "data", "metrics.json"));
+  const agentRepo = createJsonAgentRepository(
+    join(tempDir, "data", "agents.json"),
+  );
+  const metricRepo = createJsonMetricRepository(
+    join(tempDir, "data", "metrics.json"),
+  );
   const service = new AgentService(agentRepo, metricRepo, vpsRepo, demoConfig);
   return { agentRepo, metricRepo, service };
 }
@@ -76,13 +80,17 @@ function makeService() {
 function app(overrides?: Partial<AppConfig>) {
   const config = { ...demoConfig, ...overrides };
   return createApp({
-    config: { ...config, dataDir: join(tempDir, "data"), privateDir: join(tempDir, "private") },
+    config: {
+      ...config,
+      dataDir: join(tempDir, "data"),
+      privateDir: join(tempDir, "private"),
+    },
     store: vpsRepo,
     keys: createKeyService(join(tempDir, "private", "keys")),
     audit: createJsonAuditRepository(join(tempDir, "data", "audit.json")),
     jobs: createJsonJobRepository(join(tempDir, "data", "jobs.json")),
     metrics: createJsonMetricRepository(join(tempDir, "data", "metrics.json")),
-    agent: createJsonAgentRepository(join(tempDir, "data", "agents.json"))
+    agent: createJsonAgentRepository(join(tempDir, "data", "agents.json")),
   });
 }
 
@@ -97,7 +105,7 @@ function validPayload(overrides?: Record<string, unknown>) {
     uptime: 3600,
     collectedAt: new Date().toISOString(),
     agentVersion: "1.0.0",
-    ...overrides
+    ...overrides,
   };
 }
 
@@ -106,7 +114,9 @@ function validPayload(overrides?: Record<string, unknown>) {
 describe("VPS existence checks", () => {
   it("createCredential fails when VPS does not exist", async () => {
     const { service } = makeService();
-    await expect(service.createCredential("nonexistent_vps")).rejects.toThrow("VPS not found");
+    await expect(service.createCredential("nonexistent_vps")).rejects.toThrow(
+      "VPS not found",
+    );
   });
 
   it("createCredential succeeds when VPS exists", async () => {
@@ -124,7 +134,9 @@ describe("VPS existence checks", () => {
     // Delete the VPS
     await vpsRepo.delete(vpsId);
     // Ingest should now fail
-    await expect(service.ingestMetric(credential, validPayload())).rejects.toThrow("VPS not found");
+    await expect(
+      service.ingestMetric(credential, validPayload()),
+    ).rejects.toThrow("VPS not found");
   });
 });
 
@@ -180,7 +192,9 @@ describe("agent token verification", () => {
 
   it("rejects malformed token format", async () => {
     const { service } = makeService();
-    await expect(service.verifyBearerToken("Bearer invalidtoken")).rejects.toThrow();
+    await expect(
+      service.verifyBearerToken("Bearer invalidtoken"),
+    ).rejects.toThrow();
   });
 
   it("rejects revoked credential even with correct secret", async () => {
@@ -192,7 +206,9 @@ describe("agent token verification", () => {
     await service.revokeCredential(credential.id);
 
     const reconstructedToken = `vma_${credential.id}_${secret}`;
-    await expect(service.verifyBearerToken(`Bearer ${reconstructedToken}`)).rejects.toThrow();
+    await expect(
+      service.verifyBearerToken(`Bearer ${reconstructedToken}`),
+    ).rejects.toThrow();
   });
 
   it("rejects token with wrong secret", async () => {
@@ -200,12 +216,18 @@ describe("agent token verification", () => {
     const { service } = makeService();
     const { credential } = await service.createCredential(vpsId);
     const wrongToken = `vma_${credential.id}_${"a".repeat(64)}`;
-    await expect(service.verifyBearerToken(`Bearer ${wrongToken}`)).rejects.toThrow();
+    await expect(
+      service.verifyBearerToken(`Bearer ${wrongToken}`),
+    ).rejects.toThrow();
   });
 
   it("rejects token for non-existent credential", async () => {
     const { service } = makeService();
-    await expect(service.verifyBearerToken("Bearer vma_nonexistent_abcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890")).rejects.toThrow();
+    await expect(
+      service.verifyBearerToken(
+        "Bearer vma_nonexistent_abcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890",
+      ),
+    ).rejects.toThrow();
   });
 });
 
@@ -254,7 +276,7 @@ describe("POST /api/agent/metrics", () => {
       ok: true,
       vpsId,
       receivedAt: expect.any(String),
-      config: { dockerMetricsEnabled: false }
+      config: { dockerMetricsEnabled: false },
     });
   });
 
@@ -352,7 +374,11 @@ describe("POST /api/agent/metrics", () => {
       await request(app())
         .post("/api/agent/metrics")
         .set("Authorization", `Bearer ${validToken}`)
-        .send(validPayload({ collectedAt: new Date(Date.now() - 20 * 60 * 1000).toISOString() }))
+        .send(
+          validPayload({
+            collectedAt: new Date(Date.now() - 20 * 60 * 1000).toISOString(),
+          }),
+        )
         .expect(400);
     });
 
@@ -360,7 +386,11 @@ describe("POST /api/agent/metrics", () => {
       await request(app())
         .post("/api/agent/metrics")
         .set("Authorization", `Bearer ${validToken}`)
-        .send(validPayload({ collectedAt: new Date(Date.now() + 5 * 60 * 1000).toISOString() }))
+        .send(
+          validPayload({
+            collectedAt: new Date(Date.now() + 5 * 60 * 1000).toISOString(),
+          }),
+        )
         .expect(400);
     });
 
@@ -386,15 +416,38 @@ describe("POST /api/agent/metrics", () => {
       const res = await request(app())
         .post("/api/agent/metrics")
         .set("Authorization", `Bearer ${validToken}`)
-        .send(validPayload({
-          system: {
-            os: { family: "linux", name: "Ubuntu", version: "22.04", prettyName: "Ubuntu 22.04.3 LTS" },
-            kernel: { release: "5.15.0-91-generic", version: "#101-Ubuntu SMP", arch: "x86_64" },
-            cpu: { cores: 4, model: "Intel(R) Xeon(R) Platinum 8375C CPU @ 2.90GHz" },
-            memory: { totalBytes: 8_589_934_592, availableBytes: 4_294_967_296 },
-            rootDisk: { mountPoint: "/", fsType: "ext4", totalBytes: 107_374_182_400, usedBytes: 53_687_091_200, freeBytes: 53_687_091_200 },
-          },
-        }))
+        .send(
+          validPayload({
+            system: {
+              os: {
+                family: "linux",
+                name: "Ubuntu",
+                version: "22.04",
+                prettyName: "Ubuntu 22.04.3 LTS",
+              },
+              kernel: {
+                release: "5.15.0-91-generic",
+                version: "#101-Ubuntu SMP",
+                arch: "x86_64",
+              },
+              cpu: {
+                cores: 4,
+                model: "Intel(R) Xeon(R) Platinum 8375C CPU @ 2.90GHz",
+              },
+              memory: {
+                totalBytes: 8_589_934_592,
+                availableBytes: 4_294_967_296,
+              },
+              rootDisk: {
+                mountPoint: "/",
+                fsType: "ext4",
+                totalBytes: 107_374_182_400,
+                usedBytes: 53_687_091_200,
+                freeBytes: 53_687_091_200,
+              },
+            },
+          }),
+        )
         .expect(201);
       expect(res.body.data.ok).toBe(true);
     });
@@ -403,11 +456,13 @@ describe("POST /api/agent/metrics", () => {
       const res = await request(app())
         .post("/api/agent/metrics")
         .set("Authorization", `Bearer ${validToken}`)
-        .send(validPayload({
-          system: {
-            rootDisk: { mountPoint: "/" },
-          },
-        }))
+        .send(
+          validPayload({
+            system: {
+              rootDisk: { mountPoint: "/" },
+            },
+          }),
+        )
         .expect(201);
       expect(res.body.data.ok).toBe(true);
     });
@@ -416,16 +471,20 @@ describe("POST /api/agent/metrics", () => {
       await request(app())
         .post("/api/agent/metrics")
         .set("Authorization", `Bearer ${validToken}`)
-        .send(validPayload({
-          agentVersion: "2.0.0",
-          system: {
-            os: { family: "linux" },
-            cpu: { cores: 8 },
-          },
-        }))
+        .send(
+          validPayload({
+            agentVersion: "2.0.0",
+            system: {
+              os: { family: "linux" },
+              cpu: { cores: 8 },
+            },
+          }),
+        )
         .expect(201);
 
-      const agentRepo = createJsonAgentRepository(join(tempDir, "data", "agents.json"));
+      const agentRepo = createJsonAgentRepository(
+        join(tempDir, "data", "agents.json"),
+      );
       const systemInfo = await agentRepo.getSystemInfo(vpsId);
       expect(systemInfo).toBeDefined();
       expect(systemInfo!.vpsId).toBe(vpsId);
@@ -443,26 +502,32 @@ describe("POST /api/agent/metrics", () => {
       await request(app())
         .post("/api/agent/metrics")
         .set("Authorization", `Bearer ${validToken}`)
-        .send(validPayload({
-          collectedAt: newerCollectedAt,
-          system: {
-            os: { family: "linux", name: "newer" },
-          },
-        }))
+        .send(
+          validPayload({
+            collectedAt: newerCollectedAt,
+            system: {
+              os: { family: "linux", name: "newer" },
+            },
+          }),
+        )
         .expect(201);
 
       await request(app())
         .post("/api/agent/metrics")
         .set("Authorization", `Bearer ${validToken}`)
-        .send(validPayload({
-          collectedAt: olderCollectedAt,
-          system: {
-            os: { family: "linux", name: "older" },
-          },
-        }))
+        .send(
+          validPayload({
+            collectedAt: olderCollectedAt,
+            system: {
+              os: { family: "linux", name: "older" },
+            },
+          }),
+        )
         .expect(201);
 
-      const agentRepo = createJsonAgentRepository(join(tempDir, "data", "agents.json"));
+      const agentRepo = createJsonAgentRepository(
+        join(tempDir, "data", "agents.json"),
+      );
       const systemInfo = await agentRepo.getSystemInfo(vpsId);
       expect(systemInfo?.collectedAt).toBe(newerCollectedAt);
       expect(systemInfo?.os?.name).toBe("newer");
@@ -472,11 +537,13 @@ describe("POST /api/agent/metrics", () => {
       await request(app())
         .post("/api/agent/metrics")
         .set("Authorization", `Bearer ${validToken}`)
-        .send(validPayload({
-          system: {
-            os: { family: "linux", extraField: "should be rejected" },
-          },
-        }))
+        .send(
+          validPayload({
+            system: {
+              os: { family: "linux", extraField: "should be rejected" },
+            },
+          }),
+        )
         .expect(400);
     });
 
@@ -484,11 +551,13 @@ describe("POST /api/agent/metrics", () => {
       await request(app())
         .post("/api/agent/metrics")
         .set("Authorization", `Bearer ${validToken}`)
-        .send(validPayload({
-          system: {
-            cpu: { cores: 5000 },
-          },
-        }))
+        .send(
+          validPayload({
+            system: {
+              cpu: { cores: 5000 },
+            },
+          }),
+        )
         .expect(400);
     });
 
@@ -496,11 +565,13 @@ describe("POST /api/agent/metrics", () => {
       await request(app())
         .post("/api/agent/metrics")
         .set("Authorization", `Bearer ${validToken}`)
-        .send(validPayload({
-          system: {
-            memory: { totalBytes: -1 },
-          },
-        }))
+        .send(
+          validPayload({
+            system: {
+              memory: { totalBytes: -1 },
+            },
+          }),
+        )
         .expect(400);
     });
 
@@ -508,11 +579,13 @@ describe("POST /api/agent/metrics", () => {
       await request(app())
         .post("/api/agent/metrics")
         .set("Authorization", `Bearer ${validToken}`)
-        .send(validPayload({
-          system: {
-            rootDisk: { mountPoint: "" },
-          },
-        }))
+        .send(
+          validPayload({
+            system: {
+              rootDisk: { mountPoint: "" },
+            },
+          }),
+        )
         .expect(400);
     });
 
@@ -520,11 +593,13 @@ describe("POST /api/agent/metrics", () => {
       await request(app())
         .post("/api/agent/metrics")
         .set("Authorization", `Bearer ${validToken}`)
-        .send(validPayload({
-          system: {
-            os: { name: "x".repeat(600) },
-          },
-        }))
+        .send(
+          validPayload({
+            system: {
+              os: { name: "x".repeat(600) },
+            },
+          }),
+        )
         .expect(400);
     });
   });
@@ -532,7 +607,10 @@ describe("POST /api/agent/metrics", () => {
   it("metric appears via /api/metrics after ingest", async () => {
     const { createSessionCookie } = await import("./test-helpers.js");
     const localApp = app({ mode: "local" });
-    const sessionCookie = await createSessionCookie(tempDir, demoConfig.dashboardSessionSecret);
+    const sessionCookie = await createSessionCookie(
+      tempDir,
+      demoConfig.dashboardSessionSecret,
+    );
 
     await request(localApp)
       .post("/api/agent/metrics")
@@ -540,8 +618,13 @@ describe("POST /api/agent/metrics", () => {
       .send(validPayload())
       .expect(201);
 
-    const res = await request(localApp).get("/api/metrics").set("Cookie", sessionCookie).expect(200);
-    const agentMetric = res.body.data.find((m: { vpsId: string }) => m.vpsId === vpsId);
+    const res = await request(localApp)
+      .get("/api/metrics")
+      .set("Cookie", sessionCookie)
+      .expect(200);
+    const agentMetric = res.body.data.find(
+      (m: { vpsId: string }) => m.vpsId === vpsId,
+    );
     expect(agentMetric).toBeDefined();
     expect(agentMetric.cpu).toBe(42);
     expect(agentMetric.source).toBe("agent");
@@ -567,7 +650,9 @@ describe("POST /api/agent/metrics", () => {
       .send(validPayload({ agentVersion: "2.0.0" }))
       .expect(201);
 
-    const agentRepo = createJsonAgentRepository(join(tempDir, "data", "agents.json"));
+    const agentRepo = createJsonAgentRepository(
+      join(tempDir, "data", "agents.json"),
+    );
     const state = await agentRepo.getState(vpsId);
     expect(state).toBeDefined();
     expect(state!.status).toBe("online");
@@ -582,7 +667,9 @@ describe("POST /api/agent/metrics", () => {
       .send(validPayload())
       .expect(201);
 
-    const agentRepo = createJsonAgentRepository(join(tempDir, "data", "agents.json"));
+    const agentRepo = createJsonAgentRepository(
+      join(tempDir, "data", "agents.json"),
+    );
     const credential = await agentRepo.getCredential(credentialId);
     expect(credential).toBeDefined();
     expect(credential!.lastUsedAt).toBeDefined();
@@ -736,7 +823,9 @@ describe("Docker metrics ingestion", () => {
 
     expect(res.body.data.config).toEqual({ dockerMetricsEnabled: false });
 
-    const agentRepo = createJsonAgentRepository(join(tempDir, "data", "agents.json"));
+    const agentRepo = createJsonAgentRepository(
+      join(tempDir, "data", "agents.json"),
+    );
     const stored = await agentRepo.getDockerMetrics(vpsId);
     expect(stored).toBeUndefined();
   });
@@ -753,7 +842,9 @@ describe("Docker metrics ingestion", () => {
 
     expect(res.body.data.config).toEqual({ dockerMetricsEnabled: true });
 
-    const agentRepo = createJsonAgentRepository(join(tempDir, "data", "agents.json"));
+    const agentRepo = createJsonAgentRepository(
+      join(tempDir, "data", "agents.json"),
+    );
     const stored = await agentRepo.getDockerMetrics(vpsId);
     expect(stored).toBeDefined();
     expect(stored!.vpsId).toBe(vpsId);
@@ -772,9 +863,14 @@ describe("Docker metrics ingestion", () => {
     await request(app())
       .post("/api/agent/metrics")
       .set("Authorization", `Bearer ${validToken}`)
-      .send(validPayload({
-        docker: validDockerPayload({ collectedAt: newerCollectedAt, containerTotal: 10 }),
-      }))
+      .send(
+        validPayload({
+          docker: validDockerPayload({
+            collectedAt: newerCollectedAt,
+            containerTotal: 10,
+          }),
+        }),
+      )
       .expect(201);
 
     // Send older payload after
@@ -782,12 +878,19 @@ describe("Docker metrics ingestion", () => {
     await request(app())
       .post("/api/agent/metrics")
       .set("Authorization", `Bearer ${validToken}`)
-      .send(validPayload({
-        docker: validDockerPayload({ collectedAt: olderCollectedAt, containerTotal: 5 }),
-      }))
+      .send(
+        validPayload({
+          docker: validDockerPayload({
+            collectedAt: olderCollectedAt,
+            containerTotal: 5,
+          }),
+        }),
+      )
       .expect(201);
 
-    const agentRepo = createJsonAgentRepository(join(tempDir, "data", "agents.json"));
+    const agentRepo = createJsonAgentRepository(
+      join(tempDir, "data", "agents.json"),
+    );
     const stored = await agentRepo.getDockerMetrics(vpsId);
     expect(stored!.containerTotal).toBe(10);
   });
@@ -814,7 +917,11 @@ describe("Docker metrics ingestion", () => {
     await request(app())
       .post("/api/agent/metrics")
       .set("Authorization", `Bearer ${validToken}`)
-      .send(validPayload({ docker: validDockerPayload({ containers: manyContainers }) }))
+      .send(
+        validPayload({
+          docker: validDockerPayload({ containers: manyContainers }),
+        }),
+      )
       .expect(400);
   });
 
@@ -834,7 +941,11 @@ describe("Docker metrics ingestion", () => {
     await request(app())
       .post("/api/agent/metrics")
       .set("Authorization", `Bearer ${validToken}`)
-      .send(validPayload({ docker: { ...validDockerPayload(), extraField: "rejected" } }))
+      .send(
+        validPayload({
+          docker: { ...validDockerPayload(), extraField: "rejected" },
+        }),
+      )
       .expect(400);
   });
 
@@ -857,7 +968,9 @@ describe("Docker metrics ingestion", () => {
       .send(validPayload({ docker: validDockerPayload() }))
       .expect(201);
 
-    const agentRepo = createJsonAgentRepository(join(tempDir, "data", "agents.json"));
+    const agentRepo = createJsonAgentRepository(
+      join(tempDir, "data", "agents.json"),
+    );
     expect(await agentRepo.getDockerMetrics(vpsId)).toBeDefined();
 
     // Disable via VPS repository directly (simulates what VpsService does)

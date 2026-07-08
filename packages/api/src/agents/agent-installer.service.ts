@@ -2,7 +2,10 @@ import { BadRequestException, Inject, Injectable } from "@nestjs/common";
 import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import type { AppConfig } from "../config/app-config.js";
-import { DuplicateAgentInstallError, VpsNotFoundError } from "../common/errors.js";
+import {
+  DuplicateAgentInstallError,
+  VpsNotFoundError,
+} from "../common/errors.js";
 import type { AgentState } from "./agent.models.js";
 import type { VpsRecord } from "../vps/vps.models.js";
 import { AgentService } from "./agent.service.js";
@@ -13,7 +16,12 @@ import type { KeyService } from "../ssh/keyService.js";
 import { AuditService } from "../audit/audit.service.js";
 import { JobRunnerService } from "../jobs/job-runner.service.js";
 import { JobService } from "../jobs/job.service.js";
-import { APP_CONFIG, AGENT_REPOSITORY, VPS_REPOSITORY, KEY_SERVICE } from "../tokens.js";
+import {
+  APP_CONFIG,
+  AGENT_REPOSITORY,
+  VPS_REPOSITORY,
+  KEY_SERVICE,
+} from "../tokens.js";
 
 // ── Helpers ──────────────────────────────────────────────────────────────
 
@@ -23,9 +31,7 @@ import { APP_CONFIG, AGENT_REPOSITORY, VPS_REPOSITORY, KEY_SERVICE } from "../to
  * - If the request host is localhost/127.0.0.1/::1, fail — no silent localhost config.
  * - Otherwise, use request protocol + host.
  */
-function resolveAgentBackendUrl(
-  config: AppConfig,
-): string {
+function resolveAgentBackendUrl(config: AppConfig): string {
   if (!config.agentPublicBaseUrl) {
     throw new BadRequestException(
       "AGENT_PUBLIC_BASE_URL must be configured before installing the agent. Set it to a URL reachable from the target VPS.",
@@ -54,7 +60,9 @@ function resolveSshAuth(
   vps: VpsRecord,
   password: string | undefined,
   keys: KeyService,
-): { password?: string; privateKey?: string } | Promise<{ password?: string; privateKey?: string }> {
+):
+  | { password?: string; privateKey?: string }
+  | Promise<{ password?: string; privateKey?: string }> {
   if (vps.keyProvisionedAt) {
     // Private key available — prefer it
     const readKey = async () => {
@@ -72,7 +80,9 @@ function resolveSshAuth(
   if (password) {
     return { password };
   }
-  throw new BadRequestException("SSH authentication method not available. Either provision a key or provide a one-time password.");
+  throw new BadRequestException(
+    "SSH authentication method not available. Either provision a key or provide a one-time password.",
+  );
 }
 
 // ── Service ──────────────────────────────────────────────────────────────
@@ -127,7 +137,10 @@ export class AgentInstallerService {
     const sshAuth = await resolveSshAuth(vps, password, this.keys);
 
     // 6. Create pending credential (token never returned to caller)
-    const { credential, token } = await this.agentService.createCredential(vpsId, "pending");
+    const { credential, token } = await this.agentService.createCredential(
+      vpsId,
+      "pending",
+    );
 
     // 7. Create job
     const now = new Date().toISOString();
@@ -163,7 +176,12 @@ export class AgentInstallerService {
         await ctx.update("connecting", 5);
 
         // Determine remote home directory
-        const homeResult = await this.ssh.execCommand(vps, "echo $HOME", sshAuth, 10_000);
+        const homeResult = await this.ssh.execCommand(
+          vps,
+          "echo $HOME",
+          sshAuth,
+          10_000,
+        );
         const homeDir = homeResult.stdout.trim();
         if (!homeDir) {
           throw new Error("Could not determine remote home directory");
@@ -176,7 +194,13 @@ export class AgentInstallerService {
         await ctx.update("uploading-binary", 30);
         const binaryContent = readFileSync(binaryPath);
         const remoteBinary = `${remoteDir}/vps-agent`;
-        await this.ssh.uploadFile(vps, remoteBinary, binaryContent, 0o700, sshAuth);
+        await this.ssh.uploadFile(
+          vps,
+          remoteBinary,
+          binaryContent,
+          0o700,
+          sshAuth,
+        );
 
         // Build agent config — token embedded in config on VPS only
         const agentConfig = {
@@ -193,7 +217,13 @@ export class AgentInstallerService {
         const remoteConfig = `${remoteDir}/config.json`;
 
         await ctx.update("uploading-config", 50);
-        await this.ssh.uploadFile(vps, remoteConfig, configContent, 0o600, sshAuth);
+        await this.ssh.uploadFile(
+          vps,
+          remoteConfig,
+          configContent,
+          0o600,
+          sshAuth,
+        );
 
         // Run -once validation
         await ctx.update("running-once", 70);
@@ -227,7 +257,9 @@ export class AgentInstallerService {
 
         await ctx.succeed("complete");
       } catch (error: unknown) {
-        await this.agentRepository.revokeCredential(credential.id).catch(() => undefined);
+        await this.agentRepository
+          .revokeCredential(credential.id)
+          .catch(() => undefined);
 
         // Mark state as failed
         await this.agentRepository.upsertState({
@@ -266,14 +298,22 @@ export class AgentInstallerService {
       join(process.cwd(), "agent", "vps-agent-linux-amd64"),
       // Source-tree development paths
       join(process.cwd(), "packages", "agent", "dist", "vps-agent-linux-amd64"),
-      join(process.cwd(), "..", "..", "packages", "agent", "dist", "vps-agent-linux-amd64"),
+      join(
+        process.cwd(),
+        "..",
+        "..",
+        "packages",
+        "agent",
+        "dist",
+        "vps-agent-linux-amd64",
+      ),
     ];
     const found = candidates.find((candidate) => existsSync(candidate));
     if (found) return found;
     throw new BadRequestException(
       "Agent binary not found. The API Docker image includes the agent at /app/agent/vps-agent-linux-amd64. " +
-      "For local development, run 'npm run build:agent' first. " +
-      "You can also set AGENT_BINARY_PATH to override the search path.",
+        "For local development, run 'npm run build:agent' first. " +
+        "You can also set AGENT_BINARY_PATH to override the search path.",
     );
   }
 }

@@ -18,7 +18,11 @@ import { createMutationRateLimit } from "./common/rate-limit.middleware.js";
 import { requestIdMiddleware } from "./common/request-id.middleware.js";
 import { ApiExceptionFilter } from "./common/filters/api-exception.filter.js";
 import { loadAppConfig } from "./config/app-config.js";
-import { createPostgresRateLimitStore, createInMemoryRateLimitStore, type RateLimitStore } from "./common/rate-limit-store.js";
+import {
+  createPostgresRateLimitStore,
+  createInMemoryRateLimitStore,
+  type RateLimitStore,
+} from "./common/rate-limit-store.js";
 import { createDatabasePool } from "./db/pool.js";
 
 export type Dependencies = AppDependencies;
@@ -47,10 +51,18 @@ export async function createNestApp(
         directives: {
           "default-src": ["'self'"],
           "script-src": ["'self'"],
-          "style-src": ["'self'", "'unsafe-inline'", "https://fonts.googleapis.com"],
+          "style-src": [
+            "'self'",
+            "'unsafe-inline'",
+            "https://fonts.googleapis.com",
+          ],
           "font-src": ["'self'", "https://fonts.gstatic.com", "data:"],
           "img-src": ["'self'", "data:"],
-          "connect-src": ["'self'", "https://fonts.googleapis.com", "https://fonts.gstatic.com"],
+          "connect-src": [
+            "'self'",
+            "https://fonts.googleapis.com",
+            "https://fonts.gstatic.com",
+          ],
           "object-src": ["'none'"],
           "base-uri": ["'self'"],
           "frame-ancestors": ["'none'"],
@@ -67,7 +79,11 @@ export async function createNestApp(
     const pool = deps.pool ?? createDatabasePool(config);
     // If we created the pool, pass it through deps so createAppModule reuses and closes it.
     // If caller supplied deps.pool, caller owns lifecycle unless deps.ownsPool was set.
-    deps = { ...deps, pool, ownsPool: ownsPool ? true : (deps.ownsPool ?? false) };
+    deps = {
+      ...deps,
+      pool,
+      ownsPool: ownsPool ? true : (deps.ownsPool ?? false),
+    };
     rateLimitStore = createPostgresRateLimitStore(pool);
   } else {
     rateLimitStore = createInMemoryRateLimitStore();
@@ -88,12 +104,9 @@ export async function createNestApp(
   );
   nestApp.useGlobalFilters(new ApiExceptionFilter());
   await nestApp.init();
-  server.get(
-    /^\/(overview|servers|jobs|metrics|audit|terminal|settings)$/,
-    (_req, res) => {
-      res.sendFile(join(process.cwd(), "public", "index.html"));
-    },
-  );
+  server.get(/^\/(vps(\/.*)?)?$/, (_req, res) => {
+    res.sendFile(join(process.cwd(), "public", "index.html"));
+  });
   return nestApp;
 }
 

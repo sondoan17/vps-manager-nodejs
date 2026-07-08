@@ -21,7 +21,9 @@ type AgentIngestResponse = {
 
 @Controller("api/agent")
 export class AgentController {
-  constructor(@Inject(AgentService) private readonly agentService: AgentService) {}
+  constructor(
+    @Inject(AgentService) private readonly agentService: AgentService,
+  ) {}
 
   /**
    * POST /api/agent/metrics
@@ -30,7 +32,10 @@ export class AgentController {
    * Token format: vma_<credentialId>_<secret>
    */
   @Post("metrics")
-  async ingestMetrics(@Req() req: Request, @Body() body: AgentMetricPayload): Promise<AgentIngestResponse> {
+  async ingestMetrics(
+    @Req() req: Request,
+    @Body() body: AgentMetricPayload,
+  ): Promise<AgentIngestResponse> {
     // 1. Authenticate via bearer token
     const authHeader = req.header("authorization");
     const credential = await this.agentService.verifyBearerToken(authHeader);
@@ -38,7 +43,11 @@ export class AgentController {
     // 2. Ingest the metric payload
     // ZodError from schema validation propagates to the global exception filter
     // and results in a 400 Bad Request.
-    const { sample, config } = await this.agentService.ingestMetric(credential, body, req.ip);
+    const { sample, config } = await this.agentService.ingestMetric(
+      credential,
+      body,
+      req.ip,
+    );
 
     return {
       data: {

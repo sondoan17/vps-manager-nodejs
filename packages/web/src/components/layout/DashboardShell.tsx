@@ -1,10 +1,6 @@
 import {
-  Activity,
-  BarChart3,
   Bell,
-  ClipboardList,
   FlaskConical,
-  Gauge,
   HelpCircle,
   LogOut,
   Menu,
@@ -14,11 +10,11 @@ import {
   Settings,
   ShieldCheck,
   ShieldCogCorner,
-  TerminalSquare,
   UserCircle,
   type LucideIcon,
 } from "lucide-react";
 import { useState, type ButtonHTMLAttributes, type ReactNode } from "react";
+import { useLocation, useNavigate } from "react-router-dom";
 import { Avatar, AvatarFallback, AvatarImage } from "../ui/avatar";
 import { Badge } from "../ui/badge";
 import { Button } from "../ui/button";
@@ -48,28 +44,20 @@ export type LiveConnectionState =
   | { status: "reconnecting"; latestEventAt?: string }
   | { status: "stale"; latestEventAt?: string };
 
-export type DashboardView =
-  | "overview"
-  | "servers"
-  | "jobs"
-  | "metrics"
-  | "audit"
-  | "terminal"
-  | "settings";
+// ── Route-based nav items ─────────────────────────────────────────────
 
-const views: Array<{ id: DashboardView; label: string; icon: LucideIcon }> = [
-  { id: "overview", label: "Overview", icon: Gauge },
-  { id: "servers", label: "Servers", icon: Server },
-  { id: "jobs", label: "Jobs", icon: ClipboardList },
-  { id: "metrics", label: "Metrics", icon: BarChart3 },
-  { id: "audit", label: "Audit", icon: Activity },
-  { id: "terminal", label: "Terminal", icon: TerminalSquare },
-  { id: "settings", label: "Settings", icon: Settings },
+type NavItem = {
+  label: string;
+  icon: LucideIcon;
+  to: string;
+  matchPattern: string; // prefix match for active state
+};
+
+const topNavItems: NavItem[] = [
+  { label: "VPS List", icon: Server, to: "/vps", matchPattern: "/vps" },
 ];
 
 type Props = {
-  activeView: DashboardView;
-  onViewChange: (view: DashboardView) => void;
   mode: "demo" | "local";
   busy: boolean;
   liveState: LiveConnectionState;
@@ -79,8 +67,6 @@ type Props = {
 };
 
 export function DashboardShell({
-  activeView,
-  onViewChange,
   mode,
   busy,
   liveState,
@@ -88,17 +74,39 @@ export function DashboardShell({
   onLogout,
   children,
 }: Props) {
-  const activeLabel =
-    views.find((view) => view.id === activeView)?.label || "Overview";
-  const terminalTitle = mode === "demo" ? "Demo terminal" : "Terminal";
-  const terminalDescription =
-    mode === "demo"
-      ? "Preview command output without opening real SSH sessions."
-      : "Run safe read-only commands and inspect server output.";
+  const location = useLocation();
+  const navigate = useNavigate();
+  const pathname = location.pathname;
+
+  // Determine active page for header
+  const isVpsList = pathname === "/vps";
+  const isVpsNew = pathname === "/vps/new";
+
+  // Active label for the mobile header
+  const activeLabel = isVpsNew
+    ? "New VPS"
+    : isVpsList
+      ? "VPS List"
+      : "Workspace";
+
+  // Header title and description
+  let headerTitle: string;
+  let headerDescription: string | null = null;
+  if (isVpsList) {
+    headerTitle = "Servers";
+    headerDescription =
+      "Manage VPS access, SSH keys, health checks, and provisioning.";
+  } else if (isVpsNew) {
+    headerTitle = "New VPS";
+    headerDescription = "Add a new server to your fleet.";
+  } else {
+    headerTitle = "Operations dashboard";
+  }
+
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
 
-  function handleMobileViewChange(view: DashboardView) {
-    onViewChange(view);
+  function handleNavClick(to: string) {
+    navigate(to);
     setMobileMenuOpen(false);
   }
 
@@ -123,16 +131,23 @@ export function DashboardShell({
             aria-label="Dashboard sidebar sections"
             className="grid w-full gap-2"
           >
-            {views.map((view) => (
-              <NavButton
-                key={view.id}
-                active={activeView === view.id}
-                icon={view.icon}
-                onClick={() => onViewChange(view.id)}
-              >
-                {view.label}
-              </NavButton>
-            ))}
+            {topNavItems.map((item) => {
+              // Active if the pathname starts with the match pattern
+              const isActive =
+                item.matchPattern === "/vps"
+                  ? pathname.startsWith("/vps")
+                  : pathname === item.to;
+              return (
+                <NavButton
+                  key={item.to}
+                  active={isActive}
+                  icon={item.icon}
+                  onClick={() => handleNavClick(item.to)}
+                >
+                  {item.label}
+                </NavButton>
+              );
+            })}
           </nav>
           <div className="mt-auto flex items-start gap-2 rounded-none border border-white/10 bg-white/[0.03] p-3 text-white/50 shadow-none">
             <HelpCircle className="mt-0.5 shrink-0" size={15} />
@@ -148,7 +163,7 @@ export function DashboardShell({
             <div className="absolute inset-0 hidden" />
             <div className="absolute inset-x-8 top-0 h-px bg-white/20" />
             <div className="relative px-3 py-2 text-[#ffffff] sm:px-4 xl:px-6 xl:py-3">
-              <div className="rounded-none border border-white/10 bg-white/[0.03] p-2.5 shadow-none  sm:p-3">
+              <div className="rounded-none border border-white/10 bg-white/[0.03] p-2.5 shadow-none sm:p-3">
                 <div className="flex min-w-0 flex-col gap-3 xl:flex-row xl:items-center xl:justify-between">
                   <label className="relative min-w-0 max-w-full xl:w-80">
                     <Search
@@ -215,16 +230,21 @@ export function DashboardShell({
                         </SheetDescription>
                       </SheetHeader>
                       <div className="grid gap-2">
-                        {views.map((view) => (
-                          <NavButton
-                            key={view.id}
-                            active={activeView === view.id}
-                            icon={view.icon}
-                            onClick={() => handleMobileViewChange(view.id)}
-                          >
-                            {view.label}
-                          </NavButton>
-                        ))}
+                        {topNavItems.map((item) => {
+                          const isActive = pathname.startsWith(
+                            item.matchPattern,
+                          );
+                          return (
+                            <NavButton
+                              key={item.to}
+                              active={isActive}
+                              icon={item.icon}
+                              onClick={() => handleNavClick(item.to)}
+                            >
+                              {item.label}
+                            </NavButton>
+                          );
+                        })}
                       </div>
                     </SheetContent>
                   </Sheet>
@@ -234,7 +254,7 @@ export function DashboardShell({
             <div
               className={cn(
                 "relative flex min-w-0 max-w-full items-start px-4 text-[#ffffff] sm:px-8 xl:px-10",
-                activeView === "servers"
+                isVpsList
                   ? "pb-5 pt-0 sm:pb-7 sm:pt-1"
                   : "pb-8 pt-0 sm:pb-14 sm:pt-3",
               )}
@@ -244,45 +264,11 @@ export function DashboardShell({
                   VPS control plane
                 </p>
                 <h1 className="mt-2 break-words font-display text-2xl font-normal leading-none tracking-normal sm:text-4xl">
-                  {activeView === "servers"
-                    ? "Servers"
-                    : activeView === "jobs"
-                      ? "Jobs"
-                      : activeView === "metrics"
-                        ? "Metrics"
-                        : activeView === "audit"
-                          ? "Audit"
-                          : activeView === "terminal"
-                            ? terminalTitle
-                            : "Operations dashboard"}
+                  {headerTitle}
                 </h1>
-                {activeView === "servers" ? (
+                {headerDescription ? (
                   <p className="mt-1 max-w-2xl text-xs font-normal leading-4 text-white/50 sm:mt-1.5 sm:text-sm sm:leading-5">
-                    Manage VPS access, SSH keys, health checks, and
-                    provisioning.
-                  </p>
-                ) : null}
-                {activeView === "jobs" ? (
-                  <p className="mt-1 max-w-2xl text-xs font-normal leading-4 text-white/50 sm:mt-1.5 sm:text-sm sm:leading-5">
-                    Track provisioning, metrics collection, key verification,
-                    and background tasks.
-                  </p>
-                ) : null}
-                {activeView === "metrics" ? (
-                  <p className="mt-1 max-w-2xl text-xs font-normal leading-4 text-white/50 sm:mt-1.5 sm:text-sm sm:leading-5">
-                    Monitor CPU, memory, disk, load, and telemetry freshness
-                    across servers.
-                  </p>
-                ) : null}
-                {activeView === "audit" ? (
-                  <p className="mt-1 max-w-2xl text-xs font-normal leading-4 text-white/50 sm:mt-1.5 sm:text-sm sm:leading-5">
-                    Review operational events, security actions, SSH access, and
-                    job activity.
-                  </p>
-                ) : null}
-                {activeView === "terminal" ? (
-                  <p className="mt-1 max-w-2xl text-xs font-normal leading-4 text-white/50 sm:mt-1.5 sm:text-sm sm:leading-5">
-                    {terminalDescription}
+                    {headerDescription}
                   </p>
                 ) : null}
               </div>
@@ -291,11 +277,7 @@ export function DashboardShell({
           <div
             className={cn(
               "relative isolate min-w-0 max-w-full overflow-hidden px-3 pb-8 before:absolute before:inset-x-0 before:top-0 before:z-0 before:h-16 before:bg-[#1f2228] sm:px-5 xl:px-8",
-              activeView === "overview"
-                ? "-mt-10 pt-0 sm:-mt-12"
-                : activeView === "servers"
-                  ? "pt-3"
-                  : "pt-5",
+              isVpsList ? "pt-3" : "pt-5",
             )}
           >
             <div className="relative z-10">{children}</div>
@@ -305,6 +287,8 @@ export function DashboardShell({
     </main>
   );
 }
+
+// ── Same UI elements as before ────────────────────────────────────────
 
 function ModeBadge({ mode }: { mode: "demo" | "local" }) {
   const state = mode === "demo" ? "demo" : "ready";
@@ -327,22 +311,35 @@ function ModeBadge({ mode }: { mode: "demo" | "local" }) {
 }
 
 function LiveBadge({ state }: { state: LiveConnectionState }) {
-  const label = state.status === "connecting" ? "Connecting"
-    : state.status === "live" ? "Live"
-    : state.status === "reconnecting" ? "Reconnecting"
-    : "Stale";
+  const label =
+    state.status === "connecting"
+      ? "Connecting"
+      : state.status === "live"
+        ? "Live"
+        : state.status === "reconnecting"
+          ? "Reconnecting"
+          : "Stale";
 
-  const dotColor = state.status === "live" ? "bg-[#1f2228]" : "bg-[rgba(255,255,255,0.5)]";
+  const dotColor =
+    state.status === "live" ? "bg-[#1f2228]" : "bg-[rgba(255,255,255,0.5)]";
 
-  const badgeVariant = state.status === "live" ? "ready"
-    : state.status === "connecting" ? "pending"
-    : "destructive";
+  const badgeVariant =
+    state.status === "live"
+      ? "ready"
+      : state.status === "connecting"
+        ? "pending"
+        : "destructive";
 
   return (
-    <Badge variant={badgeVariant as any} className="gap-1.5 text-[11px] uppercase">
+    <Badge
+      variant={badgeVariant as any}
+      className="gap-1.5 text-[11px] uppercase"
+    >
       <span className={`h-1.5 w-1.5 rounded-none ${dotColor}`} />
       {label}
-      {state.status !== "connecting" && "latestEventAt" in state && state.latestEventAt ? (
+      {state.status !== "connecting" &&
+      "latestEventAt" in state &&
+      state.latestEventAt ? (
         <span className="ml-1 text-[10px] font-normal opacity-70">
           {new Date(state.latestEventAt).toLocaleTimeString()}
         </span>
@@ -434,25 +431,21 @@ function NavButton({
   active,
   className,
   icon: Icon,
-  mobile = false,
   children,
   ...props
 }: React.ButtonHTMLAttributes<HTMLButtonElement> & {
   active: boolean;
   icon: LucideIcon;
-  mobile?: boolean;
 }) {
   return (
     <button
       type="button"
       className={cn(
         "inline-flex min-w-0 items-center gap-3 rounded-none border border-transparent px-3 py-2.5 text-left text-[12px] font-normal uppercase tracking-[0.08em] transition",
-        mobile ? "w-auto shrink-0 bg-white/[0.03]" : "w-full",
+        "w-full",
         active
           ? "border-[#ffffff] bg-[#ffffff] text-[#1f2228] shadow-none"
-          : mobile
-            ? "text-primary hover:bg-secondary"
-            : "text-white/50 hover:border-white/10 hover:bg-white/[0.03] hover:text-[#ffffff]",
+          : "text-white/50 hover:border-white/10 hover:bg-white/[0.03] hover:text-[#ffffff]",
         className,
       )}
       {...props}
@@ -460,7 +453,9 @@ function NavButton({
       <span
         className={cn(
           "grid h-8 w-8 shrink-0 place-items-center rounded-none",
-          active ? "bg-[#1f2228] text-[#ffffff]" : "bg-white/[0.03] text-white/50",
+          active
+            ? "bg-[#1f2228] text-[#ffffff]"
+            : "bg-white/[0.03] text-white/50",
         )}
       >
         <Icon size={16} />

@@ -1,8 +1,17 @@
 import { nanoid } from "nanoid";
 import { withTransaction, type DatabasePool } from "../../db/pool.js";
-import type { AgentCredential, AgentDockerMetrics, AgentState, AgentSystemInfo } from "../../agents/agent.models.js";
+import type {
+  AgentCredential,
+  AgentDockerMetrics,
+  AgentState,
+  AgentSystemInfo,
+} from "../../agents/agent.models.js";
 import type { AgentRepository } from "./agent.repository.js";
-import { optionalIsoString, requiredIsoString, toDateOrNull } from "./postgres-mappers.js";
+import {
+  optionalIsoString,
+  requiredIsoString,
+  toDateOrNull,
+} from "./postgres-mappers.js";
 
 type AgentCredentialRow = {
   id: string;
@@ -34,9 +43,16 @@ type AgentSystemInfoRow = {
   data: unknown;
 };
 
-export function createPostgresAgentRepository(pool: DatabasePool): AgentRepository {
-  async function getCredential(id: string): Promise<AgentCredential | undefined> {
-    const result = await pool.query<AgentCredentialRow>("SELECT * FROM agent_credentials WHERE id = $1", [id]);
+export function createPostgresAgentRepository(
+  pool: DatabasePool,
+): AgentRepository {
+  async function getCredential(
+    id: string,
+  ): Promise<AgentCredential | undefined> {
+    const result = await pool.query<AgentCredentialRow>(
+      "SELECT * FROM agent_credentials WHERE id = $1",
+      [id],
+    );
     return result.rows[0] ? rowToCredential(result.rows[0]) : undefined;
   }
 
@@ -45,13 +61,13 @@ export function createPostgresAgentRepository(pool: DatabasePool): AgentReposito
       const credential: AgentCredential = {
         ...input,
         id: input.id ?? `cred_${nanoid(12)}`,
-        createdAt: new Date().toISOString()
+        createdAt: new Date().toISOString(),
       };
       const result = await pool.query<AgentCredentialRow>(
         `INSERT INTO agent_credentials (id, vps_id, secret_hash, status, created_at, activated_at, revoked_at, last_used_at, last_used_ip)
          VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)
          RETURNING *`,
-        credentialToValues(credential)
+        credentialToValues(credential),
       );
       return rowToCredential(result.rows[0]!);
     },
@@ -59,14 +75,19 @@ export function createPostgresAgentRepository(pool: DatabasePool): AgentReposito
     async listCredentialsByVps(vpsId) {
       const result = await pool.query<AgentCredentialRow>(
         "SELECT * FROM agent_credentials WHERE vps_id = $1 ORDER BY created_at DESC",
-        [vpsId]
+        [vpsId],
       );
       return result.rows.map(rowToCredential);
     },
     async updateCredential(id, patch) {
       return withTransaction(pool, async (client) => {
-        const currentResult = await client.query<AgentCredentialRow>("SELECT * FROM agent_credentials WHERE id = $1 FOR UPDATE", [id]);
-        const current = currentResult.rows[0] ? rowToCredential(currentResult.rows[0]) : undefined;
+        const currentResult = await client.query<AgentCredentialRow>(
+          "SELECT * FROM agent_credentials WHERE id = $1 FOR UPDATE",
+          [id],
+        );
+        const current = currentResult.rows[0]
+          ? rowToCredential(currentResult.rows[0])
+          : undefined;
         if (!current) return undefined;
         const { id: _ignoredPatchId, ...safePatch } = patch;
         const next = { ...current, ...safePatch, id };
@@ -75,16 +96,22 @@ export function createPostgresAgentRepository(pool: DatabasePool): AgentReposito
            SET vps_id=$2, secret_hash=$3, status=$4, created_at=$5, activated_at=$6,
                revoked_at=$7, last_used_at=$8, last_used_ip=$9
            WHERE id=$1 RETURNING *`,
-          credentialToValues(next)
+          credentialToValues(next),
         );
         return result.rows[0] ? rowToCredential(result.rows[0]) : undefined;
       });
     },
     async revokeCredential(id) {
-      return this.updateCredential(id, { status: "revoked", revokedAt: new Date().toISOString() });
+      return this.updateCredential(id, {
+        status: "revoked",
+        revokedAt: new Date().toISOString(),
+      });
     },
     async getState(vpsId) {
-      const result = await pool.query<AgentStateRow>("SELECT * FROM agent_states WHERE vps_id = $1", [vpsId]);
+      const result = await pool.query<AgentStateRow>(
+        "SELECT * FROM agent_states WHERE vps_id = $1",
+        [vpsId],
+      );
       return result.rows[0] ? rowToState(result.rows[0]) : undefined;
     },
     async upsertState(state) {
@@ -106,8 +133,8 @@ export function createPostgresAgentRepository(pool: DatabasePool): AgentReposito
           toDateOrNull(state.installedAt),
           toDateOrNull(state.lastSeenAt),
           state.lastError ?? null,
-          state.lastInstallJobId ?? null
-        ]
+          state.lastInstallJobId ?? null,
+        ],
       );
       return rowToState(result.rows[0]!);
     },
@@ -178,18 +205,26 @@ export function createPostgresAgentRepository(pool: DatabasePool): AgentReposito
         ],
       );
       if (result.rows[0]) return rowToSystemInfo(result.rows[0]);
-      const current = await pool.query<AgentSystemInfoRow>("SELECT * FROM agent_system_info WHERE vps_id = $1", [info.vpsId]);
+      const current = await pool.query<AgentSystemInfoRow>(
+        "SELECT * FROM agent_system_info WHERE vps_id = $1",
+        [info.vpsId],
+      );
       return current.rows[0] ? rowToSystemInfo(current.rows[0]) : info;
     },
 
     async getSystemInfo(vpsId) {
-      const result = await pool.query<AgentSystemInfoRow>("SELECT * FROM agent_system_info WHERE vps_id = $1", [vpsId]);
+      const result = await pool.query<AgentSystemInfoRow>(
+        "SELECT * FROM agent_system_info WHERE vps_id = $1",
+        [vpsId],
+      );
       if (!result.rows[0]) return undefined;
       return rowToSystemInfo(result.rows[0]);
     },
 
     async listSystemInfo() {
-      const result = await pool.query<AgentSystemInfoRow>("SELECT * FROM agent_system_info");
+      const result = await pool.query<AgentSystemInfoRow>(
+        "SELECT * FROM agent_system_info",
+      );
       return result.rows.map(rowToSystemInfo);
     },
 
@@ -227,26 +262,33 @@ export function createPostgresAgentRepository(pool: DatabasePool): AgentReposito
       );
       if (result.rows[0]) return rowToDockerMetrics(result.rows[0]);
       const current = await pool.query<AgentDockerMetricsRow>(
-        "SELECT * FROM agent_docker_metrics WHERE vps_id = $1", [metrics.vpsId],
+        "SELECT * FROM agent_docker_metrics WHERE vps_id = $1",
+        [metrics.vpsId],
       );
       return current.rows[0] ? rowToDockerMetrics(current.rows[0]) : metrics;
     },
 
     async getDockerMetrics(vpsId: string) {
       const result = await pool.query<AgentDockerMetricsRow>(
-        "SELECT * FROM agent_docker_metrics WHERE vps_id = $1", [vpsId],
+        "SELECT * FROM agent_docker_metrics WHERE vps_id = $1",
+        [vpsId],
       );
       if (!result.rows[0]) return undefined;
       return rowToDockerMetrics(result.rows[0]);
     },
 
     async listDockerMetrics() {
-      const result = await pool.query<AgentDockerMetricsRow>("SELECT * FROM agent_docker_metrics");
+      const result = await pool.query<AgentDockerMetricsRow>(
+        "SELECT * FROM agent_docker_metrics",
+      );
       return result.rows.map(rowToDockerMetrics);
     },
 
     async deleteDockerMetrics(vpsId: string) {
-      const result = await pool.query("DELETE FROM agent_docker_metrics WHERE vps_id = $1", [vpsId]);
+      const result = await pool.query(
+        "DELETE FROM agent_docker_metrics WHERE vps_id = $1",
+        [vpsId],
+      );
       return Boolean(result.rowCount);
     },
   };
@@ -297,8 +339,13 @@ function dockerMetricsToValues(metrics: AgentDockerMetrics): unknown[] {
 }
 
 function rowToDockerMetrics(row: AgentDockerMetricsRow): AgentDockerMetrics {
-  const data = typeof row.data === "string" ? JSON.parse(row.data) : (row.data as Record<string, unknown>);
-  const containers = Array.isArray(data?.containers) ? data.containers as AgentDockerMetrics["containers"] : [];
+  const data =
+    typeof row.data === "string"
+      ? JSON.parse(row.data)
+      : (row.data as Record<string, unknown>);
+  const containers = Array.isArray(data?.containers)
+    ? (data.containers as AgentDockerMetrics["containers"])
+    : [];
   return {
     vpsId: row.vps_id,
     collectedAt: requiredIsoString(row.collected_at),
@@ -331,7 +378,7 @@ function credentialToValues(credential: AgentCredential): unknown[] {
     toDateOrNull(credential.activatedAt),
     toDateOrNull(credential.revokedAt),
     toDateOrNull(credential.lastUsedAt),
-    credential.lastUsedIp ?? null
+    credential.lastUsedIp ?? null,
   ];
 }
 
@@ -345,12 +392,15 @@ function rowToCredential(row: AgentCredentialRow): AgentCredential {
     activatedAt: optionalIsoString(row.activated_at),
     revokedAt: optionalIsoString(row.revoked_at),
     lastUsedAt: optionalIsoString(row.last_used_at),
-    lastUsedIp: row.last_used_ip ?? undefined
+    lastUsedIp: row.last_used_ip ?? undefined,
   };
 }
 
 function rowToSystemInfo(row: AgentSystemInfoRow): AgentSystemInfo {
-  const data = typeof row.data === "string" ? JSON.parse(row.data) : (row.data as Record<string, unknown>);
+  const data =
+    typeof row.data === "string"
+      ? JSON.parse(row.data)
+      : (row.data as Record<string, unknown>);
   return {
     vpsId: row.vps_id,
     collectedAt: requiredIsoString(row.collected_at),
@@ -372,6 +422,6 @@ function rowToState(row: AgentStateRow): AgentState {
     installedAt: optionalIsoString(row.installed_at),
     lastSeenAt: optionalIsoString(row.last_seen_at),
     lastError: row.last_error ?? undefined,
-    lastInstallJobId: row.last_install_job_id ?? undefined
+    lastInstallJobId: row.last_install_job_id ?? undefined,
   };
 }

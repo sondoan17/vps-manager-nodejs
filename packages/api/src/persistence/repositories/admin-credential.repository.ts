@@ -16,7 +16,12 @@ export type AdminCredentialRepository = {
   /** Returns the singleton admin credential, or undefined if not configured yet. */
   get(): Promise<AdminCredentialRecord | undefined>;
   /** Create or update the singleton admin credential. passwordChangedAt defaults to now if omitted. */
-  upsert(input: Omit<AdminCredentialRecord, "id" | "createdAt" | "updatedAt" | "passwordChangedAt">): Promise<AdminCredentialRecord>;
+  upsert(
+    input: Omit<
+      AdminCredentialRecord,
+      "id" | "createdAt" | "updatedAt" | "passwordChangedAt"
+    >,
+  ): Promise<AdminCredentialRecord>;
 };
 
 // ── JSON implementation ────────────────────────────────────────────────
@@ -27,16 +32,24 @@ function emptyCredentialFile(): CredentialFile {
   return {};
 }
 
-export function createJsonAdminCredentialRepository(filePath = "data/admin-credential.json"): AdminCredentialRepository {
+export function createJsonAdminCredentialRepository(
+  filePath = "data/admin-credential.json",
+): AdminCredentialRepository {
   return {
     async get() {
-      const data = await readJsonFile<CredentialFile>(filePath, emptyCredentialFile());
+      const data = await readJsonFile<CredentialFile>(
+        filePath,
+        emptyCredentialFile(),
+      );
       return data.credential;
     },
 
     async upsert(input) {
       return withFileLock(filePath, async () => {
-        const data = await readJsonFile<CredentialFile>(filePath, emptyCredentialFile());
+        const data = await readJsonFile<CredentialFile>(
+          filePath,
+          emptyCredentialFile(),
+        );
         const now = new Date().toISOString();
         const existing = data.credential;
         const credential: AdminCredentialRecord = {

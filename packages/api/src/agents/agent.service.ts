@@ -2,12 +2,22 @@ import { Inject, Injectable, UnauthorizedException } from "@nestjs/common";
 import { createHash, randomBytes, timingSafeEqual } from "node:crypto";
 import { ZodError } from "zod";
 import type { AppConfig } from "../config/app-config.js";
-import type { AgentCredential, AgentCredentialStatus, AgentDockerMetrics, AgentMetricPayload } from "./agent.models.js";
+import type {
+  AgentCredential,
+  AgentCredentialStatus,
+  AgentDockerMetrics,
+  AgentMetricPayload,
+} from "./agent.models.js";
 import type { MetricSample } from "../metrics/metrics.models.js";
 import type { AgentRepository } from "../persistence/repositories/agent.repository.js";
 import type { MetricRepository } from "../persistence/repositories/metric.repository.js";
 import type { VpsRepository } from "../persistence/repositories/vps.repository.js";
-import { AGENT_REPOSITORY, APP_CONFIG, METRIC_REPOSITORY, VPS_REPOSITORY } from "../tokens.js";
+import {
+  AGENT_REPOSITORY,
+  APP_CONFIG,
+  METRIC_REPOSITORY,
+  VPS_REPOSITORY,
+} from "../tokens.js";
 import { agentMetricPayloadSchema } from "./agent.schemas.js";
 import { VpsNotFoundError } from "../common/errors.js";
 
@@ -24,7 +34,8 @@ export type IngestMetricResult = {
 const TOKEN_PREFIX = "vma_";
 
 function omitDockerField(payload: AgentMetricPayload): unknown {
-  if (!payload || typeof payload !== "object" || Array.isArray(payload)) return payload;
+  if (!payload || typeof payload !== "object" || Array.isArray(payload))
+    return payload;
   const { docker: _docker, ...rest } = payload as Record<string, unknown>;
   return rest;
 }
@@ -36,7 +47,9 @@ function omitDockerField(payload: AgentMetricPayload): unknown {
  * from nanoid) from the secret (hex-encoded, no underscores).
  * Returns undefined if the token format is invalid.
  */
-function parseToken(token: string): { credentialId: string; secret: string } | undefined {
+function parseToken(
+  token: string,
+): { credentialId: string; secret: string } | undefined {
   if (!token.startsWith(TOKEN_PREFIX)) return undefined;
   const body = token.slice(TOKEN_PREFIX.length);
   // Last underscore separates credentialId from secret (secret is hex, no underscores)
@@ -61,7 +74,8 @@ function hashSecret(secret: string): string {
 export class AgentService {
   constructor(
     @Inject(AGENT_REPOSITORY) private readonly agentRepository: AgentRepository,
-    @Inject(METRIC_REPOSITORY) private readonly metricRepository: MetricRepository,
+    @Inject(METRIC_REPOSITORY)
+    private readonly metricRepository: MetricRepository,
     @Inject(VPS_REPOSITORY) private readonly vpsRepository: VpsRepository,
     @Inject(APP_CONFIG) private readonly config: AppConfig,
   ) {}
@@ -99,21 +113,31 @@ export class AgentService {
    * Verify a bearer token header and return the associated credential.
    * Throws UnauthorizedException if the token is invalid, revoked, or malformed.
    */
-  async verifyBearerToken(header: string | undefined): Promise<AgentCredential> {
+  async verifyBearerToken(
+    header: string | undefined,
+  ): Promise<AgentCredential> {
     if (!header) {
-      throw new UnauthorizedException({ error: { message: "Missing authorization header" } });
+      throw new UnauthorizedException({
+        error: { message: "Missing authorization header" },
+      });
     }
     if (!header.startsWith("Bearer ")) {
-      throw new UnauthorizedException({ error: { message: "Invalid authorization header format" } });
+      throw new UnauthorizedException({
+        error: { message: "Invalid authorization header format" },
+      });
     }
 
     const rawToken = header.slice("Bearer ".length).trim();
     const parsed = parseToken(rawToken);
     if (!parsed) {
-      throw new UnauthorizedException({ error: { message: "Invalid token format" } });
+      throw new UnauthorizedException({
+        error: { message: "Invalid token format" },
+      });
     }
 
-    const credential = await this.agentRepository.getCredential(parsed.credentialId);
+    const credential = await this.agentRepository.getCredential(
+      parsed.credentialId,
+    );
     if (!credential) {
       throw new UnauthorizedException({ error: { message: "Invalid token" } });
     }
@@ -126,12 +150,19 @@ export class AgentService {
       throw new UnauthorizedException({ error: { message: "Invalid token" } });
     }
 
-    if (!timingSafeEqual(Buffer.from(providedHash, "hex"), Buffer.from(storedHash, "hex"))) {
+    if (
+      !timingSafeEqual(
+        Buffer.from(providedHash, "hex"),
+        Buffer.from(storedHash, "hex"),
+      )
+    ) {
       throw new UnauthorizedException({ error: { message: "Invalid token" } });
     }
 
     if (credential.status === "revoked") {
-      throw new UnauthorizedException({ error: { message: "Token has been revoked" } });
+      throw new UnauthorizedException({
+        error: { message: "Token has been revoked" },
+      });
     }
 
     return credential;
@@ -174,7 +205,9 @@ export class AgentService {
     // 2. Validate payload
     let parsed: AgentMetricPayload;
     try {
-      parsed = agentMetricPayloadSchema.parse(dockerMetricsEnabled ? payload : omitDockerField(payload));
+      parsed = agentMetricPayloadSchema.parse(
+        dockerMetricsEnabled ? payload : omitDockerField(payload),
+      );
     } catch (error: unknown) {
       if (error instanceof ZodError) {
         throw error;
@@ -184,7 +217,9 @@ export class AgentService {
 
     // 3. If vpsId is provided in payload, it must match the credential owner
     if (parsed.vpsId !== undefined && parsed.vpsId !== credential.vpsId) {
-      throw new UnauthorizedException({ error: { message: "VPS ID mismatch" } });
+      throw new UnauthorizedException({
+        error: { message: "VPS ID mismatch" },
+      });
     }
 
     const now = new Date().toISOString();

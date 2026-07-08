@@ -26,7 +26,9 @@ function getCpuUsage(): number {
   let total = 0;
 
   for (const cpu of cpus) {
-    for (const type of Object.keys(cpu.times) as (keyof os.CpuInfo["times"])[]) {
+    for (const type of Object.keys(
+      cpu.times,
+    ) as (keyof os.CpuInfo["times"])[]) {
       total += cpu.times[type];
     }
     idle += cpu.times.idle;

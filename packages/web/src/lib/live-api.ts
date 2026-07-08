@@ -101,9 +101,7 @@ export function subscribeMonitoring(
       try {
         const envelope = JSON.parse(event.data) as MonitoringEvent;
         if (envelope.schemaVersion !== 1) return;
-        callbacks.onSnapshot?.(
-          envelope.payload as MonitoringSnapshotPayload,
-        );
+        callbacks.onSnapshot?.(envelope.payload as MonitoringSnapshotPayload);
         callbacks.onConnectionChange?.({
           status: "live",
           latestEventAt: envelope.emittedAt,
@@ -118,9 +116,7 @@ export function subscribeMonitoring(
       try {
         const envelope = JSON.parse(event.data) as MonitoringEvent;
         if (envelope.schemaVersion !== 1) return;
-        callbacks.onMetricsUpdated?.(
-          envelope.payload as MetricsUpdatedPayload,
-        );
+        callbacks.onMetricsUpdated?.(envelope.payload as MetricsUpdatedPayload);
         callbacks.onConnectionChange?.({
           status: "live",
           latestEventAt: envelope.emittedAt,
@@ -135,9 +131,7 @@ export function subscribeMonitoring(
       try {
         const envelope = JSON.parse(event.data) as MonitoringEvent;
         if (envelope.schemaVersion !== 1) return;
-        callbacks.onHeartbeat?.(
-          envelope.payload as MonitoringHeartbeatPayload,
-        );
+        callbacks.onHeartbeat?.(envelope.payload as MonitoringHeartbeatPayload);
         callbacks.onConnectionChange?.({
           status: "live",
           latestEventAt: envelope.emittedAt,
@@ -152,9 +146,7 @@ export function subscribeMonitoring(
       try {
         const envelope = JSON.parse(event.data) as MonitoringEvent;
         if (envelope.schemaVersion !== 1) return;
-        callbacks.onError?.(
-          envelope.payload as MonitoringErrorPayload,
-        );
+        callbacks.onError?.(envelope.payload as MonitoringErrorPayload);
         callbacks.onConnectionChange?.({
           status: "stale",
           latestEventAt: envelope.emittedAt,

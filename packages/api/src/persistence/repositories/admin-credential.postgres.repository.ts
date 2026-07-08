@@ -1,5 +1,8 @@
 import type { DatabasePool } from "../../db/pool.js";
-import type { AdminCredentialRecord, AdminCredentialRepository } from "./admin-credential.repository.js";
+import type {
+  AdminCredentialRecord,
+  AdminCredentialRepository,
+} from "./admin-credential.repository.js";
 import { requiredIsoString } from "./postgres-mappers.js";
 
 type AdminCredentialRow = {
@@ -12,7 +15,9 @@ type AdminCredentialRow = {
   password_changed_at: Date | string;
 };
 
-export function createPostgresAdminCredentialRepository(pool: DatabasePool): AdminCredentialRepository {
+export function createPostgresAdminCredentialRepository(
+  pool: DatabasePool,
+): AdminCredentialRepository {
   return {
     async get() {
       const result = await pool.query<AdminCredentialRow>(
@@ -36,7 +41,12 @@ export function createPostgresAdminCredentialRepository(pool: DatabasePool): Adm
              ELSE dashboard_admin_credentials.password_changed_at
            END
          RETURNING *`,
-        [input.passwordHash, input.passwordAlgorithm, input.passwordParams, now],
+        [
+          input.passwordHash,
+          input.passwordAlgorithm,
+          input.passwordParams,
+          now,
+        ],
       );
       return rowToCredential(result.rows[0]!);
     },

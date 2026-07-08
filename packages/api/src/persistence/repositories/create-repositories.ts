@@ -3,19 +3,37 @@ import type { Pool } from "pg";
 import type { AppConfig } from "../../config/app-config.js";
 import { createDatabasePool } from "../../db/pool.js";
 import { createVpsStore } from "../store/vpsStore.js";
-import { createJsonAdminCredentialRepository, type AdminCredentialRepository } from "./admin-credential.repository.js";
+import {
+  createJsonAdminCredentialRepository,
+  type AdminCredentialRepository,
+} from "./admin-credential.repository.js";
 import { createPostgresAdminCredentialRepository } from "./admin-credential.postgres.repository.js";
-import { createJsonAgentRepository, type AgentRepository } from "./agent.repository.js";
+import {
+  createJsonAgentRepository,
+  type AgentRepository,
+} from "./agent.repository.js";
 import { createPostgresAgentRepository } from "./agent.postgres.repository.js";
-import { createJsonAuditRepository, type AuditRepository } from "./audit.repository.js";
+import {
+  createJsonAuditRepository,
+  type AuditRepository,
+} from "./audit.repository.js";
 import { createPostgresAuditRepository } from "./audit.postgres.repository.js";
-import { createJsonJobRepository, type JobRepository } from "./job.repository.js";
+import {
+  createJsonJobRepository,
+  type JobRepository,
+} from "./job.repository.js";
 import { createPostgresJobRepository } from "./job.postgres.repository.js";
-import { createJsonMetricRepository, type MetricRepository } from "./metric.repository.js";
+import {
+  createJsonMetricRepository,
+  type MetricRepository,
+} from "./metric.repository.js";
 import { createPostgresMetricRepository } from "./metric.postgres.repository.js";
 import type { VpsRepository } from "./vps.repository.js";
 import { createPostgresVpsRepository } from "./vps.postgres.repository.js";
-import { createJsonSessionRepository, type SessionRepository } from "./session.repository.js";
+import {
+  createJsonSessionRepository,
+  type SessionRepository,
+} from "./session.repository.js";
 import { createPostgresSessionRepository } from "./session.postgres.repository.js";
 
 export type RepositorySet = {
@@ -35,7 +53,10 @@ export type RepositorySet = {
  * If `existingPool` is provided (e.g. from a caller that already created one),
  * it is reused instead of creating a new pool. The caller owns the pool's lifecycle.
  */
-export function createRepositories(config: AppConfig, existingPool?: Pool): RepositorySet {
+export function createRepositories(
+  config: AppConfig,
+  existingPool?: Pool,
+): RepositorySet {
   if (config.storageDriver === "postgres") {
     const pool = existingPool ?? createDatabasePool(config);
     return {
@@ -46,7 +67,7 @@ export function createRepositories(config: AppConfig, existingPool?: Pool): Repo
       metrics: createPostgresMetricRepository(pool),
       agent: createPostgresAgentRepository(pool),
       sessions: createPostgresSessionRepository(pool),
-      adminCredential: createPostgresAdminCredentialRepository(pool)
+      adminCredential: createPostgresAdminCredentialRepository(pool),
     };
   }
 
@@ -56,7 +77,11 @@ export function createRepositories(config: AppConfig, existingPool?: Pool): Repo
     jobs: createJsonJobRepository(join(config.dataDir, "jobs.json")),
     metrics: createJsonMetricRepository(join(config.dataDir, "metrics.json")),
     agent: createJsonAgentRepository(join(config.dataDir, "agents.json")),
-    sessions: createJsonSessionRepository(join(config.dataDir, "sessions.json")),
-    adminCredential: createJsonAdminCredentialRepository(join(config.dataDir, "admin-credential.json"))
+    sessions: createJsonSessionRepository(
+      join(config.dataDir, "sessions.json"),
+    ),
+    adminCredential: createJsonAdminCredentialRepository(
+      join(config.dataDir, "admin-credential.json"),
+    ),
   };
 }

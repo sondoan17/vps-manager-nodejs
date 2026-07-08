@@ -1,14 +1,29 @@
 import { nanoid } from "nanoid";
-import type { AgentCredential, AgentDockerMetrics, AgentState, AgentSystemInfo } from "../../agents/agent.models.js";
-import { readJsonFile, readModifyWriteJsonFile, withFileLock, writeJsonFile } from "./json-file.js";
+import type {
+  AgentCredential,
+  AgentDockerMetrics,
+  AgentState,
+  AgentSystemInfo,
+} from "../../agents/agent.models.js";
+import {
+  readJsonFile,
+  readModifyWriteJsonFile,
+  withFileLock,
+  writeJsonFile,
+} from "./json-file.js";
 
 // ── Type ────────────────────────────────────────────────────────────────
 
 export type AgentRepository = {
-  createCredential(input: Omit<AgentCredential, "id" | "createdAt"> & { id?: string }): Promise<AgentCredential>;
+  createCredential(
+    input: Omit<AgentCredential, "id" | "createdAt"> & { id?: string },
+  ): Promise<AgentCredential>;
   getCredential(id: string): Promise<AgentCredential | undefined>;
   listCredentialsByVps(vpsId: string): Promise<AgentCredential[]>;
-  updateCredential(id: string, patch: Partial<AgentCredential>): Promise<AgentCredential | undefined>;
+  updateCredential(
+    id: string,
+    patch: Partial<AgentCredential>,
+  ): Promise<AgentCredential | undefined>;
   revokeCredential(id: string): Promise<AgentCredential | undefined>;
 
   getState(vpsId: string): Promise<AgentState | undefined>;
@@ -36,7 +51,9 @@ type AgentFile = {
 
 // ── Factory ─────────────────────────────────────────────────────────────
 
-export function createJsonAgentRepository(filePath = "data/agents.json"): AgentRepository {
+export function createJsonAgentRepository(
+  filePath = "data/agents.json",
+): AgentRepository {
   return {
     async createCredential(input) {
       return readModifyWriteJsonFile<AgentFile>(
@@ -59,18 +76,27 @@ export function createJsonAgentRepository(filePath = "data/agents.json"): AgentR
     },
 
     async getCredential(id) {
-      const data = await readJsonFile<AgentFile>(filePath, { credentials: [], states: {} });
+      const data = await readJsonFile<AgentFile>(filePath, {
+        credentials: [],
+        states: {},
+      });
       return data.credentials.find((c) => c.id === id);
     },
 
     async listCredentialsByVps(vpsId) {
-      const data = await readJsonFile<AgentFile>(filePath, { credentials: [], states: {} });
+      const data = await readJsonFile<AgentFile>(filePath, {
+        credentials: [],
+        states: {},
+      });
       return data.credentials.filter((c) => c.vpsId === vpsId);
     },
 
     async updateCredential(id, patch) {
       return withFileLock(filePath, async () => {
-        const data = await readJsonFile<AgentFile>(filePath, { credentials: [], states: {} });
+        const data = await readJsonFile<AgentFile>(filePath, {
+          credentials: [],
+          states: {},
+        });
         const index = data.credentials.findIndex((c) => c.id === id);
         if (index === -1) return undefined;
         data.credentials[index] = { ...data.credentials[index], ...patch };
@@ -87,7 +113,10 @@ export function createJsonAgentRepository(filePath = "data/agents.json"): AgentR
     },
 
     async getState(vpsId) {
-      const data = await readJsonFile<AgentFile>(filePath, { credentials: [], states: {} });
+      const data = await readJsonFile<AgentFile>(filePath, {
+        credentials: [],
+        states: {},
+      });
       return data.states[vpsId];
     },
 
@@ -110,7 +139,11 @@ export function createJsonAgentRepository(filePath = "data/agents.json"): AgentR
         (data) => {
           if (!data.systemInfo) data.systemInfo = {};
           const current = data.systemInfo[info.vpsId];
-          if (current && new Date(current.collectedAt).getTime() > new Date(info.collectedAt).getTime()) {
+          if (
+            current &&
+            new Date(current.collectedAt).getTime() >
+              new Date(info.collectedAt).getTime()
+          ) {
             stored = current;
             return data;
           }
@@ -122,12 +155,18 @@ export function createJsonAgentRepository(filePath = "data/agents.json"): AgentR
     },
 
     async getSystemInfo(vpsId) {
-      const data = await readJsonFile<AgentFile>(filePath, { credentials: [], states: {} });
+      const data = await readJsonFile<AgentFile>(filePath, {
+        credentials: [],
+        states: {},
+      });
       return data.systemInfo?.[vpsId];
     },
 
     async listSystemInfo() {
-      const data = await readJsonFile<AgentFile>(filePath, { credentials: [], states: {} });
+      const data = await readJsonFile<AgentFile>(filePath, {
+        credentials: [],
+        states: {},
+      });
       return Object.values(data.systemInfo ?? {});
     },
 
@@ -139,7 +178,11 @@ export function createJsonAgentRepository(filePath = "data/agents.json"): AgentR
         (data) => {
           if (!data.dockerMetrics) data.dockerMetrics = {};
           const current = data.dockerMetrics[metrics.vpsId];
-          if (current && new Date(current.collectedAt).getTime() > new Date(metrics.collectedAt).getTime()) {
+          if (
+            current &&
+            new Date(current.collectedAt).getTime() >
+              new Date(metrics.collectedAt).getTime()
+          ) {
             stored = current;
             return data;
           }
@@ -152,12 +195,18 @@ export function createJsonAgentRepository(filePath = "data/agents.json"): AgentR
     },
 
     async getDockerMetrics(vpsId) {
-      const data = await readJsonFile<AgentFile>(filePath, { credentials: [], states: {} });
+      const data = await readJsonFile<AgentFile>(filePath, {
+        credentials: [],
+        states: {},
+      });
       return data.dockerMetrics?.[vpsId];
     },
 
     async listDockerMetrics() {
-      const data = await readJsonFile<AgentFile>(filePath, { credentials: [], states: {} });
+      const data = await readJsonFile<AgentFile>(filePath, {
+        credentials: [],
+        states: {},
+      });
       return Object.values(data.dockerMetrics ?? {});
     },
 

@@ -37,4 +37,6 @@ try {
 
 const stats = statSync(outputPath);
 const sizeKB = (stats.size / 1024).toFixed(1);
-console.log(`\n✓ Built: packages/agent/dist/vps-agent-linux-amd64 (${sizeKB} KB)`);
+console.log(
+  `\n✓ Built: packages/agent/dist/vps-agent-linux-amd64 (${sizeKB} KB)`,
+);

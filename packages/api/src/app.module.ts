@@ -1,4 +1,10 @@
-import { Inject, Module, Optional, type DynamicModule, type OnApplicationShutdown } from "@nestjs/common";
+import {
+  Inject,
+  Module,
+  Optional,
+  type DynamicModule,
+  type OnApplicationShutdown,
+} from "@nestjs/common";
 import { join } from "node:path";
 import type { Pool } from "pg";
 import { AuditService } from "./audit/audit.service.js";
@@ -33,9 +39,31 @@ import { AgentService } from "./agents/agent.service.js";
 import { VpsService } from "./vps/vps.service.js";
 import type { VpsRepository } from "./persistence/repositories/vps.repository.js";
 import { LocalAgentSupervisorService } from "./agents/local-agent-supervisor.service.js";
-import { ADMIN_CREDENTIAL_REPOSITORY, AGENT_REPOSITORY, APP_CONFIG, AUDIT_REPOSITORY, DATABASE_POOL, JOB_REPOSITORY, KEY_SERVICE, METRIC_REPOSITORY, SESSION_REPOSITORY, VPS_REPOSITORY } from "./tokens.js";
+import {
+  ADMIN_CREDENTIAL_REPOSITORY,
+  AGENT_REPOSITORY,
+  APP_CONFIG,
+  AUDIT_REPOSITORY,
+  DATABASE_POOL,
+  JOB_REPOSITORY,
+  KEY_SERVICE,
+  METRIC_REPOSITORY,
+  SESSION_REPOSITORY,
+  VPS_REPOSITORY,
+} from "./tokens.js";
 
-export { ADMIN_CREDENTIAL_REPOSITORY, AGENT_REPOSITORY, APP_CONFIG, AUDIT_REPOSITORY, DATABASE_POOL, JOB_REPOSITORY, KEY_SERVICE, METRIC_REPOSITORY, SESSION_REPOSITORY, VPS_REPOSITORY };
+export {
+  ADMIN_CREDENTIAL_REPOSITORY,
+  AGENT_REPOSITORY,
+  APP_CONFIG,
+  AUDIT_REPOSITORY,
+  DATABASE_POOL,
+  JOB_REPOSITORY,
+  KEY_SERVICE,
+  METRIC_REPOSITORY,
+  SESSION_REPOSITORY,
+  VPS_REPOSITORY,
+};
 
 const DATABASE_POOL_OWNS = Symbol("DATABASE_POOL_OWNS");
 
@@ -73,36 +101,85 @@ class DatabasePoolShutdown implements OnApplicationShutdown {
 
 export function createAppModule(deps: AppDependencies = {}): DynamicModule {
   const config = deps.config ?? loadAppConfig();
-  const needsRepositories = !deps.store || !deps.audit || !deps.jobs || !deps.metrics || !deps.agent || !deps.sessions || !deps.adminCredential;
-  const repositories = needsRepositories ? createRepositories(config, deps.pool) : undefined;
+  const needsRepositories =
+    !deps.store ||
+    !deps.audit ||
+    !deps.jobs ||
+    !deps.metrics ||
+    !deps.agent ||
+    !deps.sessions ||
+    !deps.adminCredential;
+  const repositories = needsRepositories
+    ? createRepositories(config, deps.pool)
+    : undefined;
   const pool = deps.pool ?? repositories?.pool;
-  const ownsPool = Boolean((deps.pool && deps.ownsPool) || (!deps.pool && repositories?.pool));
+  const ownsPool = Boolean(
+    (deps.pool && deps.ownsPool) || (!deps.pool && repositories?.pool),
+  );
 
   return {
     module: AppModule,
-    controllers: [HealthController, DashboardController, VpsController, JobsController, MetricsController, AuditController, MonitoringController, AgentController, AuthController],
+    controllers: [
+      HealthController,
+      DashboardController,
+      VpsController,
+      JobsController,
+      MetricsController,
+      AuditController,
+      MonitoringController,
+      AgentController,
+      AuthController,
+    ],
     providers: [
       { provide: APP_CONFIG, useValue: config },
       { provide: DATABASE_POOL, useValue: pool },
       { provide: DATABASE_POOL_OWNS, useValue: ownsPool },
       DatabasePoolShutdown,
       { provide: VPS_REPOSITORY, useValue: deps.store ?? repositories!.vps },
-      { provide: KEY_SERVICE, useValue: deps.keys ?? createKeyService(join(config.privateDir, "keys")) },
-      { provide: AUDIT_REPOSITORY, useValue: deps.audit ?? repositories!.audit },
+      {
+        provide: KEY_SERVICE,
+        useValue:
+          deps.keys ?? createKeyService(join(config.privateDir, "keys")),
+      },
+      {
+        provide: AUDIT_REPOSITORY,
+        useValue: deps.audit ?? repositories!.audit,
+      },
       { provide: JOB_REPOSITORY, useValue: deps.jobs ?? repositories!.jobs },
-      { provide: METRIC_REPOSITORY, useValue: deps.metrics ?? repositories!.metrics },
-      { provide: AGENT_REPOSITORY, useValue: deps.agent ?? repositories!.agent },
-      { provide: SESSION_REPOSITORY, useValue: deps.sessions ?? repositories!.sessions },
-      { provide: ADMIN_CREDENTIAL_REPOSITORY, useValue: deps.adminCredential ?? repositories!.adminCredential },
+      {
+        provide: METRIC_REPOSITORY,
+        useValue: deps.metrics ?? repositories!.metrics,
+      },
+      {
+        provide: AGENT_REPOSITORY,
+        useValue: deps.agent ?? repositories!.agent,
+      },
+      {
+        provide: SESSION_REPOSITORY,
+        useValue: deps.sessions ?? repositories!.sessions,
+      },
+      {
+        provide: ADMIN_CREDENTIAL_REPOSITORY,
+        useValue: deps.adminCredential ?? repositories!.adminCredential,
+      },
       DashboardSessionGuard,
       OriginGuard,
       AgentInstallerService,
       LocalAgentSupervisorService,
       {
         provide: AgentService,
-        inject: [AGENT_REPOSITORY, METRIC_REPOSITORY, VPS_REPOSITORY, APP_CONFIG],
-        useFactory: (agentRepo: AgentRepository, metricRepo: MetricRepository, vpsRepo: VpsRepository, appConfig: AppConfig) =>
-          new AgentService(agentRepo, metricRepo, vpsRepo, appConfig),
+        inject: [
+          AGENT_REPOSITORY,
+          METRIC_REPOSITORY,
+          VPS_REPOSITORY,
+          APP_CONFIG,
+        ],
+        useFactory: (
+          agentRepo: AgentRepository,
+          metricRepo: MetricRepository,
+          vpsRepo: VpsRepository,
+          appConfig: AppConfig,
+        ) => new AgentService(agentRepo, metricRepo, vpsRepo, appConfig),
       },
       AuditService,
       DashboardService,
@@ -113,13 +190,39 @@ export function createAppModule(deps: AppDependencies = {}): DynamicModule {
       {
         provide: SshService,
         inject: [APP_CONFIG, AuditService],
-        useFactory: (appConfig: AppConfig, audit: AuditService) => new SshService(appConfig, audit)
+        useFactory: (appConfig: AppConfig, audit: AuditService) =>
+          new SshService(appConfig, audit),
       },
       {
         provide: VpsService,
-        inject: [VPS_REPOSITORY, KEY_SERVICE, SshService, AuditService, APP_CONFIG, AgentInstallerService, AGENT_REPOSITORY],
-        useFactory: (store: VpsRepository, keys: KeyService, ssh: SshService, audit: AuditService, appConfig: AppConfig, installer: AgentInstallerService, agentRepo: AgentRepository) => new VpsService(store, keys, ssh, audit, appConfig, installer, agentRepo)
-      }
-    ]
+        inject: [
+          VPS_REPOSITORY,
+          KEY_SERVICE,
+          SshService,
+          AuditService,
+          APP_CONFIG,
+          AgentInstallerService,
+          AGENT_REPOSITORY,
+        ],
+        useFactory: (
+          store: VpsRepository,
+          keys: KeyService,
+          ssh: SshService,
+          audit: AuditService,
+          appConfig: AppConfig,
+          installer: AgentInstallerService,
+          agentRepo: AgentRepository,
+        ) =>
+          new VpsService(
+            store,
+            keys,
+            ssh,
+            audit,
+            appConfig,
+            installer,
+            agentRepo,
+          ),
+      },
+    ],
   };
 }

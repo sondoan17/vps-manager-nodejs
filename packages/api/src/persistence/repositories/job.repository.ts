@@ -8,9 +8,18 @@ type JobFile = { jobs: CommandJob[] };
 export type JobRepository = {
   list(page?: PaginationParams): Promise<CommandJob[]>;
   get(id: string): Promise<CommandJob | undefined>;
-  create(job: Omit<CommandJob, "id"> & { id?: string }, historyLimit?: number): Promise<CommandJob>;
-  update(id: string, patch: Partial<Omit<CommandJob, "id">>): Promise<CommandJob | undefined>;
-  append(job: Omit<CommandJob, "id"> & { id?: string }, historyLimit?: number): Promise<CommandJob>;
+  create(
+    job: Omit<CommandJob, "id"> & { id?: string },
+    historyLimit?: number,
+  ): Promise<CommandJob>;
+  update(
+    id: string,
+    patch: Partial<Omit<CommandJob, "id">>,
+  ): Promise<CommandJob | undefined>;
+  append(
+    job: Omit<CommandJob, "id"> & { id?: string },
+    historyLimit?: number,
+  ): Promise<CommandJob>;
 };
 
 /** Normalize jobs that may be missing progress/updatedAt from old files. */
@@ -64,7 +73,9 @@ function trimJobs(jobs: CommandJob[], historyLimit: number): CommandJob[] {
   return [...kept, ...active];
 }
 
-export function createJsonJobRepository(filePath = "data/jobs.json"): JobRepository {
+export function createJsonJobRepository(
+  filePath = "data/jobs.json",
+): JobRepository {
   return {
     async list(page) {
       const data = await readJsonFile<JobFile>(filePath, { jobs: [] });
@@ -105,7 +116,11 @@ export function createJsonJobRepository(filePath = "data/jobs.json"): JobReposit
         const data = await readJsonFile<JobFile>(filePath, { jobs: [] });
         const index = data.jobs.findIndex((j) => j.id === id);
         if (index === -1) return undefined;
-        data.jobs[index] = { ...data.jobs[index], ...patch, updatedAt: new Date().toISOString() };
+        data.jobs[index] = {
+          ...data.jobs[index],
+          ...patch,
+          updatedAt: new Date().toISOString(),
+        };
         await writeJsonFile(filePath, data);
         return data.jobs[index];
       });
@@ -113,6 +128,6 @@ export function createJsonJobRepository(filePath = "data/jobs.json"): JobReposit
 
     async append(input, historyLimit) {
       return this.create(input, historyLimit);
-    }
+    },
   };
 }

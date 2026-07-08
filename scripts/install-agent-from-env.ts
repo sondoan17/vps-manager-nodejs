@@ -53,7 +53,10 @@ function parseEnvFile(path: string) {
       .map((line) => {
         const index = line.indexOf("=");
         let value = line.slice(index + 1).trim();
-        if ((value.startsWith('"') && value.endsWith('"')) || (value.startsWith("'") && value.endsWith("'"))) {
+        if (
+          (value.startsWith('"') && value.endsWith('"')) ||
+          (value.startsWith("'") && value.endsWith("'"))
+        ) {
           value = value.slice(1, -1);
         }
         return [line.slice(0, index).trim(), value];
@@ -64,7 +67,13 @@ function parseEnvFile(path: string) {
 function same24(a: string, b: string) {
   const ap = a.split(".");
   const bp = b.split(".");
-  return ap.length === 4 && bp.length === 4 && ap[0] === bp[0] && ap[1] === bp[1] && ap[2] === bp[2];
+  return (
+    ap.length === 4 &&
+    bp.length === 4 &&
+    ap[0] === bp[0] &&
+    ap[1] === bp[1] &&
+    ap[2] === bp[2]
+  );
 }
 
 function chooseBackendUrl(vpsHost: string, configured?: string) {
@@ -77,7 +86,12 @@ function chooseBackendUrl(vpsHost: string, configured?: string) {
   return `http://${matchingLanIp || ips[0] || "127.0.0.1"}:3000`;
 }
 
-function connect(input: { host: string; port: number; username: string; password: string }) {
+function connect(input: {
+  host: string;
+  port: number;
+  username: string;
+  password: string;
+}) {
   return new Promise<Client>((resolve, reject) => {
     const client = new Client();
     client.once("ready", () => resolve(client));
@@ -88,28 +102,36 @@ function connect(input: { host: string; port: number; username: string; password
 
 function openSftp(client: Client) {
   return new Promise<SFTPWrapper>((resolve, reject) => {
-    client.sftp((error, sftp) => error ? reject(error) : resolve(sftp));
+    client.sftp((error, sftp) => (error ? reject(error) : resolve(sftp)));
   });
 }
 
 function mkdir(sftp: SFTPWrapper, path: string) {
   return new Promise<void>((resolve, reject) => {
     sftp.mkdir(path, { mode: 0o700 }, (error) => {
-      if (!error || Number((error as { code?: unknown })?.code) === 4) return resolve();
+      if (!error || Number((error as { code?: unknown })?.code) === 4)
+        return resolve();
       reject(error);
     });
   });
 }
 
-function writeRemoteFile(sftp: SFTPWrapper, path: string, data: string | Buffer, mode: number) {
+function writeRemoteFile(
+  sftp: SFTPWrapper,
+  path: string,
+  data: string | Buffer,
+  mode: number,
+) {
   return new Promise<void>((resolve, reject) => {
-    sftp.writeFile(path, data, { mode }, (error) => error ? reject(error) : resolve());
+    sftp.writeFile(path, data, { mode }, (error) =>
+      error ? reject(error) : resolve(),
+    );
   });
 }
 
 function chmod(sftp: SFTPWrapper, path: string, mode: number) {
   return new Promise<void>((resolve, reject) => {
-    sftp.chmod(path, mode, (error) => error ? reject(error) : resolve());
+    sftp.chmod(path, mode, (error) => (error ? reject(error) : resolve()));
   });
 }
 
@@ -137,7 +159,14 @@ function exec(client: Client, command: string, timeoutMs = 30_000) {
         settled = true;
         clearTimeout(timeout);
         if (code === 0) resolve({ stdout, stderr });
-        else reject(new Error(stderr.trim() || stdout.trim() || `Remote command failed with code ${code}`));
+        else
+          reject(
+            new Error(
+              stderr.trim() ||
+                stdout.trim() ||
+                `Remote command failed with code ${code}`,
+            ),
+          );
       });
     });
   });
@@ -157,7 +186,12 @@ async function createAgentToken(vpsId: string) {
       secretHash: createHash("sha256").update(secret).digest("hex"),
       status: "active",
     });
-    return { config, vps, token: `vma_${credential.id}_${secret}`, credentialId: credential.id };
+    return {
+      config,
+      vps,
+      token: `vma_${credential.id}_${secret}`,
+      credentialId: credential.id,
+    };
   } finally {
     if (pool) await pool.end();
   }
@@ -167,14 +201,20 @@ async function main() {
   if (process.argv.includes("--help")) usage();
   const vpsId = argValue("--vps-id");
   if (!vpsId) usage(1);
-  if (!existsSync(LOCAL_BINARY)) throw new Error(`Agent binary not found: ${LOCAL_BINARY}. Run npm run build:agent first.`);
+  if (!existsSync(LOCAL_BINARY))
+    throw new Error(
+      `Agent binary not found: ${LOCAL_BINARY}. Run npm run build:agent first.`,
+    );
 
   const env = parseEnvFile(".env.vps");
   const host = env.LOCAL_VPS_IP;
   const port = Number(env.LOCAL_VPS_PORT || 22);
   const username = env.LOCAL_VPS_USER;
   const password = env.LOCAL_VPS_PASSWORD;
-  if (!host || !port || !username || !password) throw new Error("Invalid .env.vps. Expected LOCAL_VPS_IP, LOCAL_VPS_PORT, LOCAL_VPS_USER, LOCAL_VPS_PASSWORD.");
+  if (!host || !port || !username || !password)
+    throw new Error(
+      "Invalid .env.vps. Expected LOCAL_VPS_IP, LOCAL_VPS_PORT, LOCAL_VPS_USER, LOCAL_VPS_PASSWORD.",
+    );
 
   const { config, vps, token, credentialId } = await createAgentToken(vpsId);
   const backendUrl = chooseBackendUrl(vps.host, config.agentPublicBaseUrl);
@@ -190,25 +230,49 @@ async function main() {
   try {
     const sftp = await openSftp(client);
     await mkdir(sftp, REMOTE_DIR);
-    await writeRemoteFile(sftp, REMOTE_BINARY, readFileSync(LOCAL_BINARY), 0o700);
+    await writeRemoteFile(
+      sftp,
+      REMOTE_BINARY,
+      readFileSync(LOCAL_BINARY),
+      0o700,
+    );
     await chmod(sftp, REMOTE_BINARY, 0o700);
-    await writeRemoteFile(sftp, REMOTE_CONFIG, `${JSON.stringify(agentConfig, null, 2)}\n`, 0o600);
+    await writeRemoteFile(
+      sftp,
+      REMOTE_CONFIG,
+      `${JSON.stringify(agentConfig, null, 2)}\n`,
+      0o600,
+    );
     await chmod(sftp, REMOTE_CONFIG, 0o600);
-    const result = await exec(client, `${REMOTE_BINARY} -config ${REMOTE_CONFIG} -once`, 45_000);
-    console.log(JSON.stringify({
-      installed: true,
-      vpsId,
-      credentialId,
-      remoteDir: REMOTE_DIR,
-      backendUrl,
-      agentOutput: result.stdout.trim() || "completed",
-    }, null, 2));
+    const result = await exec(
+      client,
+      `${REMOTE_BINARY} -config ${REMOTE_CONFIG} -once`,
+      45_000,
+    );
+    console.log(
+      JSON.stringify(
+        {
+          installed: true,
+          vpsId,
+          credentialId,
+          remoteDir: REMOTE_DIR,
+          backendUrl,
+          agentOutput: result.stdout.trim() || "completed",
+        },
+        null,
+        2,
+      ),
+    );
   } finally {
     client.end();
   }
 }
 
 main().catch((error: unknown) => {
-  console.error(error instanceof Error ? error.message.replace(/vma_[A-Za-z0-9_]+/g, "[redacted-token]") : "Agent install failed");
+  console.error(
+    error instanceof Error
+      ? error.message.replace(/vma_[A-Za-z0-9_]+/g, "[redacted-token]")
+      : "Agent install failed",
+  );
   process.exit(1);
 });

@@ -11,7 +11,10 @@ function parseEnv(file) {
       .map((line) => {
         const index = line.indexOf("=");
         let value = line.slice(index + 1).trim();
-        if ((value.startsWith('"') && value.endsWith('"')) || (value.startsWith("'") && value.endsWith("'"))) {
+        if (
+          (value.startsWith('"') && value.endsWith('"')) ||
+          (value.startsWith("'") && value.endsWith("'"))
+        ) {
           value = value.slice(1, -1);
         }
         return [line.slice(0, index).trim(), value];
@@ -32,7 +35,9 @@ const payload = {
 };
 
 if (!payload.host || !payload.username || !Number.isInteger(payload.port)) {
-  throw new Error("Invalid .env.vps: expected LOCAL_VPS_IP, LOCAL_VPS_PORT, LOCAL_VPS_USER");
+  throw new Error(
+    "Invalid .env.vps: expected LOCAL_VPS_IP, LOCAL_VPS_PORT, LOCAL_VPS_USER",
+  );
 }
 
 const baseUrl = process.env.VPS_MANAGER_URL || "http://localhost:3000";
@@ -44,19 +49,28 @@ if (!listResponse.ok) {
 }
 
 const existing = (listPayload.data || []).find(
-  (vps) => vps.host === payload.host && Number(vps.port) === payload.port && vps.username === payload.username,
+  (vps) =>
+    vps.host === payload.host &&
+    Number(vps.port) === payload.port &&
+    vps.username === payload.username,
 );
 
 if (existing) {
-  console.log(JSON.stringify({
-    action: "exists",
-    id: existing.id,
-    name: existing.name,
-    host: existing.host,
-    port: existing.port,
-    username: existing.username,
-    keyProvisioned: Boolean(existing.keyProvisionedAt),
-  }, null, 2));
+  console.log(
+    JSON.stringify(
+      {
+        action: "exists",
+        id: existing.id,
+        name: existing.name,
+        host: existing.host,
+        port: existing.port,
+        username: existing.username,
+        keyProvisioned: Boolean(existing.keyProvisionedAt),
+      },
+      null,
+      2,
+    ),
+  );
   process.exit(0);
 }
 
@@ -68,17 +82,32 @@ const createResponse = await fetch(`${baseUrl}/api/vps`, {
 const createPayload = await createResponse.json().catch(() => ({}));
 
 if (!createResponse.ok) {
-  console.error(JSON.stringify({ status: createResponse.status, error: createPayload.error || createPayload }, null, 2));
+  console.error(
+    JSON.stringify(
+      {
+        status: createResponse.status,
+        error: createPayload.error || createPayload,
+      },
+      null,
+      2,
+    ),
+  );
   process.exit(1);
 }
 
 const vps = createPayload.data;
-console.log(JSON.stringify({
-  action: "created",
-  id: vps.id,
-  name: vps.name,
-  host: vps.host,
-  port: vps.port,
-  username: vps.username,
-  passwordStored: false,
-}, null, 2));
+console.log(
+  JSON.stringify(
+    {
+      action: "created",
+      id: vps.id,
+      name: vps.name,
+      host: vps.host,
+      port: vps.port,
+      username: vps.username,
+      passwordStored: false,
+    },
+    null,
+    2,
+  ),
+);

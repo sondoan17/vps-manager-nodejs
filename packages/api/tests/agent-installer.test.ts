@@ -56,7 +56,8 @@ afterEach(async () => {
       await rm(tempDir, { recursive: true, force: true });
       break;
     } catch {
-      if (attempt === 4) throw new Error(`Failed to cleanup ${tempDir} after 5 attempts`);
+      if (attempt === 4)
+        throw new Error(`Failed to cleanup ${tempDir} after 5 attempts`);
       await new Promise((r) => setTimeout(r, 100));
     }
   }
@@ -83,7 +84,11 @@ async function createMockBinary(): Promise<string> {
 function app(overrides?: Partial<AppConfig>): ReturnType<typeof createApp> {
   const config = { ...localConfig, ...overrides };
   return createApp({
-    config: { ...config, dataDir: join(tempDir, "data"), privateDir: join(tempDir, "private") },
+    config: {
+      ...config,
+      dataDir: join(tempDir, "data"),
+      privateDir: join(tempDir, "private"),
+    },
     store: vpsRepo,
     keys,
     audit: createJsonAuditRepository(join(tempDir, "data", "audit.json")),
@@ -98,29 +103,41 @@ describe("POST /api/vps/:id/install-agent", () => {
 
   beforeEach(async () => {
     const { createSessionCookie } = await import("./test-helpers.js");
-    sessionCookie = await createSessionCookie(tempDir, localConfig.dashboardSessionSecret);
+    sessionCookie = await createSessionCookie(
+      tempDir,
+      localConfig.dashboardSessionSecret,
+    );
   });
 
   const origin = "http://127.0.0.1";
-  const withCookie = (req: request.Test) => req.set("Cookie", sessionCookie).set("Origin", origin).set("Host", "127.0.0.1");
+  const withCookie = (req: request.Test) =>
+    req
+      .set("Cookie", sessionCookie)
+      .set("Origin", origin)
+      .set("Host", "127.0.0.1");
 
   it("returns 401 without auth token", async () => {
     const vpsId = await createVps();
-    await request(app()).post(`/api/vps/${vpsId}/install-agent`).send({}).expect(401);
+    await request(app())
+      .post(`/api/vps/${vpsId}/install-agent`)
+      .send({})
+      .expect(401);
   });
 
   it("returns 404 for nonexistent VPS", async () => {
     await withCookie(
-      request(app()).post("/api/vps/nonexistent/install-agent").send({})
+      request(app()).post("/api/vps/nonexistent/install-agent").send({}),
     ).expect(404);
   });
 
   it("fails with 409 when agent state is already installing", async () => {
     const vpsId = await createVps();
-    const agentRepo = createJsonAgentRepository(join(tempDir, "data", "agents.json"));
+    const agentRepo = createJsonAgentRepository(
+      join(tempDir, "data", "agents.json"),
+    );
     await agentRepo.upsertState({ vpsId, status: "installing" });
     await withCookie(
-      request(app()).post(`/api/vps/${vpsId}/install-agent`).send({})
+      request(app()).post(`/api/vps/${vpsId}/install-agent`).send({}),
     ).expect(409);
   });
 
@@ -130,7 +147,7 @@ describe("POST /api/vps/:id/install-agent", () => {
       request(app({ agentPublicBaseUrl: undefined }))
         .post(`/api/vps/${vpsId}/install-agent`)
         .set("Host", "localhost:3000")
-        .send({})
+        .send({}),
     ).expect(400);
   });
 
@@ -138,9 +155,15 @@ describe("POST /api/vps/:id/install-agent", () => {
     const binaryPath = await createMockBinary();
     const vpsId = await createVps();
     await withCookie(
-      request(app({ agentBinaryPath: binaryPath, agentPublicBaseUrl: "http://example.com:3000", allowInsecureAgentHttp: true }))
+      request(
+        app({
+          agentBinaryPath: binaryPath,
+          agentPublicBaseUrl: "http://example.com:3000",
+          allowInsecureAgentHttp: true,
+        }),
+      )
         .post(`/api/vps/${vpsId}/install-agent`)
-        .send({})
+        .send({}),
     ).expect(400);
   });
 
@@ -149,9 +172,15 @@ describe("POST /api/vps/:id/install-agent", () => {
     const vpsId = await createVps();
     await vpsRepo.markKeyProvisioned(vpsId);
     await withCookie(
-      request(app({ agentBinaryPath: binaryPath, agentPublicBaseUrl: "http://example.com:3000", allowInsecureAgentHttp: true }))
+      request(
+        app({
+          agentBinaryPath: binaryPath,
+          agentPublicBaseUrl: "http://example.com:3000",
+          allowInsecureAgentHttp: true,
+        }),
+      )
         .post(`/api/vps/${vpsId}/install-agent`)
-        .send({})
+        .send({}),
     ).expect(400);
   });
 
@@ -161,10 +190,14 @@ describe("POST /api/vps/:id/install-agent", () => {
     await keys.ensureKeyPair(vpsId);
     await vpsRepo.markKeyProvisioned(vpsId);
 
-    const server = app({ agentBinaryPath: binaryPath, agentPublicBaseUrl: "http://example.com:3000", allowInsecureAgentHttp: true });
+    const server = app({
+      agentBinaryPath: binaryPath,
+      agentPublicBaseUrl: "http://example.com:3000",
+      allowInsecureAgentHttp: true,
+    });
 
     const res = await withCookie(
-      request(server).post(`/api/vps/${vpsId}/install-agent`).send({})
+      request(server).post(`/api/vps/${vpsId}/install-agent`).send({}),
     );
     expect(res.status).toBe(201);
     expect(res.body.data.jobId).toBeDefined();
@@ -174,17 +207,25 @@ describe("POST /api/vps/:id/install-agent", () => {
   it("accepts install with password auth and returns job/state", async () => {
     const binaryPath = await createMockBinary();
     const vpsId = await createVps();
-    const server = app({ agentBinaryPath: binaryPath, agentPublicBaseUrl: "http://example.com:3000", allowInsecureAgentHttp: true });
+    const server = app({
+      agentBinaryPath: binaryPath,
+      agentPublicBaseUrl: "http://example.com:3000",
+      allowInsecureAgentHttp: true,
+    });
 
     const res = await withCookie(
-      request(server).post(`/api/vps/${vpsId}/install-agent`).send({ password: "test-pass" })
+      request(server)
+        .post(`/api/vps/${vpsId}/install-agent`)
+        .send({ password: "test-pass" }),
     );
     expect(res.status).toBe(201);
     expect(res.body.data.jobId).toMatch(/^job_/);
     expect(res.body.data.state.status).toBe("installing");
     expect(JSON.stringify(res.body)).not.toContain("vma_");
 
-    const agentRepo = createJsonAgentRepository(join(tempDir, "data", "agents.json"));
+    const agentRepo = createJsonAgentRepository(
+      join(tempDir, "data", "agents.json"),
+    );
     const state = await agentRepo.getState(vpsId);
     expect(state).toBeDefined();
     expect(state!.status).toBe("installing");
@@ -193,18 +234,30 @@ describe("POST /api/vps/:id/install-agent", () => {
   it("no raw token in responses", async () => {
     const binaryPath = await createMockBinary();
     const vpsId = await createVps();
-    const server = app({ agentBinaryPath: binaryPath, agentPublicBaseUrl: "http://example.com:3000", allowInsecureAgentHttp: true });
+    const server = app({
+      agentBinaryPath: binaryPath,
+      agentPublicBaseUrl: "http://example.com:3000",
+      allowInsecureAgentHttp: true,
+    });
 
     const res = await withCookie(
-      request(server).post(`/api/vps/${vpsId}/install-agent`).send({ password: "test-pass" })
+      request(server)
+        .post(`/api/vps/${vpsId}/install-agent`)
+        .send({ password: "test-pass" }),
     );
     expect(res.status).toBe(201);
     expect(JSON.stringify(res.body)).not.toContain("vma_");
 
-    const auditRes = await request(server).get("/api/audit").set("Cookie", sessionCookie).expect(200);
+    const auditRes = await request(server)
+      .get("/api/audit")
+      .set("Cookie", sessionCookie)
+      .expect(200);
     expect(JSON.stringify(auditRes.body)).not.toContain("vma_");
 
-    const jobsRes = await request(server).get("/api/jobs").set("Cookie", sessionCookie).expect(200);
+    const jobsRes = await request(server)
+      .get("/api/jobs")
+      .set("Cookie", sessionCookie)
+      .expect(200);
     expect(JSON.stringify(jobsRes.body)).not.toContain("vma_");
   });
 });

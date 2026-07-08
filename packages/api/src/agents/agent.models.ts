@@ -95,7 +95,13 @@ export type AgentDockerMetricsInput = {
   agentVersion?: string;
   schemaVersion: 1;
   available: boolean;
-  errorCode?: "socket_missing" | "permission_denied" | "timeout" | "daemon_unreachable" | "unsupported_os" | "bad_response";
+  errorCode?:
+    | "socket_missing"
+    | "permission_denied"
+    | "timeout"
+    | "daemon_unreachable"
+    | "unsupported_os"
+    | "bad_response";
   containerTotal: number;
   containerRunning: number;
   cpuPercent: number;

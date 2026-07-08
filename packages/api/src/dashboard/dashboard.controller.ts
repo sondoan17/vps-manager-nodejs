@@ -6,7 +6,9 @@ import { DashboardService } from "./dashboard.service.js";
 @Controller("api/dashboard")
 @UseGuards(DashboardSessionGuard, OriginGuard)
 export class DashboardController {
-  constructor(@Inject(DashboardService) private readonly dashboard: DashboardService) {}
+  constructor(
+    @Inject(DashboardService) private readonly dashboard: DashboardService,
+  ) {}
 
   @Get()
   async overview() {

@@ -1,4 +1,7 @@
-import type { AgentDockerMetrics, AgentSystemInfo } from "../agents/agent.models.js";
+import type {
+  AgentDockerMetrics,
+  AgentSystemInfo,
+} from "../agents/agent.models.js";
 import type { AuditEvent } from "../audit/audit.models.js";
 import type { CommandJob } from "../jobs/jobs.models.js";
 import type { MetricSample } from "../metrics/metrics.models.js";

@@ -30,17 +30,23 @@ function migrateToNew(old: OldMetricFile): MetricFile {
   // Sort by collectedAt (oldest first) and cap to default limit
   for (const vpsId of Object.keys(windows)) {
     windows[vpsId].sort(
-      (a, b) => new Date(a.collectedAt).getTime() - new Date(b.collectedAt).getTime(),
+      (a, b) =>
+        new Date(a.collectedAt).getTime() - new Date(b.collectedAt).getTime(),
     );
     if (windows[vpsId].length > DEFAULT_WINDOW_CAP) {
-      windows[vpsId] = windows[vpsId].slice(windows[vpsId].length - DEFAULT_WINDOW_CAP);
+      windows[vpsId] = windows[vpsId].slice(
+        windows[vpsId].length - DEFAULT_WINDOW_CAP,
+      );
     }
   }
   return { latest, windows };
 }
 
 async function readMetricFile(filePath: string): Promise<MetricFile> {
-  const data = await readJsonFile<unknown>(filePath, { latest: {}, windows: {} });
+  const data = await readJsonFile<unknown>(filePath, {
+    latest: {},
+    windows: {},
+  });
   if (isOldFormat(data)) {
     return migrateToNew(data);
   }
@@ -63,7 +69,10 @@ function sortLatestDesc(samples: MetricSample[]): MetricSample[] {
   });
 }
 
-function applyPage(samples: MetricSample[], page?: PaginationParams): MetricSample[] {
+function applyPage(
+  samples: MetricSample[],
+  page?: PaginationParams,
+): MetricSample[] {
   if (!page) return samples;
   return samples.slice(page.offset, page.offset + page.limit);
 }
@@ -90,7 +99,9 @@ export type MetricRepository = {
 
 // ── Factory ────────────────────────────────────────────────────────────
 
-export function createJsonMetricRepository(filePath = "data/metrics.json"): MetricRepository {
+export function createJsonMetricRepository(
+  filePath = "data/metrics.json",
+): MetricRepository {
   return {
     async list(page) {
       const data = await readMetricFile(filePath);
@@ -103,7 +114,10 @@ export function createJsonMetricRepository(filePath = "data/metrics.json"): Metr
         data.latest[sample.vpsId] = sample;
         if (!data.windows[sample.vpsId]) data.windows[sample.vpsId] = [];
         data.windows[sample.vpsId].push(sample);
-        data.windows[sample.vpsId] = capWindow(data.windows[sample.vpsId], windowCap);
+        data.windows[sample.vpsId] = capWindow(
+          data.windows[sample.vpsId],
+          windowCap,
+        );
         await writeJsonFile(filePath, data);
         return sample;
       });
@@ -133,7 +147,10 @@ export function createJsonMetricRepository(filePath = "data/metrics.json"): Metr
         const data = await readMetricFile(filePath);
         if (!data.windows[sample.vpsId]) data.windows[sample.vpsId] = [];
         data.windows[sample.vpsId].push(sample);
-        data.windows[sample.vpsId] = capWindow(data.windows[sample.vpsId], limit);
+        data.windows[sample.vpsId] = capWindow(
+          data.windows[sample.vpsId],
+          limit,
+        );
         await writeJsonFile(filePath, data);
       });
     },
@@ -146,6 +163,6 @@ export function createJsonMetricRepository(filePath = "data/metrics.json"): Metr
         return window.slice(window.length - limit);
       }
       return [...window];
-    }
+    },
   };
 }

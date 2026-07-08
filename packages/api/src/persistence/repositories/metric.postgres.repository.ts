@@ -1,8 +1,16 @@
 import { withTransaction, type DatabasePool } from "../../db/pool.js";
-import type { MetricSample, MetricTrend } from "../../metrics/metrics.models.js";
+import type {
+  MetricSample,
+  MetricTrend,
+} from "../../metrics/metrics.models.js";
 import type { PaginationParams } from "../../common/pagination.js";
 import type { MetricRepository } from "./metric.repository.js";
-import { optionalIsoString, requiredIsoString, toDateOrNull, toJsonOrNull } from "./postgres-mappers.js";
+import {
+  optionalIsoString,
+  requiredIsoString,
+  toDateOrNull,
+  toJsonOrNull,
+} from "./postgres-mappers.js";
 
 const DEFAULT_WINDOW_CAP = 120;
 
@@ -25,11 +33,18 @@ type MetricRow = {
   trend: MetricTrend | null;
 };
 
-export function createPostgresMetricRepository(pool: DatabasePool): MetricRepository {
+export function createPostgresMetricRepository(
+  pool: DatabasePool,
+): MetricRepository {
   async function listLatest(page?: PaginationParams): Promise<MetricSample[]> {
     const result = page
-      ? await pool.query<MetricRow>("SELECT * FROM metric_latest ORDER BY effective_at DESC, vps_id DESC LIMIT $1 OFFSET $2", [page.limit, page.offset])
-      : await pool.query<MetricRow>("SELECT * FROM metric_latest ORDER BY effective_at DESC, vps_id DESC");
+      ? await pool.query<MetricRow>(
+          "SELECT * FROM metric_latest ORDER BY effective_at DESC, vps_id DESC LIMIT $1 OFFSET $2",
+          [page.limit, page.offset],
+        )
+      : await pool.query<MetricRow>(
+          "SELECT * FROM metric_latest ORDER BY effective_at DESC, vps_id DESC",
+        );
     return result.rows.map(rowToMetricSample);
   }
 
@@ -47,7 +62,10 @@ export function createPostgresMetricRepository(pool: DatabasePool): MetricReposi
     },
     listLatest,
     async getLatest(vpsId) {
-      const result = await pool.query<MetricRow>("SELECT * FROM metric_latest WHERE vps_id = $1", [vpsId]);
+      const result = await pool.query<MetricRow>(
+        "SELECT * FROM metric_latest WHERE vps_id = $1",
+        [vpsId],
+      );
       return result.rows[0] ? rowToMetricSample(result.rows[0]) : undefined;
     },
     async upsertLatest(sample) {
@@ -64,10 +82,10 @@ export function createPostgresMetricRepository(pool: DatabasePool): MetricReposi
         `SELECT * FROM (
           SELECT * FROM metric_samples WHERE vps_id = $1 ORDER BY effective_at DESC, id DESC LIMIT $2
         ) recent ORDER BY effective_at ASC, id ASC`,
-        [vpsId, effectiveLimit]
+        [vpsId, effectiveLimit],
       );
       return result.rows.map(rowToMetricSample);
-    }
+    },
   };
 }
 
@@ -78,7 +96,10 @@ function normalizeWindowLimit(limit: number): number {
   return limit;
 }
 
-async function insertSample(client: Pick<DatabasePool, "query">, sample: MetricSample): Promise<{ id: string | number | bigint | null }> {
+async function insertSample(
+  client: Pick<DatabasePool, "query">,
+  sample: MetricSample,
+): Promise<{ id: string | number | bigint | null }> {
   const result = await client.query<{ id: string | number | bigint }>(
     `INSERT INTO metric_samples (vps_id, cpu, memory, disk, load_average, network_rx, network_tx, uptime,
       collected_at, received_at, effective_at, source, agent_version, trend)
@@ -96,12 +117,16 @@ async function insertSample(client: Pick<DatabasePool, "query">, sample: MetricS
        agent_version = EXCLUDED.agent_version,
        trend = EXCLUDED.trend
      RETURNING id`,
-    metricValues(sample)
+    metricValues(sample),
   );
   return { id: result.rows[0]?.id ?? null };
 }
 
-async function upsertLatest(client: Pick<DatabasePool, "query">, sample: MetricSample, sampleId: string | number | bigint | null) {
+async function upsertLatest(
+  client: Pick<DatabasePool, "query">,
+  sample: MetricSample,
+  sampleId: string | number | bigint | null,
+) {
   await client.query(
     `INSERT INTO metric_latest (vps_id, sample_id, cpu, memory, disk, load_average, network_rx, network_tx, uptime,
       collected_at, received_at, effective_at, source, agent_version, trend, updated_at)
@@ -123,7 +148,7 @@ async function upsertLatest(client: Pick<DatabasePool, "query">, sample: MetricS
        trend = EXCLUDED.trend,
        updated_at = now()
      WHERE metric_latest.effective_at <= EXCLUDED.effective_at`,
-    [...metricValues(sample), sampleId]
+    [...metricValues(sample), sampleId],
   );
 }
 
@@ -143,7 +168,7 @@ function metricValues(sample: MetricSample): unknown[] {
     new Date(effectiveAt),
     sample.source ?? null,
     sample.agentVersion ?? null,
-    toJsonOrNull(sample.trend)
+    toJsonOrNull(sample.trend),
   ];
 }
 
@@ -161,6 +186,6 @@ function rowToMetricSample(row: MetricRow): MetricSample {
     receivedAt: optionalIsoString(row.received_at),
     source: row.source ?? undefined,
     agentVersion: row.agent_version ?? undefined,
-    trend: row.trend ?? undefined
+    trend: row.trend ?? undefined,
   };
 }

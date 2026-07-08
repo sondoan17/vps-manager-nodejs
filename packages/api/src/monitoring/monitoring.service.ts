@@ -1,11 +1,15 @@
-import { Inject, Injectable } from "@nestjs/common";
+import { Inject, Injectable, Logger } from "@nestjs/common";
 import type { Response } from "express";
 import { nanoid } from "nanoid";
 import type { AppConfig } from "../config/app-config.js";
 import { DashboardService } from "../dashboard/dashboard.service.js";
 import { demoServers, getDemoMetrics } from "../demo/demo-fixtures.js";
 import type { AuditEvent } from "../audit/audit.models.js";
-import type { DashboardJob, DashboardMetricSample, DashboardOverview } from "../dashboard/dashboard.models.js";
+import type {
+  DashboardJob,
+  DashboardMetricSample,
+  DashboardOverview,
+} from "../dashboard/dashboard.models.js";
 import type { AgentDockerMetrics } from "../agents/agent.models.js";
 import type { MetricSample } from "../metrics/metrics.models.js";
 import type { VpsRecord } from "../vps/vps.models.js";
@@ -31,7 +35,11 @@ type SnapshotPayload = {
   metrics: DashboardMetricSample[];
   auditEvents: AuditEvent[];
 };
-type MetricsUpdatedPayload = { metrics: DashboardMetricSample[]; systemInfo?: DashboardOverview["systemInfo"]; dockerMetrics?: AgentDockerMetrics[] };
+type MetricsUpdatedPayload = {
+  metrics: DashboardMetricSample[];
+  systemInfo?: DashboardOverview["systemInfo"];
+  dockerMetrics?: AgentDockerMetrics[];
+};
 type HeartbeatPayload = Record<string, never>;
 type ErrorPayload = { message: string };
 
@@ -86,9 +94,19 @@ function evolveMetric(state: MetricState, isStale: boolean): MetricState {
   const nextCpu = clamp(Math.round(state.cpu + step()), 0, 100);
   const nextMem = clamp(Math.round(state.memory + step()), 0, 100);
   const nextDisk = clamp(Math.round(state.disk + step() * 0.3), 0, 100);
-  const nextLoad = clamp(Math.round((state.loadAverage + gaussianNoise() * 0.15) * 100) / 100, 0, 8);
-  const nextRx = Math.max(0, Math.round(state.networkRx + gaussianNoise() * 8000));
-  const nextTx = Math.max(0, Math.round(state.networkTx + gaussianNoise() * 5000));
+  const nextLoad = clamp(
+    Math.round((state.loadAverage + gaussianNoise() * 0.15) * 100) / 100,
+    0,
+    8,
+  );
+  const nextRx = Math.max(
+    0,
+    Math.round(state.networkRx + gaussianNoise() * 8000),
+  );
+  const nextTx = Math.max(
+    0,
+    Math.round(state.networkTx + gaussianNoise() * 5000),
+  );
   const nextUptime = state.uptime + 1; // seconds
 
   // Roll trend: keep at most 60 points, remove oldest
@@ -158,7 +176,10 @@ function sendEvent(res: Response, type: string, data: unknown): void {
 /** 2 minutes in ms — samples older than this are considered stale. */
 export const STALE_THRESHOLD_MS = 120_000;
 
-export function isFreshTimestamp(timestamp: string, thresholdMs = STALE_THRESHOLD_MS): boolean {
+export function isFreshTimestamp(
+  timestamp: string,
+  thresholdMs = STALE_THRESHOLD_MS,
+): boolean {
   return Date.now() - new Date(timestamp).getTime() < thresholdMs;
 }
 
@@ -166,6 +187,7 @@ export function isFreshTimestamp(timestamp: string, thresholdMs = STALE_THRESHOL
 
 @Injectable()
 export class MonitoringService {
+  private readonly logger = new Logger(MonitoringService.name);
   private readonly intervalMs: number;
   private readonly staleThresholdMs = 120_000; // 2 min stale
 
@@ -174,9 +196,11 @@ export class MonitoringService {
 
   constructor(
     @Inject(APP_CONFIG) private readonly config: AppConfig,
-    @Inject(DashboardService) private readonly dashboardService: DashboardService,
+    @Inject(DashboardService)
+    private readonly dashboardService: DashboardService,
     @Inject(MetricService) private readonly metricService: MetricService,
-    @Inject(METRIC_REPOSITORY) private readonly metricRepository: MetricRepository,
+    @Inject(METRIC_REPOSITORY)
+    private readonly metricRepository: MetricRepository,
   ) {
     this.intervalMs = this.config.mode === "demo" ? 1_500 : 5_000;
   }
@@ -196,7 +220,10 @@ export class MonitoringService {
     res.flushHeaders();
 
     // Hello
-    sendEvent(res, "monitoring.hello", { mode: this.config.mode, intervalMs: this.intervalMs });
+    sendEvent(res, "monitoring.hello", {
+      mode: this.config.mode,
+      intervalMs: this.intervalMs,
+    });
 
     // Snapshot
     const overview = await this.dashboardService.overview();
@@ -295,12 +322,219 @@ export class MonitoringService {
         const metrics = await this.metricService.list();
         const updatedMetrics: DashboardMetricSample[] = metrics.map((m) => ({
           ...m,
-          freshness: isFreshTimestamp(m.receivedAt ?? m.collectedAt, this.staleThresholdMs) ? "fresh" : "stale",
+          freshness: isFreshTimestamp(
+            m.receivedAt ?? m.collectedAt,
+            this.staleThresholdMs,
+          )
+            ? "fresh"
+            : "stale",
         }));
 
         if (updatedMetrics.length > 0) {
           const overview = await this.dashboardService.overview();
-          sendEvent(res, "metrics.updated", { metrics: updatedMetrics, systemInfo: overview.systemInfo, dockerMetrics: overview.dockerMetrics });
+          sendEvent(res, "metrics.updated", {
+            metrics: updatedMetrics,
+            systemInfo: overview.systemInfo,
+            dockerMetrics: overview.dockerMetrics,
+          });
+        }
+
+        sendEvent(res, "monitoring.heartbeat", {});
+      } catch {
+        clearInterval(interval);
+      }
+    }, this.intervalMs);
+
+    res.on("close", () => {
+      clearInterval(interval);
+    });
+
+    const keepAlive = setInterval(() => {
+      if (res.destroyed) {
+        clearInterval(keepAlive);
+        return;
+      }
+      res.write(": keepalive\n\n");
+    }, 15_000);
+
+    res.on("close", () => {
+      clearInterval(keepAlive);
+    });
+  }
+
+  /**
+   * Stream SSE events scoped to a single VPS.
+   * The caller (controller) must validate VPS existence before calling this.
+   */
+  async streamForVps(res: Response, vpsId: string): Promise<void> {
+    // SSE headers
+    res.writeHead(200, {
+      "Content-Type": "text/event-stream",
+      "Cache-Control": "no-cache, no-transform",
+      Connection: "keep-alive",
+    });
+    res.flushHeaders();
+
+    // Hello
+    sendEvent(res, "monitoring.hello", {
+      mode: this.config.mode,
+      intervalMs: this.intervalMs,
+    });
+
+    // Build and send filtered snapshot
+    const overview = await this.dashboardService.overview();
+    const vps = overview.servers.find((s) => s.id === vpsId);
+    if (!vps) {
+      sendEvent(res, "monitoring.error", { message: "VPS not found" });
+      res.end();
+      return;
+    }
+
+    const filteredMetrics = overview.metrics.filter((m) => m.vpsId === vpsId);
+    const filteredJobs = overview.jobs.filter((j) => j.vpsId === vpsId);
+    const vpsJobIds = new Set(filteredJobs.map((j) => j.id));
+    const filteredAudit = overview.auditEvents.filter(
+      (e) =>
+        e.resourceId === vpsId ||
+        (e.jobId != null && vpsJobIds.has(e.jobId)) ||
+        (e.resourceId != null && vpsJobIds.has(e.resourceId)) ||
+        e.serverLabel === vps.name,
+    );
+    const filteredSystemInfo = (overview.systemInfo ?? []).filter(
+      (s) => s.vpsId === vpsId,
+    );
+    const filteredDockerMetrics = (overview.dockerMetrics ?? []).filter(
+      (d) => d.vpsId === vpsId,
+    );
+
+    const filteredOverview: DashboardOverview = {
+      ...overview,
+      summary: {
+        totalServers: 1,
+        healthyServers: vps.status === "healthy" ? 1 : 0,
+        warningServers: vps.status === "warning" ? 1 : 0,
+        unreachableServers: vps.status === "unreachable" ? 1 : 0,
+        runningJobs: filteredJobs.filter((j) => j.status === "running").length,
+      },
+      servers: [vps],
+      metrics: filteredMetrics,
+      jobs: filteredJobs,
+      auditEvents: filteredAudit,
+      systemInfo: filteredSystemInfo,
+      dockerMetrics: filteredDockerMetrics,
+    };
+
+    const snapshotPayload: SnapshotPayload = {
+      overview: filteredOverview,
+      servers: [vps],
+      jobs: filteredJobs,
+      metrics: filteredMetrics,
+      auditEvents: filteredAudit,
+    };
+    sendEvent(res, "monitoring.snapshot", snapshotPayload);
+
+    // Periodic filtered metrics
+    if (this.config.mode === "demo") {
+      await this.streamDemoLoopScoped(res, vpsId);
+    } else {
+      await this.streamLocalLoopScoped(res, vpsId);
+    }
+  }
+
+  private async streamDemoLoopScoped(
+    res: Response,
+    vpsId: string,
+  ): Promise<void> {
+    // Initialise demo metric state from fixtures
+    const fixtures = getDemoMetrics().filter((m) => m.vpsId === vpsId);
+    if (fixtures.length === 0) {
+      this.logger.warn(`No demo metrics found for VPS ${vpsId}`);
+      res.end();
+      return;
+    }
+
+    const state = createMetricState(fixtures[0]);
+    const staleIds = new Set(
+      demoServers.filter((s) => s.status === "unreachable").map((s) => s.id),
+    );
+    const isStale = staleIds.has(vpsId);
+
+    const interval = setInterval(() => {
+      if (res.destroyed) {
+        clearInterval(interval);
+        return;
+      }
+
+      try {
+        const nextState = evolveMetric(state, isStale);
+        Object.assign(state, nextState);
+
+        const metric = stateToMetricSample(vpsId, state, isStale, "~1m");
+        sendEvent(res, "metrics.updated", {
+          metrics: [metric],
+          dockerMetrics: [],
+        });
+
+        if (Math.random() < 0.3) {
+          sendEvent(res, "monitoring.heartbeat", {});
+        }
+      } catch {
+        clearInterval(interval);
+      }
+    }, this.intervalMs);
+
+    res.on("close", () => {
+      clearInterval(interval);
+    });
+
+    const keepAlive = setInterval(() => {
+      if (res.destroyed) {
+        clearInterval(keepAlive);
+        return;
+      }
+      res.write(": keepalive\n\n");
+    }, 15_000);
+
+    res.on("close", () => {
+      clearInterval(keepAlive);
+    });
+  }
+
+  private async streamLocalLoopScoped(
+    res: Response,
+    vpsId: string,
+  ): Promise<void> {
+    const interval = setInterval(async () => {
+      if (res.destroyed) {
+        clearInterval(interval);
+        return;
+      }
+
+      try {
+        const metrics = await this.metricService.list(vpsId);
+        const updatedMetrics: DashboardMetricSample[] = metrics.map((m) => ({
+          ...m,
+          freshness: isFreshTimestamp(
+            m.receivedAt ?? m.collectedAt,
+            this.staleThresholdMs,
+          )
+            ? "fresh"
+            : "stale",
+        }));
+
+        if (updatedMetrics.length > 0) {
+          const overview = await this.dashboardService.overview();
+          const filteredSystemInfo = (overview.systemInfo ?? []).filter(
+            (s) => s.vpsId === vpsId,
+          );
+          const filteredDockerMetrics = (overview.dockerMetrics ?? []).filter(
+            (d) => d.vpsId === vpsId,
+          );
+          sendEvent(res, "metrics.updated", {
+            metrics: updatedMetrics,
+            systemInfo: filteredSystemInfo,
+            dockerMetrics: filteredDockerMetrics,
+          });
         }
 
         sendEvent(res, "monitoring.heartbeat", {});

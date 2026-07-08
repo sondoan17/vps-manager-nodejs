@@ -58,53 +58,99 @@ const envSchema = z.object({
   PRIVATE_DIR: z.string().trim().min(1).default("private"),
   RATE_LIMIT_WINDOW_MS: z.coerce.number().int().positive().default(60_000),
   RATE_LIMIT_MAX: z.coerce.number().int().positive().default(120),
-  AGENT_PUBLIC_BASE_URL: z.preprocess((value) => (value === "" ? undefined : value), z.string().trim().url().optional()),
-  AGENT_BINARY_PATH: z.preprocess((value) => (value === "" ? undefined : value), z.string().trim().optional()),
+  AGENT_PUBLIC_BASE_URL: z.preprocess(
+    (value) => (value === "" ? undefined : value),
+    z.string().trim().url().optional(),
+  ),
+  AGENT_BINARY_PATH: z.preprocess(
+    (value) => (value === "" ? undefined : value),
+    z.string().trim().optional(),
+  ),
   AGENT_INSTALL_INTERVAL_SECONDS: z.coerce.number().int().min(1).default(1),
   ALLOW_INSECURE_AGENT_HTTP: booleanSchema.default("false"),
   LOCAL_AGENT_ENABLED: booleanSchema.default("true"),
   STORAGE_DRIVER: z.enum(["json", "postgres"]).default("json"),
-  DATABASE_URL: z.preprocess((value) => (value === "" ? undefined : value), z.string().trim().min(1).optional()),
+  DATABASE_URL: z.preprocess(
+    (value) => (value === "" ? undefined : value),
+    z.string().trim().min(1).optional(),
+  ),
   DB_SSL: booleanSchema.default("false"),
   DB_POOL_MAX: z.coerce.number().int().positive().default(10),
 
   // Dashboard session auth
-  DASHBOARD_SESSION_SECRET: z.preprocess((value) => (value === "" ? undefined : value), z.string().trim().optional()),
-  DASHBOARD_SESSION_TTL_SECONDS: z.coerce.number().int().positive().default(86_400),
-  DASHBOARD_PUBLIC_ORIGIN: z.preprocess((value) => (value === "" ? undefined : value), z.string().trim().optional()),
+  DASHBOARD_SESSION_SECRET: z.preprocess(
+    (value) => (value === "" ? undefined : value),
+    z.string().trim().optional(),
+  ),
+  DASHBOARD_SESSION_TTL_SECONDS: z.coerce
+    .number()
+    .int()
+    .positive()
+    .default(86_400),
+  DASHBOARD_PUBLIC_ORIGIN: z.preprocess(
+    (value) => (value === "" ? undefined : value),
+    z.string().trim().optional(),
+  ),
   DASHBOARD_COOKIE_SECURE: booleanSchema.default("false"),
   DASHBOARD_COOKIE_SAME_SITE: z.enum(["lax", "strict", "none"]).default("lax"),
 
   TRUST_PROXY_HOPS: z.coerce.number().int().min(0).default(0),
 
   // Retention limits
-  JOB_HISTORY_LIMIT: z.coerce.number().int().positive().max(50_000).default(1000),
-  AUDIT_HISTORY_LIMIT: z.coerce.number().int().positive().max(100_000).default(5000),
-  METRIC_WINDOW_LIMIT: z.coerce.number().int().positive().max(1000).default(120),
+  JOB_HISTORY_LIMIT: z.coerce
+    .number()
+    .int()
+    .positive()
+    .max(50_000)
+    .default(1000),
+  AUDIT_HISTORY_LIMIT: z.coerce
+    .number()
+    .int()
+    .positive()
+    .max(100_000)
+    .default(5000),
+  METRIC_WINDOW_LIMIT: z.coerce
+    .number()
+    .int()
+    .positive()
+    .max(1000)
+    .default(120),
 
   // SSH security
-  SSH_HOST_KEY_PINS: z.preprocess((value) => (value === "" ? undefined : value), z.string().optional()),
-  SSH_HOST_KEY_POLICY: z.enum(["strict", "permissive"]).default("strict")
+  SSH_HOST_KEY_PINS: z.preprocess(
+    (value) => (value === "" ? undefined : value),
+    z.string().optional(),
+  ),
+  SSH_HOST_KEY_POLICY: z.enum(["strict", "permissive"]).default("strict"),
 });
 
-export function parseAppConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
+export function parseAppConfig(
+  env: NodeJS.ProcessEnv = process.env,
+): AppConfig {
   const parsed = envSchema.parse(env);
 
   if (parsed.APP_MODE === "local") {
     if (!parsed.DASHBOARD_SESSION_SECRET) {
-      throw new Error("DASHBOARD_SESSION_SECRET is required when APP_MODE=local");
+      throw new Error(
+        "DASHBOARD_SESSION_SECRET is required when APP_MODE=local",
+      );
     }
     if (parsed.DASHBOARD_SESSION_SECRET.length < 32) {
       throw new Error(
         "DASHBOARD_SESSION_SECRET must be at least 32 characters when APP_MODE=local " +
-        `(got ${parsed.DASHBOARD_SESSION_SECRET.length})`,
+          `(got ${parsed.DASHBOARD_SESSION_SECRET.length})`,
       );
     }
   }
 
   // DASHBOARD_COOKIE_SAME_SITE=none requires Secure
-  if (parsed.DASHBOARD_COOKIE_SAME_SITE === "none" && !parsed.DASHBOARD_COOKIE_SECURE) {
-    throw new Error("DASHBOARD_COOKIE_SAME_SITE=none requires DASHBOARD_COOKIE_SECURE=true");
+  if (
+    parsed.DASHBOARD_COOKIE_SAME_SITE === "none" &&
+    !parsed.DASHBOARD_COOKIE_SECURE
+  ) {
+    throw new Error(
+      "DASHBOARD_COOKIE_SAME_SITE=none requires DASHBOARD_COOKIE_SECURE=true",
+    );
   }
 
   // HTTPS DASHBOARD_PUBLIC_ORIGIN in local mode requires Secure cookies
@@ -116,7 +162,7 @@ export function parseAppConfig(env: NodeJS.ProcessEnv = process.env): AppConfig 
   ) {
     throw new Error(
       "DASHBOARD_COOKIE_SECURE=true is required when DASHBOARD_PUBLIC_ORIGIN uses https:// " +
-      "and APP_MODE=local",
+        "and APP_MODE=local",
     );
   }
 
@@ -158,21 +204,34 @@ export function parseAppConfig(env: NodeJS.ProcessEnv = process.env): AppConfig 
     auditHistoryLimit: parsed.AUDIT_HISTORY_LIMIT,
     metricWindowLimit: parsed.METRIC_WINDOW_LIMIT,
 
-    sshHostKeyPins: parsed.SSH_HOST_KEY_PINS ? (() => {
-      let raw: unknown;
-      try { raw = JSON.parse(parsed.SSH_HOST_KEY_PINS!); }
-      catch { throw new Error("SSH_HOST_KEY_PINS must be a valid JSON object"); }
-      if (typeof raw !== "object" || raw === null || Array.isArray(raw)) {
-        throw new Error("SSH_HOST_KEY_PINS must be a JSON object (not an array)");
-      }
-      for (const [key, value] of Object.entries(raw)) {
-        if (typeof value === "string") continue;
-        if (Array.isArray(value) && value.every((v): v is string => typeof v === "string")) continue;
-        throw new Error(`SSH_HOST_KEY_PINS["${key}"] must be a string or array of strings`);
-      }
-      return raw as Record<string, string | string[]>;
-    })() : {},
-    sshHostKeyPolicy: parsed.SSH_HOST_KEY_POLICY
+    sshHostKeyPins: parsed.SSH_HOST_KEY_PINS
+      ? (() => {
+          let raw: unknown;
+          try {
+            raw = JSON.parse(parsed.SSH_HOST_KEY_PINS!);
+          } catch {
+            throw new Error("SSH_HOST_KEY_PINS must be a valid JSON object");
+          }
+          if (typeof raw !== "object" || raw === null || Array.isArray(raw)) {
+            throw new Error(
+              "SSH_HOST_KEY_PINS must be a JSON object (not an array)",
+            );
+          }
+          for (const [key, value] of Object.entries(raw)) {
+            if (typeof value === "string") continue;
+            if (
+              Array.isArray(value) &&
+              value.every((v): v is string => typeof v === "string")
+            )
+              continue;
+            throw new Error(
+              `SSH_HOST_KEY_PINS["${key}"] must be a string or array of strings`,
+            );
+          }
+          return raw as Record<string, string | string[]>;
+        })()
+      : {},
+    sshHostKeyPolicy: parsed.SSH_HOST_KEY_POLICY,
   };
 }
 
@@ -182,7 +241,10 @@ export function loadAppConfig(): AppConfig {
 }
 
 function findProjectRootEnvPath(): string {
-  const startDirectories = [process.cwd(), dirname(fileURLToPath(import.meta.url))];
+  const startDirectories = [
+    process.cwd(),
+    dirname(fileURLToPath(import.meta.url)),
+  ];
 
   for (const startDirectory of startDirectories) {
     const projectRoot = findProjectRoot(startDirectory);
@@ -199,7 +261,9 @@ function findProjectRoot(startDirectory: string): string | undefined {
     const packageJsonPath = join(currentDirectory, "package.json");
     if (existsSync(packageJsonPath)) {
       try {
-        const packageJson = JSON.parse(readFileSync(packageJsonPath, "utf8")) as { workspaces?: unknown };
+        const packageJson = JSON.parse(
+          readFileSync(packageJsonPath, "utf8"),
+        ) as { workspaces?: unknown };
         if (Array.isArray(packageJson.workspaces)) return currentDirectory;
       } catch {
         // Keep walking upward if package.json is not readable or parseable.

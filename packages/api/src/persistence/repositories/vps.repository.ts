@@ -1,4 +1,8 @@
-import type { CreateVpsInput, UpdateVpsInput, VpsRecord } from "../../vps/vps.models.js";
+import type {
+  CreateVpsInput,
+  UpdateVpsInput,
+  VpsRecord,
+} from "../../vps/vps.models.js";
 
 export type EnsureLocalHostInput = CreateVpsInput & {
   id: string;
@@ -14,7 +18,11 @@ export type VpsRepository = {
   markKeyProvisioned(id: string): Promise<VpsRecord | undefined>;
   delete(id: string): Promise<boolean>;
   ensureLocalHost(input: EnsureLocalHostInput): Promise<VpsRecord>;
-  markSeen(id: string, status: VpsRecord["status"], lastSeenAt: string): Promise<VpsRecord | undefined>;
+  markSeen(
+    id: string,
+    status: VpsRecord["status"],
+    lastSeenAt: string,
+  ): Promise<VpsRecord | undefined>;
 };
 
 export function withVpsDefaults(record: VpsRecord): VpsRecord {

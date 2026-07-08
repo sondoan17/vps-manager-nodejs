@@ -44,24 +44,35 @@ export async function revokeAgentCredentialsFromCli() {
   try {
     const credentials = await agentRepository.listCredentialsByVps(vpsId);
     const toRevoke = credentials.filter(
-      (credential) => credential.status === "active" && credential.id !== keepCredentialId,
+      (credential) =>
+        credential.status === "active" && credential.id !== keepCredentialId,
     );
 
     for (const credential of toRevoke) {
       await agentRepository.revokeCredential(credential.id);
     }
 
-    console.log(JSON.stringify({ vpsId, keptCredentialId: keepCredentialId, revokedCount: toRevoke.length }));
+    console.log(
+      JSON.stringify({
+        vpsId,
+        keptCredentialId: keepCredentialId,
+        revokedCount: toRevoke.length,
+      }),
+    );
   } finally {
     if (pool) await pool.end();
   }
 }
 
-const isDirectRun = process.argv[1]?.endsWith("revoke-agent-credentials.js") ||
+const isDirectRun =
+  process.argv[1]?.endsWith("revoke-agent-credentials.js") ||
   process.argv[1]?.endsWith("revoke-agent-credentials.ts");
 if (isDirectRun) {
   revokeAgentCredentialsFromCli().catch((error: unknown) => {
-    console.error("Failed:", error instanceof Error ? error.message : String(error));
+    console.error(
+      "Failed:",
+      error instanceof Error ? error.message : String(error),
+    );
     process.exit(1);
   });
 }

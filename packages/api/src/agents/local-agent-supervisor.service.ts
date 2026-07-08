@@ -1,12 +1,26 @@
-import { Inject, Injectable, OnApplicationBootstrap, OnApplicationShutdown } from "@nestjs/common";
+import {
+  Inject,
+  Injectable,
+  OnApplicationBootstrap,
+  OnApplicationShutdown,
+} from "@nestjs/common";
 import * as os from "node:os";
 import type { AppConfig } from "../config/app-config.js";
-import { APP_CONFIG, VPS_REPOSITORY, METRIC_REPOSITORY, AGENT_REPOSITORY } from "../tokens.js";
+import {
+  APP_CONFIG,
+  VPS_REPOSITORY,
+  METRIC_REPOSITORY,
+  AGENT_REPOSITORY,
+} from "../tokens.js";
 import type { VpsRepository } from "../persistence/repositories/vps.repository.js";
 import type { MetricRepository } from "../persistence/repositories/metric.repository.js";
 import type { AgentRepository } from "../persistence/repositories/agent.repository.js";
 import type { VpsRecord } from "../vps/vps.models.js";
-import { collectSystemMetrics, buildLocalMetricSample, resetCpuTracking } from "./local-system-metrics.js";
+import {
+  collectSystemMetrics,
+  buildLocalMetricSample,
+  resetCpuTracking,
+} from "./local-system-metrics.js";
 
 /**
  * Default local host ID used for the local agent record.
@@ -21,7 +35,9 @@ const DEFAULT_LOCAL_HOST_ID = "vps_local_host";
 const MIN_COLLECT_INTERVAL_MS = 5_000;
 
 @Injectable()
-export class LocalAgentSupervisorService implements OnApplicationBootstrap, OnApplicationShutdown {
+export class LocalAgentSupervisorService
+  implements OnApplicationBootstrap, OnApplicationShutdown
+{
   private intervalTimer: ReturnType<typeof setInterval> | null = null;
   private startupTimer: ReturnType<typeof setTimeout> | null = null;
   private localHostId: string;
@@ -32,7 +48,8 @@ export class LocalAgentSupervisorService implements OnApplicationBootstrap, OnAp
   constructor(
     @Inject(APP_CONFIG) private readonly config: AppConfig,
     @Inject(VPS_REPOSITORY) private readonly vpsRepository: VpsRepository,
-    @Inject(METRIC_REPOSITORY) private readonly metricRepository: MetricRepository,
+    @Inject(METRIC_REPOSITORY)
+    private readonly metricRepository: MetricRepository,
     @Inject(AGENT_REPOSITORY) private readonly agentRepository: AgentRepository,
   ) {
     this.localHostId = process.env.LOCAL_HOST_ID ?? DEFAULT_LOCAL_HOST_ID;
@@ -176,7 +193,10 @@ export class LocalAgentSupervisorService implements OnApplicationBootstrap, OnAp
       await this.vpsRepository.markSeen(this.localHostId, "healthy", now);
     } catch (error: unknown) {
       // Log but don't crash the service
-      console.error("[LocalAgentSupervisor] collectOnce error:", error instanceof Error ? error.message : error);
+      console.error(
+        "[LocalAgentSupervisor] collectOnce error:",
+        error instanceof Error ? error.message : error,
+      );
     }
   }
 

@@ -14,7 +14,11 @@ export type RateLimitResult = {
  * Pluggable rate-limit store.
  */
 export interface RateLimitStore {
-  consume(key: string, windowMs: number, maxRequests: number): Promise<RateLimitResult>;
+  consume(
+    key: string,
+    windowMs: number,
+    maxRequests: number,
+  ): Promise<RateLimitResult>;
 }
 
 // ---------------------------------------------------------------------------
@@ -27,12 +31,17 @@ export function createInMemoryRateLimitStore(): RateLimitStore {
   const buckets = new Map<string, Bucket>();
 
   return {
-    async consume(key: string, windowMs: number, _maxRequests: number): Promise<RateLimitResult> {
+    async consume(
+      key: string,
+      windowMs: number,
+      _maxRequests: number,
+    ): Promise<RateLimitResult> {
       const now = Date.now();
       const current = buckets.get(key);
-      const bucket: Bucket = !current || current.resetAt <= now
-        ? { count: 0, resetAt: now + windowMs }
-        : current;
+      const bucket: Bucket =
+        !current || current.resetAt <= now
+          ? { count: 0, resetAt: now + windowMs }
+          : current;
 
       bucket.count += 1;
       buckets.set(key, bucket);
@@ -48,7 +57,11 @@ export function createInMemoryRateLimitStore(): RateLimitStore {
 
 export function createPostgresRateLimitStore(pool: Pool): RateLimitStore {
   return {
-    async consume(key: string, windowMs: number, _maxRequests: number): Promise<RateLimitResult> {
+    async consume(
+      key: string,
+      windowMs: number,
+      _maxRequests: number,
+    ): Promise<RateLimitResult> {
       // Atomic UPSERT:
       //  - Expired bucket → reset to count=1 at now()+windowMs
       //  - Active bucket  → increment count
@@ -69,7 +82,10 @@ export function createPostgresRateLimitStore(pool: Pool): RateLimitStore {
         RETURNING count, reset_at
       `;
 
-      const queryResult = await pool.query<{ count: number; reset_at: Date }>(sql, [key, windowMs]);
+      const queryResult = await pool.query<{ count: number; reset_at: Date }>(
+        sql,
+        [key, windowMs],
+      );
       const result = queryResult.rows[0];
       if (!result) {
         throw new Error("Rate limit store did not return a bucket");

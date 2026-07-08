@@ -1,11 +1,26 @@
-import { Body, Controller, Get, Inject, Post, Req, Res, ServiceUnavailableException, UnauthorizedException, UseGuards } from "@nestjs/common";
+import {
+  Body,
+  Controller,
+  Get,
+  Inject,
+  Post,
+  Req,
+  Res,
+  ServiceUnavailableException,
+  UnauthorizedException,
+  UseGuards,
+} from "@nestjs/common";
 import { randomBytes, createHash } from "node:crypto";
 import type { Request, Response } from "express";
 import type { AppConfig } from "../config/app-config.js";
 import { verifyPassword } from "./password-hash.js";
 import type { AdminCredentialRepository } from "../persistence/repositories/admin-credential.repository.js";
 import type { SessionRepository } from "../persistence/repositories/session.repository.js";
-import { ADMIN_CREDENTIAL_REPOSITORY, APP_CONFIG, SESSION_REPOSITORY } from "../tokens.js";
+import {
+  ADMIN_CREDENTIAL_REPOSITORY,
+  APP_CONFIG,
+  SESSION_REPOSITORY,
+} from "../tokens.js";
 import { DashboardSessionGuard } from "./dashboard-session.guard.js";
 import { OriginGuard } from "./origin-guard.js";
 import { SESSION_COOKIE_NAME, parseCookie } from "./cookies.js";
@@ -14,7 +29,10 @@ import { SESSION_COOKIE_NAME, parseCookie } from "./cookies.js";
  * Hash a session token (with optional secret pepper) for secure storage.
  */
 function hashToken(token: string, pepper?: string): string {
-  return createHash("sha256").update(token).update(pepper ?? "").digest("hex");
+  return createHash("sha256")
+    .update(token)
+    .update(pepper ?? "")
+    .digest("hex");
 }
 
 /**
@@ -28,7 +46,9 @@ async function createSessionAndSetCookie(
 ) {
   const rawToken = randomBytes(32).toString("hex");
   const tokenHash = hashToken(rawToken, config.dashboardSessionSecret);
-  const expiresAt = new Date(Date.now() + config.dashboardSessionTtlSeconds * 1000).toISOString();
+  const expiresAt = new Date(
+    Date.now() + config.dashboardSessionTtlSeconds * 1000,
+  ).toISOString();
 
   const session = await sessions.create({
     tokenHash,
@@ -52,7 +72,8 @@ export class AuthController {
   constructor(
     @Inject(APP_CONFIG) private readonly config: AppConfig,
     @Inject(SESSION_REPOSITORY) private readonly sessions: SessionRepository,
-    @Inject(ADMIN_CREDENTIAL_REPOSITORY) private readonly adminCredential: AdminCredentialRepository,
+    @Inject(ADMIN_CREDENTIAL_REPOSITORY)
+    private readonly adminCredential: AdminCredentialRepository,
   ) {}
 
   /**
@@ -70,25 +91,41 @@ export class AuthController {
     @Res({ passthrough: true }) res: Response,
   ) {
     if (this.config.mode !== "local") {
-      throw new UnauthorizedException({ error: { message: "Auth not available in demo mode" } });
+      throw new UnauthorizedException({
+        error: { message: "Auth not available in demo mode" },
+      });
     }
 
     // 1. Check credential exists before accepting any attempt
     const storedCredential = await this.adminCredential.get();
     if (!storedCredential) {
       throw new ServiceUnavailableException({
-        error: { message: "Dashboard password not configured. Run `npm run set-dashboard-password` first." },
+        error: {
+          message:
+            "Dashboard password not configured. Run `npm run set-dashboard-password` first.",
+        },
       });
     }
 
     // 2. Validate submitted password (if missing or wrong, same generic error)
-    const submittedPassword = typeof body.password === "string" ? body.password : undefined;
-    if (!submittedPassword || !verifyPassword(submittedPassword, storedCredential.passwordHash)) {
-      throw new UnauthorizedException({ error: { message: "Invalid credentials" } });
+    const submittedPassword =
+      typeof body.password === "string" ? body.password : undefined;
+    if (
+      !submittedPassword ||
+      !verifyPassword(submittedPassword, storedCredential.passwordHash)
+    ) {
+      throw new UnauthorizedException({
+        error: { message: "Invalid credentials" },
+      });
     }
 
     // 3. Success — create session
-    const session = await createSessionAndSetCookie(this.sessions, this.config, req, res);
+    const session = await createSessionAndSetCookie(
+      this.sessions,
+      this.config,
+      req,
+      res,
+    );
     return {
       data: {
         mode: "local",
@@ -111,10 +148,7 @@ export class AuthController {
    */
   @Post("logout")
   @UseGuards(DashboardSessionGuard, OriginGuard)
-  async logout(
-    @Req() req: Request,
-    @Res({ passthrough: true }) res: Response,
-  ) {
+  async logout(@Req() req: Request, @Res({ passthrough: true }) res: Response) {
     const token = parseCookie(req.headers.cookie, SESSION_COOKIE_NAME);
     if (token) {
       const tokenHash = hashToken(token, this.config.dashboardSessionSecret);

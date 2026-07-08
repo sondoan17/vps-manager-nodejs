@@ -48,17 +48,29 @@ describe("agent app config", () => {
   });
 
   it("parses AGENT_INSTALL_INTERVAL_SECONDS", () => {
-    const config = parseAppConfig({ AGENT_INSTALL_INTERVAL_SECONDS: "5" } as NodeJS.ProcessEnv);
+    const config = parseAppConfig({
+      AGENT_INSTALL_INTERVAL_SECONDS: "5",
+    } as NodeJS.ProcessEnv);
     expect(config.agentInstallIntervalSeconds).toBe(5);
   });
 
   it("rejects AGENT_INSTALL_INTERVAL_SECONDS below 1", () => {
-    expect(() => parseAppConfig({ AGENT_INSTALL_INTERVAL_SECONDS: "0" } as NodeJS.ProcessEnv)).toThrow();
-    expect(() => parseAppConfig({ AGENT_INSTALL_INTERVAL_SECONDS: "-1" } as NodeJS.ProcessEnv)).toThrow();
+    expect(() =>
+      parseAppConfig({
+        AGENT_INSTALL_INTERVAL_SECONDS: "0",
+      } as NodeJS.ProcessEnv),
+    ).toThrow();
+    expect(() =>
+      parseAppConfig({
+        AGENT_INSTALL_INTERVAL_SECONDS: "-1",
+      } as NodeJS.ProcessEnv),
+    ).toThrow();
   });
 
   it("parses ALLOW_INSECURE_AGENT_HTTP true", () => {
-    const config = parseAppConfig({ ALLOW_INSECURE_AGENT_HTTP: "true" } as NodeJS.ProcessEnv);
+    const config = parseAppConfig({
+      ALLOW_INSECURE_AGENT_HTTP: "true",
+    } as NodeJS.ProcessEnv);
     expect(config.allowInsecureAgentHttp).toBe(true);
   });
 
@@ -68,13 +80,15 @@ describe("agent app config", () => {
   });
 
   it("rejects invalid storage driver", () => {
-    expect(() => parseAppConfig({ STORAGE_DRIVER: "sqlite" } as NodeJS.ProcessEnv)).toThrow();
+    expect(() =>
+      parseAppConfig({ STORAGE_DRIVER: "sqlite" } as NodeJS.ProcessEnv),
+    ).toThrow();
   });
 
   it("requires DATABASE_URL for postgres storage", () => {
-    expect(() => parseAppConfig({ STORAGE_DRIVER: "postgres" } as NodeJS.ProcessEnv)).toThrow(
-      /DATABASE_URL is required/
-    );
+    expect(() =>
+      parseAppConfig({ STORAGE_DRIVER: "postgres" } as NodeJS.ProcessEnv),
+    ).toThrow(/DATABASE_URL is required/);
   });
 
   it("parses postgres storage config", () => {
@@ -82,28 +96,38 @@ describe("agent app config", () => {
       STORAGE_DRIVER: "postgres",
       DATABASE_URL: "postgres://user:pass@localhost:5432/vps_manager",
       DB_SSL: "true",
-      DB_POOL_MAX: "20"
+      DB_POOL_MAX: "20",
     } as NodeJS.ProcessEnv);
 
     expect(config.storageDriver).toBe("postgres");
-    expect(config.databaseUrl).toBe("postgres://user:pass@localhost:5432/vps_manager");
+    expect(config.databaseUrl).toBe(
+      "postgres://user:pass@localhost:5432/vps_manager",
+    );
     expect(config.dbSsl).toBe(true);
     expect(config.dbPoolMax).toBe(20);
   });
 
   it("parses AGENT_PUBLIC_BASE_URL", () => {
-    const config = parseAppConfig({ AGENT_PUBLIC_BASE_URL: "https://backend.example.com" } as NodeJS.ProcessEnv);
+    const config = parseAppConfig({
+      AGENT_PUBLIC_BASE_URL: "https://backend.example.com",
+    } as NodeJS.ProcessEnv);
     expect(config.agentPublicBaseUrl).toBe("https://backend.example.com");
   });
 
   it("accepts empty string for AGENT_PUBLIC_BASE_URL as undefined", () => {
-    const config = parseAppConfig({ AGENT_PUBLIC_BASE_URL: "" } as NodeJS.ProcessEnv);
+    const config = parseAppConfig({
+      AGENT_PUBLIC_BASE_URL: "",
+    } as NodeJS.ProcessEnv);
     expect(config.agentPublicBaseUrl).toBeUndefined();
   });
 
   it("ignores unknown base URLs gracefully", () => {
     // Invalid URLs are rejected by zod url()
-    expect(() => parseAppConfig({ AGENT_PUBLIC_BASE_URL: "not-a-url" } as NodeJS.ProcessEnv)).toThrow();
+    expect(() =>
+      parseAppConfig({
+        AGENT_PUBLIC_BASE_URL: "not-a-url",
+      } as NodeJS.ProcessEnv),
+    ).toThrow();
   });
 });
 
@@ -124,19 +148,35 @@ describe("database migrations", () => {
     expect(migrations[0]?.sql).toContain("CREATE TABLE IF NOT EXISTS vps");
     expect(migrations[1]?.sql).toContain("metric_samples_vps_effective_idx");
     expect(migrations[2]?.sql).toContain("create_hypertable");
-    expect(migrations[3]?.sql).toContain("CREATE TABLE IF NOT EXISTS dashboard_sessions");
-    expect(migrations[4]?.sql).toContain("CREATE TABLE IF NOT EXISTS dashboard_admin_credentials");
-    expect(migrations[5]?.sql).toContain("CREATE TABLE IF NOT EXISTS rate_limit_buckets");
-    expect(migrations[6]?.sql).toContain("ALTER TABLE vps ADD COLUMN IF NOT EXISTS kind");
-    expect(migrations[7]?.sql).toContain("CREATE TABLE IF NOT EXISTS agent_system_info");
-    expect(migrations[8]?.sql).toContain("ALTER TABLE vps ADD COLUMN IF NOT EXISTS docker_metrics_enabled");
-    expect(migrations[8]?.sql).toContain("CREATE TABLE IF NOT EXISTS agent_docker_metrics");
+    expect(migrations[3]?.sql).toContain(
+      "CREATE TABLE IF NOT EXISTS dashboard_sessions",
+    );
+    expect(migrations[4]?.sql).toContain(
+      "CREATE TABLE IF NOT EXISTS dashboard_admin_credentials",
+    );
+    expect(migrations[5]?.sql).toContain(
+      "CREATE TABLE IF NOT EXISTS rate_limit_buckets",
+    );
+    expect(migrations[6]?.sql).toContain(
+      "ALTER TABLE vps ADD COLUMN IF NOT EXISTS kind",
+    );
+    expect(migrations[7]?.sql).toContain(
+      "CREATE TABLE IF NOT EXISTS agent_system_info",
+    );
+    expect(migrations[8]?.sql).toContain(
+      "ALTER TABLE vps ADD COLUMN IF NOT EXISTS docker_metrics_enabled",
+    );
+    expect(migrations[8]?.sql).toContain(
+      "CREATE TABLE IF NOT EXISTS agent_docker_metrics",
+    );
   });
 
   it("excludes optional migrations unless requested", async () => {
     const migrations = await loadMigrations();
 
-    expect(selectMigrations(migrations, false).map((migration) => migration.id)).toEqual([
+    expect(
+      selectMigrations(migrations, false).map((migration) => migration.id),
+    ).toEqual([
       "001_core_schema.sql",
       "002_metric_indexes.sql",
       "004_dashboard_sessions.sql",
@@ -146,7 +186,9 @@ describe("database migrations", () => {
       "008_system_info.sql",
       "009_docker_metrics.sql",
     ]);
-    expect(selectMigrations(migrations, true).map((migration) => migration.id)).toEqual([
+    expect(
+      selectMigrations(migrations, true).map((migration) => migration.id),
+    ).toEqual([
       "001_core_schema.sql",
       "002_metric_indexes.sql",
       "003_timescale_optional.sql",
@@ -217,7 +259,11 @@ describe("job repository (create / get / update / append)", () => {
       status: "queued",
       progress: 0,
     });
-    const updated = await repo.update(job.id, { status: "running", progress: 50, step: "uploading" });
+    const updated = await repo.update(job.id, {
+      status: "running",
+      progress: 50,
+      step: "uploading",
+    });
     expect(updated).toBeDefined();
     expect(updated!.status).toBe("running");
     expect(updated!.progress).toBe(50);
@@ -247,8 +293,18 @@ describe("job repository (create / get / update / append)", () => {
 
   it("list returns all created jobs", async () => {
     const repo = createJsonJobRepository(jobPath());
-    await repo.create({ vpsId: "vps_001", type: "a", status: "queued", progress: 0 });
-    await repo.create({ vpsId: "vps_002", type: "b", status: "running", progress: 50 });
+    await repo.create({
+      vpsId: "vps_001",
+      type: "a",
+      status: "queued",
+      progress: 0,
+    });
+    await repo.create({
+      vpsId: "vps_002",
+      type: "b",
+      status: "running",
+      progress: 50,
+    });
     const jobs = await repo.list();
     expect(jobs).toHaveLength(2);
   });
@@ -259,7 +315,10 @@ describe("job repository (create / get / update / append)", () => {
 describe("metric repository (latest + windows)", () => {
   const metricPath = () => join(tempDataDir, "metrics.json");
 
-  const makeSample = (vpsId: string, overrides: Partial<MetricSample> = {}): MetricSample => ({
+  const makeSample = (
+    vpsId: string,
+    overrides: Partial<MetricSample> = {},
+  ): MetricSample => ({
     vpsId,
     cpu: 50,
     memory: 50,
@@ -352,8 +411,28 @@ describe("metric repository (latest + windows)", () => {
     // Write old format
     const oldData = {
       metrics: [
-        { vpsId: "vps_a", cpu: 10, memory: 20, disk: 30, loadAverage: 0.5, networkRx: 100, networkTx: 200, uptime: 3600, collectedAt: new Date().toISOString() },
-        { vpsId: "vps_b", cpu: 40, memory: 50, disk: 60, loadAverage: 1.0, networkRx: 300, networkTx: 400, uptime: 7200, collectedAt: new Date().toISOString() },
+        {
+          vpsId: "vps_a",
+          cpu: 10,
+          memory: 20,
+          disk: 30,
+          loadAverage: 0.5,
+          networkRx: 100,
+          networkTx: 200,
+          uptime: 3600,
+          collectedAt: new Date().toISOString(),
+        },
+        {
+          vpsId: "vps_b",
+          cpu: 40,
+          memory: 50,
+          disk: 60,
+          loadAverage: 1.0,
+          networkRx: 300,
+          networkTx: 400,
+          uptime: 7200,
+          collectedAt: new Date().toISOString(),
+        },
       ],
     };
     await mkdir(tempDataDir, { recursive: true });
@@ -399,7 +478,10 @@ describe("JobRunnerService", () => {
     return { repo, runner };
   }
 
-  async function makeJob(repo: ReturnType<typeof createJsonJobRepository>, overrides: Partial<CommandJob> = {}) {
+  async function makeJob(
+    repo: ReturnType<typeof createJsonJobRepository>,
+    overrides: Partial<CommandJob> = {},
+  ) {
     return repo.create({
       vpsId: "vps_001",
       type: "test",
@@ -528,7 +610,9 @@ describe("JobRunnerService", () => {
 
     await new Promise<void>((resolve) => {
       runner.start(job, async () => {
-        throw new Error("Authorization: Bearer eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiIxMjM0NTY3ODkwIiwibmFtZSI6IkpvaG4gRG9lIn0");
+        throw new Error(
+          "Authorization: Bearer eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiIxMjM0NTY3ODkwIiwibmFtZSI6IkpvaG4gRG9lIn0",
+        );
       });
       setTimeout(resolve, 200);
     });
@@ -636,7 +720,8 @@ describe("JobRunnerService", () => {
     expect(updated!.errorMessage).toContain("[REDACTED]");
     expect(updated!.errorMessage).not.toContain("some-secret-token-here");
     // Verify no double-redaction (e.g. "Bearer [REDACTED] [REDACTED]")
-    const redactedCount = (updated!.errorMessage!.match(/\[REDACTED\]/g) || []).length;
+    const redactedCount = (updated!.errorMessage!.match(/\[REDACTED\]/g) || [])
+      .length;
     expect(redactedCount).toBe(1);
   });
 });
@@ -709,7 +794,10 @@ describe("job repository normalization (old files without progress/updatedAt)", 
     expect(created.id).toMatch(/^job_/);
     expect(created.progress).toBe(0);
 
-    const updated = await repo.update(created.id, { status: "running", progress: 50 });
+    const updated = await repo.update(created.id, {
+      status: "running",
+      progress: 50,
+    });
     expect(updated).toBeDefined();
     expect(updated!.status).toBe("running");
     expect(updated!.progress).toBe(50);
@@ -722,7 +810,10 @@ describe("job repository normalization (old files without progress/updatedAt)", 
 describe("metric repository concurrent-ish write safety", () => {
   const metricPath = () => join(tempDataDir, "metrics-concurrent.json");
 
-  const makeSample = (vpsId: string, overrides: Partial<MetricSample> = {}): MetricSample => ({
+  const makeSample = (
+    vpsId: string,
+    overrides: Partial<MetricSample> = {},
+  ): MetricSample => ({
     vpsId,
     cpu: 50,
     memory: 50,
@@ -784,7 +875,11 @@ describe("metric repository concurrent-ish write safety", () => {
 describe("metric repository migration cap", () => {
   const metricPath = () => join(tempDataDir, "metrics-migration-cap.json");
 
-  const makeSample = (vpsId: string, cpu: number, collectedAt: string): MetricSample => ({
+  const makeSample = (
+    vpsId: string,
+    cpu: number,
+    collectedAt: string,
+  ): MetricSample => ({
     vpsId,
     cpu,
     memory: 50,
@@ -801,7 +896,11 @@ describe("metric repository migration cap", () => {
     const samples: MetricSample[] = [];
     for (let i = 0; i < 500; i++) {
       samples.push(
-        makeSample("vps_migrate", i, new Date(Date.UTC(2026, 0, 1, 0, 0, i)).toISOString()),
+        makeSample(
+          "vps_migrate",
+          i,
+          new Date(Date.UTC(2026, 0, 1, 0, 0, i)).toISOString(),
+        ),
       );
     }
     const oldData = { metrics: samples };
@@ -850,11 +949,13 @@ describe("job repository serialized writes", () => {
 
     const jobs = await repo.list();
     expect(jobs).toHaveLength(20);
-    const ids = jobs.map((j) => j.vpsId).sort((a, b) => {
-      const numA = parseInt(a.replace("vps_", ""), 10);
-      const numB = parseInt(b.replace("vps_", ""), 10);
-      return numA - numB;
-    });
+    const ids = jobs
+      .map((j) => j.vpsId)
+      .sort((a, b) => {
+        const numA = parseInt(a.replace("vps_", ""), 10);
+        const numB = parseInt(b.replace("vps_", ""), 10);
+        return numA - numB;
+      });
     expect(ids[0]).toBe("vps_0");
     expect(ids[19]).toBe("vps_19");
   });

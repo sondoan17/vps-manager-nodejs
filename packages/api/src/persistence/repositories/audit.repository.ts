@@ -43,19 +43,29 @@ export function createJsonAuditRepository(
 ): AuditRepository {
   return {
     async list(options) {
-      let events = (await readJsonFile<AuditFile>(filePath, { audit: [] })).audit;
+      let events = (await readJsonFile<AuditFile>(filePath, { audit: [] }))
+        .audit;
       if (options?.filter?.resourceId) {
-        events = events.filter((event) => event.resourceId === options.filter!.resourceId);
+        events = events.filter(
+          (event) => event.resourceId === options.filter!.resourceId,
+        );
       }
       if (options?.filter?.action) {
-        events = events.filter((event) => event.action === options.filter!.action);
+        events = events.filter(
+          (event) => event.action === options.filter!.action,
+        );
       }
       if (options?.filter?.result) {
-        events = events.filter((event) => event.result === options.filter!.result);
+        events = events.filter(
+          (event) => event.result === options.filter!.result,
+        );
       }
       events = sortAuditDesc(events);
       if (options?.page) {
-        return events.slice(options.page.offset, options.page.offset + options.page.limit);
+        return events.slice(
+          options.page.offset,
+          options.page.offset + options.page.limit,
+        );
       }
       return events;
     },
@@ -68,8 +78,7 @@ export function createJsonAuditRepository(
           id: input.id ?? `audit_${nanoid(12)}`,
           timestamp: input.timestamp ?? new Date().toISOString(),
           metadata: redactValue(input.metadata) as
-            | Record<string, unknown>
-            | undefined,
+            Record<string, unknown> | undefined,
         };
         data.audit.push(event);
         // Trim to history cap (keep newest)

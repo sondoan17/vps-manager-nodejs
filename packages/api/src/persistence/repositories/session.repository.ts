@@ -13,7 +13,9 @@ export type SessionRecord = {
 };
 
 export type SessionRepository = {
-  create(input: Omit<SessionRecord, "id" | "createdAt">): Promise<SessionRecord>;
+  create(
+    input: Omit<SessionRecord, "id" | "createdAt">,
+  ): Promise<SessionRecord>;
   findByTokenHash(tokenHash: string): Promise<SessionRecord | undefined>;
   revoke(id: string): Promise<void>;
   /** Revoke all non-expired sessions. Used on password rotation. */
@@ -25,11 +27,15 @@ export type SessionRepository = {
 
 type SessionFile = { sessions: SessionRecord[] };
 
-export function createJsonSessionRepository(filePath = "data/sessions.json"): SessionRepository {
+export function createJsonSessionRepository(
+  filePath = "data/sessions.json",
+): SessionRepository {
   return {
     async create(input) {
       return withFileLock(filePath, async () => {
-        const data = await readJsonFile<SessionFile>(filePath, { sessions: [] });
+        const data = await readJsonFile<SessionFile>(filePath, {
+          sessions: [],
+        });
         const session: SessionRecord = {
           ...input,
           id: `sess_${nanoid(12)}`,
@@ -51,7 +57,9 @@ export function createJsonSessionRepository(filePath = "data/sessions.json"): Se
 
     async revoke(id) {
       await withFileLock(filePath, async () => {
-        const data = await readJsonFile<SessionFile>(filePath, { sessions: [] });
+        const data = await readJsonFile<SessionFile>(filePath, {
+          sessions: [],
+        });
         const session = data.sessions.find((s) => s.id === id);
         if (session) {
           session.revokedAt = new Date().toISOString();
@@ -62,7 +70,9 @@ export function createJsonSessionRepository(filePath = "data/sessions.json"): Se
 
     async revokeAll() {
       return withFileLock(filePath, async () => {
-        const data = await readJsonFile<SessionFile>(filePath, { sessions: [] });
+        const data = await readJsonFile<SessionFile>(filePath, {
+          sessions: [],
+        });
         const now = new Date().toISOString();
         let count = 0;
         for (const s of data.sessions) {
@@ -78,10 +88,14 @@ export function createJsonSessionRepository(filePath = "data/sessions.json"): Se
 
     async cleanup() {
       return withFileLock(filePath, async () => {
-        const data = await readJsonFile<SessionFile>(filePath, { sessions: [] });
+        const data = await readJsonFile<SessionFile>(filePath, {
+          sessions: [],
+        });
         const before = data.sessions.length;
         const now = new Date().toISOString();
-        data.sessions = data.sessions.filter((s) => s.expiresAt > now && !s.revokedAt);
+        data.sessions = data.sessions.filter(
+          (s) => s.expiresAt > now && !s.revokedAt,
+        );
         await writeJsonFile(filePath, data);
         return before - data.sessions.length;
       });

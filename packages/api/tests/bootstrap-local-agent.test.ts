@@ -29,15 +29,21 @@ describe("bootstrap-local-agent URL validation", () => {
   });
 
   it("rejects http for unspecified 0.0.0.0", () => {
-    expect(() => validateBackendUrl("http://0.0.0.0:3000")).toThrow(/Insecure backend URL/);
+    expect(() => validateBackendUrl("http://0.0.0.0:3000")).toThrow(
+      /Insecure backend URL/,
+    );
   });
 
   it("rejects http for non-loopback without allowInsecure", () => {
-    expect(() => validateBackendUrl("http://192.168.1.1:3000")).toThrow(/Insecure backend URL/);
+    expect(() => validateBackendUrl("http://192.168.1.1:3000")).toThrow(
+      /Insecure backend URL/,
+    );
   });
 
   it("rejects http for non-loopback hostname without allowInsecure", () => {
-    expect(() => validateBackendUrl("http://example.com:3000")).toThrow(/Insecure backend URL/);
+    expect(() => validateBackendUrl("http://example.com:3000")).toThrow(
+      /Insecure backend URL/,
+    );
   });
 
   it("accepts http for non-loopback with allowInsecure flag", () => {
@@ -46,11 +52,15 @@ describe("bootstrap-local-agent URL validation", () => {
   });
 
   it("rejects invalid URL strings", () => {
-    expect(() => validateBackendUrl("not-a-url")).toThrow(/Invalid backend URL/);
+    expect(() => validateBackendUrl("not-a-url")).toThrow(
+      /Invalid backend URL/,
+    );
   });
 
   it("rejects unsupported protocols", () => {
-    expect(() => validateBackendUrl("ftp://example.com")).toThrow(/must use http or https/);
+    expect(() => validateBackendUrl("ftp://example.com")).toThrow(
+      /must use http or https/,
+    );
   });
 
   it("preserves trailing path", () => {

@@ -8,11 +8,16 @@ import { APP_CONFIG, METRIC_REPOSITORY } from "../tokens.js";
 
 const STALE_THRESHOLD_MS = 120_000;
 
-function withFreshness<T extends MetricSample>(sample: T): T & { freshness: "fresh" | "stale" } {
+function withFreshness<T extends MetricSample>(
+  sample: T,
+): T & { freshness: "fresh" | "stale" } {
   const timestamp = sample.receivedAt ?? sample.collectedAt;
   return {
     ...sample,
-    freshness: Date.now() - new Date(timestamp).getTime() < STALE_THRESHOLD_MS ? "fresh" : "stale",
+    freshness:
+      Date.now() - new Date(timestamp).getTime() < STALE_THRESHOLD_MS
+        ? "fresh"
+        : "stale",
   };
 }
 
@@ -32,7 +37,8 @@ function sortLatestDesc(samples: MetricSample[]): MetricSample[] {
 export class MetricService {
   constructor(
     @Inject(APP_CONFIG) private readonly config: AppConfig,
-    @Inject(METRIC_REPOSITORY) private readonly metricRepository: MetricRepository
+    @Inject(METRIC_REPOSITORY)
+    private readonly metricRepository: MetricRepository,
   ) {}
 
   async list(vpsId?: string, page?: PaginationParams): Promise<MetricSample[]> {

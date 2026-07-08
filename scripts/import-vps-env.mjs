@@ -15,7 +15,10 @@ function parseEnv(file) {
         const index = line.indexOf("=");
         const key = line.slice(0, index).trim();
         let value = line.slice(index + 1).trim();
-        if ((value.startsWith('"') && value.endsWith('"')) || (value.startsWith("'") && value.endsWith("'"))) {
+        if (
+          (value.startsWith('"') && value.endsWith('"')) ||
+          (value.startsWith("'") && value.endsWith("'"))
+        ) {
           value = value.slice(1, -1);
         }
         return [key, value];
@@ -31,23 +34,32 @@ const port = Number(vpsEnv.LOCAL_VPS_PORT || 22);
 const username = vpsEnv.LOCAL_VPS_USER;
 
 if (!host || !username || !Number.isInteger(port) || port < 1 || port > 65535) {
-  throw new Error("Invalid .env.vps: expected LOCAL_VPS_IP, LOCAL_VPS_PORT, LOCAL_VPS_USER");
+  throw new Error(
+    "Invalid .env.vps: expected LOCAL_VPS_IP, LOCAL_VPS_PORT, LOCAL_VPS_USER",
+  );
 }
 
 const dataDir = appEnv.DATA_DIR || "data";
 mkdirSync(dataDir, { recursive: true });
 const file = join(dataDir, "vps.json");
-const data = existsSync(file) ? JSON.parse(readFileSync(file, "utf8")) : { vps: [] };
+const data = existsSync(file)
+  ? JSON.parse(readFileSync(file, "utf8"))
+  : { vps: [] };
 data.vps = Array.isArray(data.vps) ? data.vps : [];
 
 const now = new Date().toISOString();
-let record = data.vps.find((vps) => vps.host === host && Number(vps.port) === port && vps.username === username);
+let record = data.vps.find(
+  (vps) =>
+    vps.host === host && Number(vps.port) === port && vps.username === username,
+);
 let created = false;
 
 if (record) {
   record.name = record.name || "Local VPS";
   record.provider = record.provider || "local";
-  record.tags = Array.from(new Set([...(record.tags || []), "manual", "agent-candidate"]));
+  record.tags = Array.from(
+    new Set([...(record.tags || []), "manual", "agent-candidate"]),
+  );
   record.status = record.status || "unknown";
   record.updatedAt = now;
 } else {
@@ -70,12 +82,18 @@ if (record) {
 
 writeFileSync(file, `${JSON.stringify(data, null, 2)}\n`);
 
-console.log(JSON.stringify({
-  id: record.id,
-  name: record.name,
-  host: record.host,
-  port: record.port,
-  username: record.username,
-  created,
-  passwordStored: false,
-}, null, 2));
+console.log(
+  JSON.stringify(
+    {
+      id: record.id,
+      name: record.name,
+      host: record.host,
+      port: record.port,
+      username: record.username,
+      created,
+      passwordStored: false,
+    },
+    null,
+    2,
+  ),
+);

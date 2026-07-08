@@ -16,10 +16,15 @@ export async function createSessionCookie(
   sessionSecret?: string,
   ttlSeconds = 86_400,
 ): Promise<string> {
-  const repo = createJsonSessionRepository(join(tempDir, "data", "sessions.json"));
+  const repo = createJsonSessionRepository(
+    join(tempDir, "data", "sessions.json"),
+  );
   const rawToken = randomBytes(32).toString("hex");
   const pepper = sessionSecret ?? "";
-  const tokenHash = createHash("sha256").update(rawToken).update(pepper).digest("hex");
+  const tokenHash = createHash("sha256")
+    .update(rawToken)
+    .update(pepper)
+    .digest("hex");
 
   await repo.create({
     tokenHash,

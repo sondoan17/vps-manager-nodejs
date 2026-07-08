@@ -10,7 +10,7 @@ import { APP_CONFIG, JOB_REPOSITORY } from "../tokens.js";
 export class JobService {
   constructor(
     @Inject(APP_CONFIG) private readonly config: AppConfig,
-    @Inject(JOB_REPOSITORY) private readonly jobRepository: JobRepository
+    @Inject(JOB_REPOSITORY) private readonly jobRepository: JobRepository,
   ) {}
 
   async list(page?: PaginationParams): Promise<CommandJob[]> {
@@ -21,6 +21,28 @@ export class JobService {
     return this.jobRepository.list(page);
   }
 
+  /**
+   * List jobs for a specific VPS.
+   * Filters by VPS id before pagination.
+   *
+   * Follow-up: add repository-level filtering when repository supports it.
+   */
+  async listByVpsId(
+    vpsId: string,
+    page?: PaginationParams,
+  ): Promise<CommandJob[]> {
+    if (this.config.mode === "demo") {
+      const all = getDemoJobs().filter((j) => j.vpsId === vpsId);
+      return page ? all.slice(page.offset, page.offset + page.limit) : all;
+    }
+    // Get all jobs, filter by vpsId, then paginate
+    const all = await this.jobRepository.list();
+    const filtered = all.filter((j) => j.vpsId === vpsId);
+    return page
+      ? filtered.slice(page.offset, page.offset + page.limit)
+      : filtered;
+  }
+
   async get(id: string): Promise<CommandJob | undefined> {
     if (this.config.mode === "demo") {
       return getDemoJobs().find((j) => j.id === id);
@@ -28,15 +50,22 @@ export class JobService {
     return this.jobRepository.get(id);
   }
 
-  async create(input: Omit<CommandJob, "id"> & { id?: string }): Promise<CommandJob> {
+  async create(
+    input: Omit<CommandJob, "id"> & { id?: string },
+  ): Promise<CommandJob> {
     return this.jobRepository.create(input, this.config.jobHistoryLimit);
   }
 
-  async update(id: string, patch: Partial<Omit<CommandJob, "id">>): Promise<CommandJob | undefined> {
+  async update(
+    id: string,
+    patch: Partial<Omit<CommandJob, "id">>,
+  ): Promise<CommandJob | undefined> {
     return this.jobRepository.update(id, patch);
   }
 
-  async append(input: Omit<CommandJob, "id"> & { id?: string }): Promise<CommandJob> {
+  async append(
+    input: Omit<CommandJob, "id"> & { id?: string },
+  ): Promise<CommandJob> {
     return this.jobRepository.append(input, this.config.jobHistoryLimit);
   }
 }

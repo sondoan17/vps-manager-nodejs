@@ -71,11 +71,13 @@ curl -fsSL https://raw.githubusercontent.com/sondoan17/vps-manager-nodejs/main/s
 ```
 
 This installs:
+
 - **Docker app**: Web UI + API server in containers (`/opt/vps-manager`)
 - **Host agent**: systemd unit that collects system metrics and pushes to the local API
 - **Dashboard**: accessible at `http://<your-ip>:38280`
 
 The installer:
+
 1. Detects Linux amd64 and Docker (auto-installs with `--install-docker`)
 2. Generates secure config in `/opt/vps-manager/.env` (mode 0600)
 3. Creates a `docker-compose.yml` with API (loopback `127.0.0.1:38281`) and Web (`:38280`)

@@ -7,7 +7,11 @@ import { createVpsStore } from "../src/persistence/store/vpsStore.js";
 import { createJsonMetricRepository } from "../src/persistence/repositories/metric.repository.js";
 import { createJsonAgentRepository } from "../src/persistence/repositories/agent.repository.js";
 import { LocalAgentSupervisorService } from "../src/agents/local-agent-supervisor.service.js";
-import { resetCpuTracking, collectSystemMetrics, buildLocalMetricSample } from "../src/agents/local-system-metrics.js";
+import {
+  resetCpuTracking,
+  collectSystemMetrics,
+  buildLocalMetricSample,
+} from "../src/agents/local-system-metrics.js";
 import { isFreshTimestamp } from "../src/monitoring/monitoring.service.js";
 
 // ── Shared configs ───────────────────────────────────────────────────────
@@ -77,7 +81,12 @@ describe("LocalAgentSupervisorService", () => {
 
   it("creates a local host record on bootstrap (local mode)", async () => {
     const repos = await createTempRepositories(tempDir);
-    const service = new LocalAgentSupervisorService(localConfig, repos.vps, repos.metrics, repos.agent);
+    const service = new LocalAgentSupervisorService(
+      localConfig,
+      repos.vps,
+      repos.metrics,
+      repos.agent,
+    );
 
     await service.onApplicationBootstrap();
 
@@ -96,7 +105,12 @@ describe("LocalAgentSupervisorService", () => {
 
   it("does not duplicate local host on second bootstrap", async () => {
     const repos = await createTempRepositories(tempDir);
-    const service = new LocalAgentSupervisorService(localConfig, repos.vps, repos.metrics, repos.agent);
+    const service = new LocalAgentSupervisorService(
+      localConfig,
+      repos.vps,
+      repos.metrics,
+      repos.agent,
+    );
 
     await service.onApplicationBootstrap();
     await service.onApplicationBootstrap();
@@ -110,7 +124,12 @@ describe("LocalAgentSupervisorService", () => {
 
   it("does not create local host in demo mode", async () => {
     const repos = await createTempRepositories(tempDir);
-    const service = new LocalAgentSupervisorService(demoConfig, repos.vps, repos.metrics, repos.agent);
+    const service = new LocalAgentSupervisorService(
+      demoConfig,
+      repos.vps,
+      repos.metrics,
+      repos.agent,
+    );
 
     await service.onApplicationBootstrap();
 
@@ -121,7 +140,12 @@ describe("LocalAgentSupervisorService", () => {
 
   it("does not create local host when localAgentEnabled=false", async () => {
     const repos = await createTempRepositories(tempDir);
-    const service = new LocalAgentSupervisorService(localAgentDisabledConfig, repos.vps, repos.metrics, repos.agent);
+    const service = new LocalAgentSupervisorService(
+      localAgentDisabledConfig,
+      repos.vps,
+      repos.metrics,
+      repos.agent,
+    );
 
     await service.onApplicationBootstrap();
 
@@ -132,7 +156,12 @@ describe("LocalAgentSupervisorService", () => {
 
   it("collectOnce appends metrics and updates agent state", async () => {
     const repos = await createTempRepositories(tempDir);
-    const service = new LocalAgentSupervisorService(localConfig, repos.vps, repos.metrics, repos.agent);
+    const service = new LocalAgentSupervisorService(
+      localConfig,
+      repos.vps,
+      repos.metrics,
+      repos.agent,
+    );
 
     // Bootstrap to create the local host
     await service.onApplicationBootstrap();
@@ -171,7 +200,12 @@ describe("LocalAgentSupervisorService", () => {
 
   it("collectOnce captures window samples", async () => {
     const repos = await createTempRepositories(tempDir);
-    const service = new LocalAgentSupervisorService(localConfig, repos.vps, repos.metrics, repos.agent);
+    const service = new LocalAgentSupervisorService(
+      localConfig,
+      repos.vps,
+      repos.metrics,
+      repos.agent,
+    );
 
     await service.onApplicationBootstrap();
     service.stopCollection();
@@ -189,7 +223,12 @@ describe("LocalAgentSupervisorService", () => {
 
   it("dashboard overview includes metrics from local agent", async () => {
     const repos = await createTempRepositories(tempDir);
-    const service = new LocalAgentSupervisorService(localConfig, repos.vps, repos.metrics, repos.agent);
+    const service = new LocalAgentSupervisorService(
+      localConfig,
+      repos.vps,
+      repos.metrics,
+      repos.agent,
+    );
 
     // Bootstrap and collect
     await service.onApplicationBootstrap();
@@ -204,7 +243,9 @@ describe("LocalAgentSupervisorService", () => {
     expect(localMetric).toBeDefined();
 
     // Verify freshness
-    expect(isFreshTimestamp(localMetric!.receivedAt ?? localMetric!.collectedAt)).toBe(true);
+    expect(
+      isFreshTimestamp(localMetric!.receivedAt ?? localMetric!.collectedAt),
+    ).toBe(true);
 
     service.stopCollection();
   });

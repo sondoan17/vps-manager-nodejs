@@ -3,7 +3,11 @@ import { redactValue } from "../../common/redaction.js";
 import type { DatabasePool } from "../../db/pool.js";
 import type { AuditEvent } from "../../audit/audit.models.js";
 import type { AuditListOptions, AuditRepository } from "./audit.repository.js";
-import { requiredIsoString, toDateOrNull, toJsonOrNull } from "./postgres-mappers.js";
+import {
+  requiredIsoString,
+  toDateOrNull,
+  toJsonOrNull,
+} from "./postgres-mappers.js";
 
 type AuditRow = {
   id: string;
@@ -27,7 +31,9 @@ type AuditRow = {
   reason: string | null;
 };
 
-export function createPostgresAuditRepository(pool: DatabasePool): AuditRepository {
+export function createPostgresAuditRepository(
+  pool: DatabasePool,
+): AuditRepository {
   return {
     async list(options?: AuditListOptions) {
       const { sql, values } = buildListQuery(options);
@@ -39,7 +45,8 @@ export function createPostgresAuditRepository(pool: DatabasePool): AuditReposito
         ...input,
         id: input.id ?? `audit_${nanoid(12)}`,
         timestamp: input.timestamp ?? new Date().toISOString(),
-        metadata: redactValue(input.metadata) as Record<string, unknown> | undefined
+        metadata: redactValue(input.metadata) as
+          Record<string, unknown> | undefined,
       };
       const result = await pool.query<AuditRow>(
         `INSERT INTO audit_events (id, actor, action, resource_type, resource_id, result, timestamp, metadata,
@@ -66,15 +73,18 @@ export function createPostgresAuditRepository(pool: DatabasePool): AuditReposito
           event.jobId ?? null,
           event.durationMs ?? null,
           event.authMethod ?? null,
-          event.reason ?? null
-        ]
+          event.reason ?? null,
+        ],
       );
       return rowToAudit(result.rows[0]!);
-    }
+    },
   };
 }
 
-function buildListQuery(options?: AuditListOptions): { sql: string; values: unknown[] } {
+function buildListQuery(options?: AuditListOptions): {
+  sql: string;
+  values: unknown[];
+} {
   const values: unknown[] = [];
   const where: string[] = [];
 
@@ -127,6 +137,6 @@ function rowToAudit(row: AuditRow): AuditEvent {
     jobId: row.job_id ?? undefined,
     durationMs: row.duration_ms ?? undefined,
     authMethod: row.auth_method ?? undefined,
-    reason: row.reason ?? undefined
+    reason: row.reason ?? undefined,
   };
 }

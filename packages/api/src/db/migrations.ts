@@ -10,11 +10,21 @@ export type Migration = {
   sql: string;
 };
 
-const DEFAULT_MIGRATIONS_DIR = join(dirname(fileURLToPath(import.meta.url)), "..", "..", "db", "migrations");
+const DEFAULT_MIGRATIONS_DIR = join(
+  dirname(fileURLToPath(import.meta.url)),
+  "..",
+  "..",
+  "db",
+  "migrations",
+);
 
-export async function loadMigrations(migrationsDir = DEFAULT_MIGRATIONS_DIR): Promise<Migration[]> {
+export async function loadMigrations(
+  migrationsDir = DEFAULT_MIGRATIONS_DIR,
+): Promise<Migration[]> {
   const fileNames = await readdir(migrationsDir);
-  const sqlFiles = fileNames.filter((fileName) => fileName.endsWith(".sql")).sort();
+  const sqlFiles = fileNames
+    .filter((fileName) => fileName.endsWith(".sql"))
+    .sort();
 
   return Promise.all(
     sqlFiles.map(async (fileName) => {
@@ -22,15 +32,21 @@ export async function loadMigrations(migrationsDir = DEFAULT_MIGRATIONS_DIR): Pr
       return {
         id: fileName,
         path,
-        sql: await readFile(path, "utf8")
+        sql: await readFile(path, "utf8"),
       };
-    })
+    }),
   );
 }
 
-export async function runMigrations(pool: Pool, options: { includeOptional?: boolean; migrationsDir?: string } = {}) {
+export async function runMigrations(
+  pool: Pool,
+  options: { includeOptional?: boolean; migrationsDir?: string } = {},
+) {
   const migrations = await loadMigrations(options.migrationsDir);
-  const selectedMigrations = selectMigrations(migrations, Boolean(options.includeOptional));
+  const selectedMigrations = selectMigrations(
+    migrations,
+    Boolean(options.includeOptional),
+  );
 
   await pool.query(`
     CREATE TABLE IF NOT EXISTS schema_migrations (
@@ -43,11 +59,16 @@ export async function runMigrations(pool: Pool, options: { includeOptional?: boo
 
   for (const migration of selectedMigrations) {
     await withTransaction(pool, async (client) => {
-      const existing = await client.query("SELECT id FROM schema_migrations WHERE id = $1", [migration.id]);
+      const existing = await client.query(
+        "SELECT id FROM schema_migrations WHERE id = $1",
+        [migration.id],
+      );
       if (existing.rowCount) return;
 
       await client.query(migration.sql);
-      await client.query("INSERT INTO schema_migrations (id) VALUES ($1)", [migration.id]);
+      await client.query("INSERT INTO schema_migrations (id) VALUES ($1)", [
+        migration.id,
+      ]);
       applied.push(migration.id);
     });
   }
@@ -55,8 +76,13 @@ export async function runMigrations(pool: Pool, options: { includeOptional?: boo
   return { applied };
 }
 
-export function selectMigrations(migrations: Migration[], includeOptional: boolean): Migration[] {
-  return includeOptional ? migrations : migrations.filter((migration) => !isOptionalMigration(migration));
+export function selectMigrations(
+  migrations: Migration[],
+  includeOptional: boolean,
+): Migration[] {
+  return includeOptional
+    ? migrations
+    : migrations.filter((migration) => !isOptionalMigration(migration));
 }
 
 function isOptionalMigration(migration: Migration): boolean {

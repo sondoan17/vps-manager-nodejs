@@ -1,5 +1,8 @@
 import type { NextFunction, Request, Response } from "express";
-import { createInMemoryRateLimitStore, type RateLimitStore } from "./rate-limit-store.js";
+import {
+  createInMemoryRateLimitStore,
+  type RateLimitStore,
+} from "./rate-limit-store.js";
 
 /**
  * Rate limiter for POST /api/auth/login.
@@ -14,12 +17,17 @@ export function createLoginRateLimit(store?: RateLimitStore) {
   const WINDOW_MS = 5 * 60 * 1000; // 5 minutes
   const MAX_ATTEMPTS = 5;
 
-  return function loginRateLimit(req: Request, res: Response, next: NextFunction) {
+  return function loginRateLimit(
+    req: Request,
+    res: Response,
+    next: NextFunction,
+  ) {
     if (req.method !== "POST" || req.path !== "/api/auth/login") return next();
 
     const key = req.ip || "unknown";
 
-    limiter.consume(`login:${key}`, WINDOW_MS, MAX_ATTEMPTS)
+    limiter
+      .consume(`login:${key}`, WINDOW_MS, MAX_ATTEMPTS)
       .then(({ count, resetAtMs }) => {
         if (count > MAX_ATTEMPTS) {
           const retryAfter = Math.ceil((resetAtMs - Date.now()) / 1000);
@@ -27,14 +35,24 @@ export function createLoginRateLimit(store?: RateLimitStore) {
             res.set("Retry-After", String(retryAfter));
           }
           return res.status(429).json({
-            error: { message: "Too many login attempts. Try again later.", requestId: req.requestId },
+            error: {
+              message: "Too many login attempts. Try again later.",
+              requestId: req.requestId,
+            },
           });
         }
         next();
       })
       .catch(() => {
         // Store error: fail closed with 503
-        return res.status(503).json({ error: { message: "Rate limiter unavailable", requestId: req.requestId } });
+        return res
+          .status(503)
+          .json({
+            error: {
+              message: "Rate limiter unavailable",
+              requestId: req.requestId,
+            },
+          });
       });
   };
 }

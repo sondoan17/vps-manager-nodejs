@@ -16,10 +16,7 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "../../ui/dropdown-menu";
-import {
-  chipVariant,
-  freshnessLabel,
-} from "../../../lib/dashboard-formatters";
+import { chipVariant, freshnessLabel } from "../../../lib/dashboard-formatters";
 import type { DashboardOverview } from "../../../lib/api";
 import { EmptyState } from "../shared/EmptyState";
 import { SummaryPill } from "../shared/SummaryPill";

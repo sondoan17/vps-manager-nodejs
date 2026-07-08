@@ -102,7 +102,10 @@ describe("SSE monitoring stream", () => {
         res.on("data", (chunk: Buffer) => {
           chunks.push(chunk.toString());
           // Collect at least 2 events
-          const eventCount = chunks.join("").split("\n\n").filter(s => s.includes("data:")).length;
+          const eventCount = chunks
+            .join("")
+            .split("\n\n")
+            .filter((s) => s.includes("data:")).length;
           if (eventCount >= 2) {
             res.destroy();
           }
@@ -137,7 +140,10 @@ describe("SSE monitoring stream", () => {
       .parse((res, cb) => {
         res.on("data", (chunk: Buffer) => {
           chunks.push(chunk.toString());
-          const eventCount = chunks.join("").split("\n\n").filter(s => s.includes("data:")).length;
+          const eventCount = chunks
+            .join("")
+            .split("\n\n")
+            .filter((s) => s.includes("data:")).length;
           if (eventCount >= 2) {
             res.destroy();
           }
@@ -163,7 +169,10 @@ describe("SSE monitoring stream", () => {
       .parse((res, cb) => {
         res.on("data", (chunk: Buffer) => {
           chunks.push(chunk.toString());
-          const eventCount = chunks.join("").split("\n\n").filter(s => s.includes("data:")).length;
+          const eventCount = chunks
+            .join("")
+            .split("\n\n")
+            .filter((s) => s.includes("data:")).length;
           if (eventCount >= 3) {
             res.destroy();
           }
@@ -177,9 +186,11 @@ describe("SSE monitoring stream", () => {
     const dataLines = allData.match(/^data: (.+)$/gm) ?? [];
     expect(dataLines.length).toBeGreaterThanOrEqual(3);
 
-    const types = dataLines.map(l => JSON.parse(l.replace(/^data: /, "")).type);
+    const types = dataLines.map(
+      (l) => JSON.parse(l.replace(/^data: /, "")).type,
+    );
     expect(types[0]).toBe("monitoring.hello");
     expect(types[1]).toBe("monitoring.snapshot");
-    expect(types.slice(2).some(t => t === "metrics.updated")).toBe(true);
+    expect(types.slice(2).some((t) => t === "metrics.updated")).toBe(true);
   });
 });

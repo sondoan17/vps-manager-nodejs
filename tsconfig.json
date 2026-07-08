@@ -4,8 +4,5 @@
     "emitDecoratorMetadata": true
   },
   "files": [],
-  "references": [
-    { "path": "./packages/api" },
-    { "path": "./packages/web" }
-  ]
+  "references": [{ "path": "./packages/api" }, { "path": "./packages/web" }]
 }

@@ -49,24 +49,32 @@ async function main() {
     });
     const token = `vma_${credential.id}_${secret}`;
 
-    console.log(JSON.stringify({
-      vpsId: vps.id,
-      credentialId: credential.id,
-      token,
-      configExample: {
-        backendUrl: config.agentPublicBaseUrl || "http://localhost:3000",
-        vpsId: vps.id,
-        token,
-        intervalSeconds: config.agentInstallIntervalSeconds,
-        requestTimeoutSeconds: 5,
-      },
-    }, null, 2));
+    console.log(
+      JSON.stringify(
+        {
+          vpsId: vps.id,
+          credentialId: credential.id,
+          token,
+          configExample: {
+            backendUrl: config.agentPublicBaseUrl || "http://localhost:3000",
+            vpsId: vps.id,
+            token,
+            intervalSeconds: config.agentInstallIntervalSeconds,
+            requestTimeoutSeconds: 5,
+          },
+        },
+        null,
+        2,
+      ),
+    );
   } finally {
     if (pool) await pool.end();
   }
 }
 
 main().catch((error: unknown) => {
-  console.error(error instanceof Error ? error.message : "Failed to create agent token");
+  console.error(
+    error instanceof Error ? error.message : "Failed to create agent token",
+  );
   process.exit(1);
 });

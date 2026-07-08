@@ -57,7 +57,9 @@ vi.mock("ssh2", () => {
     Client: MockClient as never,
     __testing: {
       getConnectArgs: () => connectArgs,
-      reset: () => { connectArgs.length = 0; },
+      reset: () => {
+        connectArgs.length = 0;
+      },
     },
   };
 });
@@ -100,7 +102,11 @@ const localConfig: AppConfig = {
 
 async function testHarness(config: AppConfig = demoConfig) {
   const tempDir = await mkdtemp(join(tmpdir(), "vps-manager-phase-one-"));
-  const scopedConfig = { ...config, dataDir: join(tempDir, "data"), privateDir: join(tempDir, "private") };
+  const scopedConfig = {
+    ...config,
+    dataDir: join(tempDir, "data"),
+    privateDir: join(tempDir, "private"),
+  };
   return {
     tempDir,
     server: createApp({
@@ -128,36 +134,54 @@ describe("phase one config", () => {
   });
 
   it("accepts blank local auth token in demo mode", () => {
-    expect(parseAppConfig({ APP_MODE: "demo" } as NodeJS.ProcessEnv)).toMatchObject({
+    expect(
+      parseAppConfig({ APP_MODE: "demo" } as NodeJS.ProcessEnv),
+    ).toMatchObject({
       mode: "demo",
     });
   });
 
   it("fails fast for unsafe local and terminal settings", () => {
-    expect(() => parseAppConfig({ APP_MODE: "local" } as NodeJS.ProcessEnv)).toThrow(/DASHBOARD_SESSION_SECRET/);
-    expect(() => parseAppConfig({ APP_MODE: "local", DASHBOARD_SESSION_SECRET: "" } as NodeJS.ProcessEnv)).toThrow(
-      /DASHBOARD_SESSION_SECRET/,
-    );
-    expect(() => parseAppConfig({ APP_MODE: "demo", ENABLE_WEB_TERMINAL: "true" } as NodeJS.ProcessEnv)).toThrow(
-      /ENABLE_WEB_TERMINAL/,
-    );
+    expect(() =>
+      parseAppConfig({ APP_MODE: "local" } as NodeJS.ProcessEnv),
+    ).toThrow(/DASHBOARD_SESSION_SECRET/);
+    expect(() =>
+      parseAppConfig({
+        APP_MODE: "local",
+        DASHBOARD_SESSION_SECRET: "",
+      } as NodeJS.ProcessEnv),
+    ).toThrow(/DASHBOARD_SESSION_SECRET/);
+    expect(() =>
+      parseAppConfig({
+        APP_MODE: "demo",
+        ENABLE_WEB_TERMINAL: "true",
+      } as NodeJS.ProcessEnv),
+    ).toThrow(/ENABLE_WEB_TERMINAL/);
   });
 
   it("rejects short DASHBOARD_SESSION_SECRET in local mode", () => {
     expect(() =>
-      parseAppConfig({ APP_MODE: "local", DASHBOARD_SESSION_SECRET: "short" } as NodeJS.ProcessEnv),
+      parseAppConfig({
+        APP_MODE: "local",
+        DASHBOARD_SESSION_SECRET: "short",
+      } as NodeJS.ProcessEnv),
     ).toThrow(/at least 32 characters/);
   });
 
   it("rejects SameSite=none without Secure", () => {
     expect(() =>
-      parseAppConfig({ DASHBOARD_COOKIE_SAME_SITE: "none" } as NodeJS.ProcessEnv),
+      parseAppConfig({
+        DASHBOARD_COOKIE_SAME_SITE: "none",
+      } as NodeJS.ProcessEnv),
     ).toThrow(/DASHBOARD_COOKIE_SAME_SITE=none requires/);
   });
 
   it("rejects SameSite=none with Secure=false explicitly", () => {
     expect(() =>
-      parseAppConfig({ DASHBOARD_COOKIE_SAME_SITE: "none", DASHBOARD_COOKIE_SECURE: "false" } as NodeJS.ProcessEnv),
+      parseAppConfig({
+        DASHBOARD_COOKIE_SAME_SITE: "none",
+        DASHBOARD_COOKIE_SECURE: "false",
+      } as NodeJS.ProcessEnv),
     ).toThrow(/DASHBOARD_COOKIE_SAME_SITE=none requires/);
   });
 
@@ -206,9 +230,21 @@ describe("phase one config", () => {
 
 describe("phase one redaction", () => {
   it("redacts secret keys and secret-looking strings", () => {
-    expect(redactString("password=secret ssh-ed25519 AAAATEST user@example")).not.toContain("secret");
-    expect(redactString("-----BEGIN PRIVATE KEY-----\nabc\n-----END PRIVATE KEY-----")).toBe("[REDACTED]");
-    expect(redactValue({ password: "secret", nested: { privateKey: "key" }, ok: "visible" })).toEqual({
+    expect(
+      redactString("password=secret ssh-ed25519 AAAATEST user@example"),
+    ).not.toContain("secret");
+    expect(
+      redactString(
+        "-----BEGIN PRIVATE KEY-----\nabc\n-----END PRIVATE KEY-----",
+      ),
+    ).toBe("[REDACTED]");
+    expect(
+      redactValue({
+        password: "secret",
+        nested: { privateKey: "key" },
+        ok: "visible",
+      }),
+    ).toEqual({
       password: "[REDACTED]",
       nested: { privateKey: "[REDACTED]" },
       ok: "visible",
@@ -222,19 +258,35 @@ describe("phase one redaction", () => {
 
 describe("phase one SSH host policy", () => {
   it("blocks metadata, localhost, and private hosts unless explicitly local", () => {
-    expect(() => assertSshHostAllowed("169.254.169.254", demoConfig)).toThrow(SshHostBlockedError);
-    expect(() => assertSshHostAllowed("localhost", demoConfig)).toThrow(SshHostBlockedError);
-    expect(() => assertSshHostAllowed("10.0.0.5", demoConfig)).toThrow(SshHostBlockedError);
+    expect(() => assertSshHostAllowed("169.254.169.254", demoConfig)).toThrow(
+      SshHostBlockedError,
+    );
+    expect(() => assertSshHostAllowed("localhost", demoConfig)).toThrow(
+      SshHostBlockedError,
+    );
+    expect(() => assertSshHostAllowed("10.0.0.5", demoConfig)).toThrow(
+      SshHostBlockedError,
+    );
 
     expect(() => assertSshHostAllowed("10.0.0.5", localConfig)).not.toThrow();
-    expect(() => assertSshHostAllowed("203.0.113.20", demoConfig)).not.toThrow();
+    expect(() =>
+      assertSshHostAllowed("203.0.113.20", demoConfig),
+    ).not.toThrow();
   });
 
   it("sync wrapper rejects URL/path/userinfo inputs", () => {
-    expect(() => assertSshHostAllowed("user@host", demoConfig)).toThrow(SshHostBlockedError);
-    expect(() => assertSshHostAllowed("host/path", demoConfig)).toThrow(SshHostBlockedError);
-    expect(() => assertSshHostAllowed("host%20", demoConfig)).toThrow(SshHostBlockedError);
-    expect(() => assertSshHostAllowed("host:22", demoConfig)).toThrow(SshHostBlockedError);
+    expect(() => assertSshHostAllowed("user@host", demoConfig)).toThrow(
+      SshHostBlockedError,
+    );
+    expect(() => assertSshHostAllowed("host/path", demoConfig)).toThrow(
+      SshHostBlockedError,
+    );
+    expect(() => assertSshHostAllowed("host%20", demoConfig)).toThrow(
+      SshHostBlockedError,
+    );
+    expect(() => assertSshHostAllowed("host:22", demoConfig)).toThrow(
+      SshHostBlockedError,
+    );
   });
 });
 
@@ -254,10 +306,14 @@ describe("phase one host input validation", () => {
 
   for (const { input, label } of cases) {
     it(`rejects ${label} - sync`, () => {
-      expect(() => assertSshHostAllowed(input, demoConfig)).toThrow(SshHostBlockedError);
+      expect(() => assertSshHostAllowed(input, demoConfig)).toThrow(
+        SshHostBlockedError,
+      );
     });
     it(`rejects ${label} - async`, async () => {
-      await expect(assertSshHostAllowedAsync(input, demoConfig)).rejects.toThrow(SshHostBlockedError);
+      await expect(
+        assertSshHostAllowedAsync(input, demoConfig),
+      ).rejects.toThrow(SshHostBlockedError);
     });
   }
 
@@ -265,7 +321,9 @@ describe("phase one host input validation", () => {
   for (const ip of goodIps) {
     it(`preserves valid IPv6 literal: ${ip}`, () => {
       // Should not throw format validation — will be evaluated by policy instead
-      expect(() => assertSshHostAllowed(ip, localConfig)).not.toThrow(SshHostBlockedError);
+      expect(() => assertSshHostAllowed(ip, localConfig)).not.toThrow(
+        SshHostBlockedError,
+      );
     });
   }
 
@@ -287,26 +345,36 @@ describe("phase one DNS resolution policy", () => {
   it("hostname resolving to metadata IP is blocked", async () => {
     const lookup = await mockDns();
     lookup.mockResolvedValue([{ address: "169.254.169.254", family: 4 }]);
-    await expect(assertSshHostAllowedAsync("metadata.example.com", demoConfig)).rejects.toThrow(SshHostBlockedError);
+    await expect(
+      assertSshHostAllowedAsync("metadata.example.com", demoConfig),
+    ).rejects.toThrow(SshHostBlockedError);
   });
 
   it("hostname resolving to private IP is blocked without local+flag", async () => {
     const lookup = await mockDns();
     lookup.mockResolvedValue([{ address: "10.0.0.5", family: 4 }]);
-    await expect(assertSshHostAllowedAsync("private.example.com", demoConfig)).rejects.toThrow(SshHostBlockedError);
+    await expect(
+      assertSshHostAllowedAsync("private.example.com", demoConfig),
+    ).rejects.toThrow(SshHostBlockedError);
   });
 
   it("hostname resolving to private IP is allowed with local+flag", async () => {
     const lookup = await mockDns();
     lookup.mockResolvedValue([{ address: "10.0.0.5", family: 4 }]);
-    const result = await assertSshHostAllowedAsync("private.example.com", localConfig);
+    const result = await assertSshHostAllowedAsync(
+      "private.example.com",
+      localConfig,
+    );
     expect(result).toBe("10.0.0.5");
   });
 
   it("hostname resolving to public IP is allowed and returns the IP", async () => {
     const lookup = await mockDns();
     lookup.mockResolvedValue([{ address: "203.0.113.20", family: 4 }]);
-    const result = await assertSshHostAllowedAsync("public.example.com", demoConfig);
+    const result = await assertSshHostAllowedAsync(
+      "public.example.com",
+      demoConfig,
+    );
     expect(result).toBe("203.0.113.20");
   });
 
@@ -316,38 +384,52 @@ describe("phase one DNS resolution policy", () => {
       { address: "203.0.113.20", family: 4 },
       { address: "10.0.0.5", family: 4 },
     ]);
-    await expect(assertSshHostAllowedAsync("mixed.example.com", demoConfig)).rejects.toThrow(SshHostBlockedError);
+    await expect(
+      assertSshHostAllowedAsync("mixed.example.com", demoConfig),
+    ).rejects.toThrow(SshHostBlockedError);
   });
 
   it("DNS failure is blocked (fail closed)", async () => {
     const lookup = await mockDns();
     lookup.mockRejectedValue(new Error("ENOTFOUND"));
-    await expect(assertSshHostAllowedAsync("fail.example.com", demoConfig)).rejects.toThrow(SshHostBlockedError);
+    await expect(
+      assertSshHostAllowedAsync("fail.example.com", demoConfig),
+    ).rejects.toThrow(SshHostBlockedError);
   });
 
   it("DNS empty result is blocked (fail closed)", async () => {
     const lookup = await mockDns();
     lookup.mockResolvedValue([]);
-    await expect(assertSshHostAllowedAsync("empty.example.com", demoConfig)).rejects.toThrow(SshHostBlockedError);
+    await expect(
+      assertSshHostAllowedAsync("empty.example.com", demoConfig),
+    ).rejects.toThrow(SshHostBlockedError);
   });
 
   it("hostname resolving to IPv6 public address is allowed", async () => {
     const lookup = await mockDns();
     lookup.mockResolvedValue([{ address: "2001:db8::1", family: 6 }]);
-    const result = await assertSshHostAllowedAsync("ipv6.example.com", demoConfig);
+    const result = await assertSshHostAllowedAsync(
+      "ipv6.example.com",
+      demoConfig,
+    );
     expect(result).toBe("2001:db8::1");
   });
 
   it("hostname resolving to IPv6 ULA is blocked without local+flag", async () => {
     const lookup = await mockDns();
     lookup.mockResolvedValue([{ address: "fc00::1", family: 6 }]);
-    await expect(assertSshHostAllowedAsync("ula.example.com", demoConfig)).rejects.toThrow(SshHostBlockedError);
+    await expect(
+      assertSshHostAllowedAsync("ula.example.com", demoConfig),
+    ).rejects.toThrow(SshHostBlockedError);
   });
 
   it("hostname resolving to IPv6 ULA is allowed with local+flag", async () => {
     const lookup = await mockDns();
     lookup.mockResolvedValue([{ address: "fd00::1", family: 6 }]);
-    const result = await assertSshHostAllowedAsync("ula-local.example.com", localConfig);
+    const result = await assertSshHostAllowedAsync(
+      "ula-local.example.com",
+      localConfig,
+    );
     expect(result).toBe("fd00::1");
   });
 
@@ -355,26 +437,40 @@ describe("phase one DNS resolution policy", () => {
     const lookup = await mockDns();
     // DNS returns ::ffff:10.0.0.5 which maps to private 10.0.0.5
     lookup.mockResolvedValue([{ address: "::ffff:10.0.0.5", family: 6 }]);
-    await expect(assertSshHostAllowedAsync("mapped.example.com", demoConfig)).rejects.toThrow(SshHostBlockedError);
+    await expect(
+      assertSshHostAllowedAsync("mapped.example.com", demoConfig),
+    ).rejects.toThrow(SshHostBlockedError);
   });
 
   it("hostname resolving to IPv4-mapped IPv6 allowed with local+flag returns embedded v4", async () => {
     const lookup = await mockDns();
     lookup.mockResolvedValue([{ address: "::ffff:10.0.0.5", family: 6 }]);
-    const result = await assertSshHostAllowedAsync("mapped-local.example.com", localConfig);
+    const result = await assertSshHostAllowedAsync(
+      "mapped-local.example.com",
+      localConfig,
+    );
     expect(result).toBe("10.0.0.5");
   });
 
   it("hostname resolving to leading-zero mapped IPv6 blocked in demo", async () => {
     const lookup = await mockDns();
-    lookup.mockResolvedValue([{ address: "0000:0000:0000:0000:0000:ffff:0a00:0005", family: 6 }]);
-    await expect(assertSshHostAllowedAsync("leading-zero.example.com", demoConfig)).rejects.toThrow(SshHostBlockedError);
+    lookup.mockResolvedValue([
+      { address: "0000:0000:0000:0000:0000:ffff:0a00:0005", family: 6 },
+    ]);
+    await expect(
+      assertSshHostAllowedAsync("leading-zero.example.com", demoConfig),
+    ).rejects.toThrow(SshHostBlockedError);
   });
 
   it("hostname resolving to leading-zero mapped IPv6 allowed with local+flag returns embedded v4", async () => {
     const lookup = await mockDns();
-    lookup.mockResolvedValue([{ address: "0000:0000:0000:0000:0000:ffff:0a00:0005", family: 6 }]);
-    const result = await assertSshHostAllowedAsync("leading-zero-local.example.com", localConfig);
+    lookup.mockResolvedValue([
+      { address: "0000:0000:0000:0000:0000:ffff:0a00:0005", family: 6 },
+    ]);
+    const result = await assertSshHostAllowedAsync(
+      "leading-zero-local.example.com",
+      localConfig,
+    );
     expect(result).toBe("10.0.0.5");
   });
 });
@@ -385,92 +481,147 @@ describe("phase one DNS resolution policy", () => {
 
 describe("phase one IPv6 literal policy", () => {
   it("blocks ::1 localhost always", async () => {
-    await expect(assertSshHostAllowedAsync("::1", demoConfig)).rejects.toThrow(SshHostBlockedError);
-    await expect(assertSshHostAllowedAsync("::1", localConfig)).rejects.toThrow(SshHostBlockedError);
+    await expect(assertSshHostAllowedAsync("::1", demoConfig)).rejects.toThrow(
+      SshHostBlockedError,
+    );
+    await expect(assertSshHostAllowedAsync("::1", localConfig)).rejects.toThrow(
+      SshHostBlockedError,
+    );
   });
 
   it("blocks :: unspecified always", async () => {
-    await expect(assertSshHostAllowedAsync("::", demoConfig)).rejects.toThrow(SshHostBlockedError);
+    await expect(assertSshHostAllowedAsync("::", demoConfig)).rejects.toThrow(
+      SshHostBlockedError,
+    );
   });
 
   // ---- Link-local fe80::/10 (first hextet 0xfe80 – 0xfebf) ----
 
   it("blocks fe80:: link-local always", async () => {
-    await expect(assertSshHostAllowedAsync("fe80::1", demoConfig)).rejects.toThrow(SshHostBlockedError);
-    await expect(assertSshHostAllowedAsync("fe80::1", localConfig)).rejects.toThrow(SshHostBlockedError);
+    await expect(
+      assertSshHostAllowedAsync("fe80::1", demoConfig),
+    ).rejects.toThrow(SshHostBlockedError);
+    await expect(
+      assertSshHostAllowedAsync("fe80::1", localConfig),
+    ).rejects.toThrow(SshHostBlockedError);
   });
 
   it("blocks fe90::1 link-local (fe80::/10 range boundary)", async () => {
-    await expect(assertSshHostAllowedAsync("fe90::1", demoConfig)).rejects.toThrow(SshHostBlockedError);
-    await expect(assertSshHostAllowedAsync("fe90::1", localConfig)).rejects.toThrow(SshHostBlockedError);
+    await expect(
+      assertSshHostAllowedAsync("fe90::1", demoConfig),
+    ).rejects.toThrow(SshHostBlockedError);
+    await expect(
+      assertSshHostAllowedAsync("fe90::1", localConfig),
+    ).rejects.toThrow(SshHostBlockedError);
   });
 
   it("blocks fea0::1 link-local (fe80::/10 range middle)", async () => {
-    await expect(assertSshHostAllowedAsync("fea0::1", demoConfig)).rejects.toThrow(SshHostBlockedError);
+    await expect(
+      assertSshHostAllowedAsync("fea0::1", demoConfig),
+    ).rejects.toThrow(SshHostBlockedError);
   });
 
   it("blocks febf::1 link-local (fe80::/10 range upper boundary)", async () => {
-    await expect(assertSshHostAllowedAsync("febf::1", demoConfig)).rejects.toThrow(SshHostBlockedError);
+    await expect(
+      assertSshHostAllowedAsync("febf::1", demoConfig),
+    ).rejects.toThrow(SshHostBlockedError);
   });
 
   // ---- ULA fc00::/7 ----
 
   it("blocks fc00::/7 ULA without local+flag", async () => {
-    await expect(assertSshHostAllowedAsync("fc00::1", demoConfig)).rejects.toThrow(SshHostBlockedError);
-    await expect(assertSshHostAllowedAsync("fd00::1", demoConfig)).rejects.toThrow(SshHostBlockedError);
+    await expect(
+      assertSshHostAllowedAsync("fc00::1", demoConfig),
+    ).rejects.toThrow(SshHostBlockedError);
+    await expect(
+      assertSshHostAllowedAsync("fd00::1", demoConfig),
+    ).rejects.toThrow(SshHostBlockedError);
   });
 
   it("allows fc00::/7 ULA with local+flag", async () => {
-    await expect(assertSshHostAllowedAsync("fc00::1", localConfig)).resolves.toBe("fc00::1");
-    await expect(assertSshHostAllowedAsync("fd00::1", localConfig)).resolves.toBe("fd00::1");
+    await expect(
+      assertSshHostAllowedAsync("fc00::1", localConfig),
+    ).resolves.toBe("fc00::1");
+    await expect(
+      assertSshHostAllowedAsync("fd00::1", localConfig),
+    ).resolves.toBe("fd00::1");
   });
 
   it("allows public IPv6", async () => {
-    await expect(assertSshHostAllowedAsync("2001:db8::1", demoConfig)).resolves.toBe("2001:db8::1");
+    await expect(
+      assertSshHostAllowedAsync("2001:db8::1", demoConfig),
+    ).resolves.toBe("2001:db8::1");
   });
 
   // ---- Full-form loopback / unspecified ----
 
   it("blocks fully-expanded loopback 0:0:0:0:0:0:0:1", async () => {
-    await expect(assertSshHostAllowedAsync("0:0:0:0:0:0:0:1", demoConfig)).rejects.toThrow(SshHostBlockedError);
-    await expect(assertSshHostAllowedAsync("0:0:0:0:0:0:0:1", localConfig)).rejects.toThrow(SshHostBlockedError);
+    await expect(
+      assertSshHostAllowedAsync("0:0:0:0:0:0:0:1", demoConfig),
+    ).rejects.toThrow(SshHostBlockedError);
+    await expect(
+      assertSshHostAllowedAsync("0:0:0:0:0:0:0:1", localConfig),
+    ).rejects.toThrow(SshHostBlockedError);
   });
 
   it("blocks fully-expanded unspecified 0:0:0:0:0:0:0:0", async () => {
-    await expect(assertSshHostAllowedAsync("0:0:0:0:0:0:0:0", demoConfig)).rejects.toThrow(SshHostBlockedError);
+    await expect(
+      assertSshHostAllowedAsync("0:0:0:0:0:0:0:0", demoConfig),
+    ).rejects.toThrow(SshHostBlockedError);
   });
 
   // ---- Leading-zero mapped variants ----
 
   it("blocks leading-zero mapped localhost 0000:0000:0000:0000:0000:ffff:7f00:0001", async () => {
-    await expect(assertSshHostAllowedAsync("0000:0000:0000:0000:0000:ffff:7f00:0001", demoConfig)).rejects.toThrow(SshHostBlockedError);
+    await expect(
+      assertSshHostAllowedAsync(
+        "0000:0000:0000:0000:0000:ffff:7f00:0001",
+        demoConfig,
+      ),
+    ).rejects.toThrow(SshHostBlockedError);
   });
 
   it("blocks leading-zero mapped private 0000:0000:0000:0000:0000:ffff:0a00:0005 in demo", async () => {
-    await expect(assertSshHostAllowedAsync("0000:0000:0000:0000:0000:ffff:0a00:0005", demoConfig)).rejects.toThrow(SshHostBlockedError);
+    await expect(
+      assertSshHostAllowedAsync(
+        "0000:0000:0000:0000:0000:ffff:0a00:0005",
+        demoConfig,
+      ),
+    ).rejects.toThrow(SshHostBlockedError);
   });
 
   it("allows leading-zero mapped private with local+flag and returns v4", async () => {
-    const result = await assertSshHostAllowedAsync("0000:0000:0000:0000:0000:ffff:0a00:0005", localConfig);
+    const result = await assertSshHostAllowedAsync(
+      "0000:0000:0000:0000:0000:ffff:0a00:0005",
+      localConfig,
+    );
     expect(result).toBe("10.0.0.5");
   });
 
   // ---- IPv4-mapped IPv6 ----
 
   it("blocks IPv4-mapped IPv6 localhost (dotted short)", async () => {
-    await expect(assertSshHostAllowedAsync("::ffff:127.0.0.1", demoConfig)).rejects.toThrow(SshHostBlockedError);
+    await expect(
+      assertSshHostAllowedAsync("::ffff:127.0.0.1", demoConfig),
+    ).rejects.toThrow(SshHostBlockedError);
   });
 
   it("blocks IPv4-mapped IPv6 localhost (hex short)", async () => {
-    await expect(assertSshHostAllowedAsync("::ffff:7f00:1", demoConfig)).rejects.toThrow(SshHostBlockedError);
+    await expect(
+      assertSshHostAllowedAsync("::ffff:7f00:1", demoConfig),
+    ).rejects.toThrow(SshHostBlockedError);
   });
 
   it("blocks IPv4-mapped IPv6 localhost (full 8-group dotted)", async () => {
-    await expect(assertSshHostAllowedAsync("0:0:0:0:0:ffff:127.0.0.1", demoConfig)).rejects.toThrow(SshHostBlockedError);
+    await expect(
+      assertSshHostAllowedAsync("0:0:0:0:0:ffff:127.0.0.1", demoConfig),
+    ).rejects.toThrow(SshHostBlockedError);
   });
 
   it("blocks IPv4-mapped IPv6 private (hex short) without local flag", async () => {
-    await expect(assertSshHostAllowedAsync("::ffff:a00:5", demoConfig)).rejects.toThrow(SshHostBlockedError);
+    await expect(
+      assertSshHostAllowedAsync("::ffff:a00:5", demoConfig),
+    ).rejects.toThrow(SshHostBlockedError);
   });
 
   it("allows IPv4-mapped IPv6 private (hex short) with local+flag returning v4", async () => {
@@ -479,11 +630,16 @@ describe("phase one IPv6 literal policy", () => {
   });
 
   it("blocks IPv4-mapped IPv6 private (full dotted) without local flag", async () => {
-    await expect(assertSshHostAllowedAsync("::ffff:10.0.0.5", demoConfig)).rejects.toThrow(SshHostBlockedError);
+    await expect(
+      assertSshHostAllowedAsync("::ffff:10.0.0.5", demoConfig),
+    ).rejects.toThrow(SshHostBlockedError);
   });
 
   it("allows IPv4-mapped IPv6 private (full dotted) with local+flag", async () => {
-    const result = await assertSshHostAllowedAsync("::ffff:10.0.0.5", localConfig);
+    const result = await assertSshHostAllowedAsync(
+      "::ffff:10.0.0.5",
+      localConfig,
+    );
     expect(result).toBe("10.0.0.5");
   });
 
@@ -493,7 +649,9 @@ describe("phase one IPv6 literal policy", () => {
   });
 
   it("blocks metadata IP", async () => {
-    await expect(assertSshHostAllowedAsync("169.254.169.254", demoConfig)).rejects.toThrow(SshHostBlockedError);
+    await expect(
+      assertSshHostAllowedAsync("169.254.169.254", demoConfig),
+    ).rejects.toThrow(SshHostBlockedError);
   });
 });
 
@@ -520,7 +678,13 @@ describe("phase one SSH host key verification", () => {
 
   it("host verifier accepts matching vpsId pin (single string)", () => {
     const pins: Record<string, string | string[]> = { "vps-1": fpA };
-    const opts = { vpsId: "vps-1", host: "203.0.113.20", port: 22, pins, policy: "strict" as const };
+    const opts = {
+      vpsId: "vps-1",
+      host: "203.0.113.20",
+      port: 22,
+      pins,
+      policy: "strict" as const,
+    };
     const verifier = createHostVerifier(opts);
     return new Promise<void>((done) => {
       verifier(keyA, (permitted) => {
@@ -532,7 +696,13 @@ describe("phase one SSH host key verification", () => {
 
   it("host verifier accepts matching host:port pin", () => {
     const pins: Record<string, string | string[]> = { "203.0.113.20:22": fpB };
-    const opts = { vpsId: "other-vps", host: "203.0.113.20", port: 22, pins, policy: "strict" as const };
+    const opts = {
+      vpsId: "other-vps",
+      host: "203.0.113.20",
+      port: 22,
+      pins,
+      policy: "strict" as const,
+    };
     const verifier = createHostVerifier(opts);
     return new Promise<void>((done) => {
       verifier(keyB, (permitted) => {
@@ -548,7 +718,13 @@ describe("phase one SSH host key verification", () => {
       "vps-1": fpA,
       "203.0.113.20:22": fpB,
     };
-    const opts = { vpsId: "vps-1", host: "203.0.113.20", port: 22, pins, policy: "strict" as const };
+    const opts = {
+      vpsId: "vps-1",
+      host: "203.0.113.20",
+      port: 22,
+      pins,
+      policy: "strict" as const,
+    };
     const verifier = createHostVerifier(opts);
     // keyA matches vpsId pin -> accepted
     // keyB matches host:port pin but should not be checked since vpsId took priority
@@ -562,7 +738,13 @@ describe("phase one SSH host key verification", () => {
 
   it("host verifier rejects on fingerprint mismatch", () => {
     const pins: Record<string, string | string[]> = { "vps-1": fpA };
-    const opts = { vpsId: "vps-1", host: "203.0.113.20", port: 22, pins, policy: "strict" as const };
+    const opts = {
+      vpsId: "vps-1",
+      host: "203.0.113.20",
+      port: 22,
+      pins,
+      policy: "strict" as const,
+    };
     const verifier = createHostVerifier(opts);
     return new Promise<void>((done) => {
       verifier(keyB, (permitted) => {
@@ -573,7 +755,13 @@ describe("phase one SSH host key verification", () => {
   });
 
   it("host verifier rejects unpinned host in strict mode", () => {
-    const opts = { vpsId: "unknown-vps", host: "10.0.0.1", port: 22, pins: {} as Record<string, string | string[]>, policy: "strict" as const };
+    const opts = {
+      vpsId: "unknown-vps",
+      host: "10.0.0.1",
+      port: 22,
+      pins: {} as Record<string, string | string[]>,
+      policy: "strict" as const,
+    };
     const verifier = createHostVerifier(opts);
     return new Promise<void>((done) => {
       verifier(keyA, (permitted) => {
@@ -584,7 +772,13 @@ describe("phase one SSH host key verification", () => {
   });
 
   it("host verifier allows unpinned host in permissive mode", () => {
-    const opts = { vpsId: "unknown-vps", host: "10.0.0.1", port: 22, pins: {} as Record<string, string | string[]>, policy: "permissive" as const };
+    const opts = {
+      vpsId: "unknown-vps",
+      host: "10.0.0.1",
+      port: 22,
+      pins: {} as Record<string, string | string[]>,
+      policy: "permissive" as const,
+    };
     const verifier = createHostVerifier(opts);
     return new Promise<void>((done) => {
       verifier(keyA, (permitted) => {
@@ -598,7 +792,13 @@ describe("phase one SSH host key verification", () => {
 
   it("host verifier accepts array pin containing matching fingerprint", () => {
     const pins: Record<string, string | string[]> = { "vps-1": [fpA, fpB] };
-    const opts = { vpsId: "vps-1", host: "203.0.113.20", port: 22, pins, policy: "strict" as const };
+    const opts = {
+      vpsId: "vps-1",
+      host: "203.0.113.20",
+      port: 22,
+      pins,
+      policy: "strict" as const,
+    };
     const verifier = createHostVerifier(opts);
     // keyA should match first element
     return new Promise<void>((done) => {
@@ -611,7 +811,13 @@ describe("phase one SSH host key verification", () => {
 
   it("host verifier accepts array pin with second element (key rotation)", () => {
     const pins: Record<string, string | string[]> = { "vps-1": [fpA, fpC] };
-    const opts = { vpsId: "vps-1", host: "203.0.113.20", port: 22, pins, policy: "strict" as const };
+    const opts = {
+      vpsId: "vps-1",
+      host: "203.0.113.20",
+      port: 22,
+      pins,
+      policy: "strict" as const,
+    };
     const verifier = createHostVerifier(opts);
     // keyC should match second element
     return new Promise<void>((done) => {
@@ -624,7 +830,13 @@ describe("phase one SSH host key verification", () => {
 
   it("host verifier rejects when array pin has no match", () => {
     const pins: Record<string, string | string[]> = { "vps-1": [fpA, fpB] };
-    const opts = { vpsId: "vps-1", host: "203.0.113.20", port: 22, pins, policy: "strict" as const };
+    const opts = {
+      vpsId: "vps-1",
+      host: "203.0.113.20",
+      port: 22,
+      pins,
+      policy: "strict" as const,
+    };
     const verifier = createHostVerifier(opts);
     // keyC does not match any element
     return new Promise<void>((done) => {
@@ -666,19 +878,25 @@ describe("SSH_HOST_KEY_PINS parser", () => {
 
   it("rejects JSON array at top level", () => {
     expect(() =>
-      parseAppConfig({ SSH_HOST_KEY_PINS: '["vps-1","SHA256:abc"]' } as NodeJS.ProcessEnv),
+      parseAppConfig({
+        SSH_HOST_KEY_PINS: '["vps-1","SHA256:abc"]',
+      } as NodeJS.ProcessEnv),
     ).toThrow(/must be a JSON object/);
   });
 
   it("rejects non-string, non-array values", () => {
     expect(() =>
-      parseAppConfig({ SSH_HOST_KEY_PINS: JSON.stringify({ "vps-1": 123 }) } as NodeJS.ProcessEnv),
+      parseAppConfig({
+        SSH_HOST_KEY_PINS: JSON.stringify({ "vps-1": 123 }),
+      } as NodeJS.ProcessEnv),
     ).toThrow(/must be a string/);
   });
 
   it("rejects array with non-string elements", () => {
     expect(() =>
-      parseAppConfig({ SSH_HOST_KEY_PINS: JSON.stringify({ "vps-1": ["abc", 123] }) } as NodeJS.ProcessEnv),
+      parseAppConfig({
+        SSH_HOST_KEY_PINS: JSON.stringify({ "vps-1": ["abc", 123] }),
+      } as NodeJS.ProcessEnv),
     ).toThrow(/must be a string/);
   });
 
@@ -699,7 +917,7 @@ describe("SSH_HOST_KEY_PINS parser", () => {
 
 describe("TOCTOU protection — high-level SshService", () => {
   beforeEach(async () => {
-    const ssh2 = await import("ssh2") as any;
+    const ssh2 = (await import("ssh2")) as any;
     ssh2.__testing.reset();
     const lookup = await mockDns();
     lookup.mockReset();
@@ -709,7 +927,9 @@ describe("TOCTOU protection — high-level SshService", () => {
   function mockAuditService() {
     const events: unknown[] = [];
     return {
-      record: vi.fn((e: unknown) => { events.push(e); }),
+      record: vi.fn((e: unknown) => {
+        events.push(e);
+      }),
       _events: events,
     };
   }
@@ -735,7 +955,7 @@ describe("TOCTOU protection — high-level SshService", () => {
 
     await service.verifyPrivateKey(vps, "dummy-private-key");
 
-    const ssh2 = await import("ssh2") as any;
+    const ssh2 = (await import("ssh2")) as any;
     const calls = ssh2.__testing.getConnectArgs();
     expect(calls.length).toBeGreaterThanOrEqual(1);
 
@@ -756,7 +976,10 @@ describe("TOCTOU protection — high-level SshService", () => {
 
     // Use local mode WITHOUT allowPrivateNetworkTargets so private IPs are blocked
     // (demo mode would throw DemoSshDisabledError first)
-    const blockedConfig: AppConfig = { ...localConfig, allowPrivateNetworkTargets: false };
+    const blockedConfig: AppConfig = {
+      ...localConfig,
+      allowPrivateNetworkTargets: false,
+    };
 
     const { SshService } = await import("../src/ssh/ssh.service.js");
     const audit = mockAuditService();
@@ -772,10 +995,12 @@ describe("TOCTOU protection — high-level SshService", () => {
       updatedAt: new Date().toISOString(),
     };
 
-    await expect(service.verifyPrivateKey(vps, "dummy-key")).rejects.toThrow(SshHostBlockedError);
+    await expect(service.verifyPrivateKey(vps, "dummy-key")).rejects.toThrow(
+      SshHostBlockedError,
+    );
 
     // ssh2 must never have been reached
-    const ssh2 = await import("ssh2") as any;
+    const ssh2 = (await import("ssh2")) as any;
     expect(ssh2.__testing.getConnectArgs().length).toBe(0);
 
     // Audit must have been recorded
@@ -796,11 +1021,18 @@ describe("phase one route security", () => {
     try {
       const response = await request(server)
         .post("/api/vps")
-        .send({ name: "prod", host: "203.0.113.20", port: 22, username: "root" })
+        .send({
+          name: "prod",
+          host: "203.0.113.20",
+          port: 22,
+          username: "root",
+        })
         .expect(403);
       expect(response.headers["x-request-id"]).toBeDefined();
       expect(response.headers["x-content-type-options"]).toBe("nosniff");
-      expect(response.body.error.message).toBe("Mutations are disabled in demo mode");
+      expect(response.body.error.message).toBe(
+        "Mutations are disabled in demo mode",
+      );
     } finally {
       await rm(tempDir, { recursive: true, force: true });
     }
@@ -815,16 +1047,29 @@ describe("phase one route security", () => {
       await request(server).get("/api/health").expect(200, { ok: true });
       await request(server)
         .post("/api/vps")
-        .send({ name: "prod", host: "203.0.113.20", port: 22, username: "root" })
+        .send({
+          name: "prod",
+          host: "203.0.113.20",
+          port: 22,
+          username: "root",
+        })
         .expect(401);
 
-      const cookie = await createSessionCookie(tempDir, config.dashboardSessionSecret);
+      const cookie = await createSessionCookie(
+        tempDir,
+        config.dashboardSessionSecret,
+      );
       await request(server)
         .post("/api/vps")
         .set("Cookie", cookie)
         .set("Origin", "http://127.0.0.1")
         .set("Host", "127.0.0.1")
-        .send({ name: "prod", host: "203.0.113.20", port: 22, username: "root" })
+        .send({
+          name: "prod",
+          host: "203.0.113.20",
+          port: 22,
+          username: "root",
+        })
         .expect(201);
     } finally {
       await rm(tempDir, { recursive: true, force: true });
@@ -836,9 +1081,16 @@ describe("phase one route security", () => {
     try {
       const create = await request(server)
         .post("/api/vps")
-        .send({ name: "prod", host: "203.0.113.20", port: 22, username: "root" })
+        .send({
+          name: "prod",
+          host: "203.0.113.20",
+          port: 22,
+          username: "root",
+        })
         .expect(403);
-      expect(create.body.error.message).toBe("Mutations are disabled in demo mode");
+      expect(create.body.error.message).toBe(
+        "Mutations are disabled in demo mode",
+      );
 
       const blocked = await request(server)
         .post("/api/vps/nonexistent/provision-key")

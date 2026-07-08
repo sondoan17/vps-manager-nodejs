@@ -27,18 +27,27 @@
     --shadow-panel: none;
   }
 
-  * { @apply border-border; }
+  * {
+    @apply border-border;
+  }
 
   body {
     @apply m-0 min-h-screen bg-background font-body text-foreground antialiased;
     background: #1f2228;
-    font-feature-settings: "calt" 1, "kern" 1, "liga" 1;
+    font-feature-settings:
+      "calt" 1,
+      "kern" 1,
+      "liga" 1;
     letter-spacing: 0;
   }
 
   button,
   input,
-  select { font: inherit; }
+  select {
+    font: inherit;
+  }
 
-  :focus-visible { @apply outline-none ring-2 ring-ring/50 ring-offset-2 ring-offset-background; }
+  :focus-visible {
+    @apply outline-none ring-2 ring-ring/50 ring-offset-2 ring-offset-background;
+  }
 }

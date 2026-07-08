@@ -9,8 +9,13 @@ function safeRequestId(value: unknown): string | undefined {
   return value;
 }
 
-export function requestIdMiddleware(req: Request, res: Response, next: NextFunction) {
-  const requestId = safeRequestId(req.header(REQUEST_ID_HEADER)) ?? randomUUID();
+export function requestIdMiddleware(
+  req: Request,
+  res: Response,
+  next: NextFunction,
+) {
+  const requestId =
+    safeRequestId(req.header(REQUEST_ID_HEADER)) ?? randomUUID();
   req.requestId = requestId;
   res.setHeader(REQUEST_ID_HEADER, requestId);
   next();

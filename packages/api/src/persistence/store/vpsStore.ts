@@ -1,7 +1,18 @@
 import { nanoid } from "nanoid";
-import type { CreateVpsInput, UpdateVpsInput, VpsRecord } from "../../vps/vps.models.js";
-import { readJsonFile, readModifyWriteJsonFile } from "../repositories/json-file.js";
-import { withVpsDefaults, type EnsureLocalHostInput, type VpsRepository } from "../repositories/vps.repository.js";
+import type {
+  CreateVpsInput,
+  UpdateVpsInput,
+  VpsRecord,
+} from "../../vps/vps.models.js";
+import {
+  readJsonFile,
+  readModifyWriteJsonFile,
+} from "../repositories/json-file.js";
+import {
+  withVpsDefaults,
+  type EnsureLocalHostInput,
+  type VpsRepository,
+} from "../repositories/vps.repository.js";
 
 type StoreFile = { vps: VpsRecord[] };
 
@@ -38,7 +49,7 @@ export function createVpsStore(filePath = "data/vps.json") {
         managedBy: "user",
         dockerMetricsEnabled: false,
         createdAt: timestamp,
-        updatedAt: timestamp
+        updatedAt: timestamp,
       };
       return readModifyWriteJsonFile<StoreFile>(
         filePath,
@@ -47,7 +58,7 @@ export function createVpsStore(filePath = "data/vps.json") {
           data.vps = data.vps.map(withVpsDefaults);
           data.vps.push(record);
           return data;
-        }
+        },
       ).then((data) => data.vps.find((vps) => vps.id === id) ?? record);
     },
     async update(id: string, input: UpdateVpsInput) {
@@ -60,7 +71,7 @@ export function createVpsStore(filePath = "data/vps.json") {
           if (index === -1) return data;
           data.vps[index] = { ...data.vps[index], ...input, updatedAt: now() };
           return data;
-        }
+        },
       ).then((data) => data.vps.find((vps) => vps.id === id));
     },
     async markKeyProvisioned(id: string) {
@@ -72,9 +83,13 @@ export function createVpsStore(filePath = "data/vps.json") {
           const index = data.vps.findIndex((vps) => vps.id === id);
           if (index === -1) return data;
           const timestamp = now();
-          data.vps[index] = { ...data.vps[index], keyProvisionedAt: timestamp, updatedAt: timestamp };
+          data.vps[index] = {
+            ...data.vps[index],
+            keyProvisionedAt: timestamp,
+            updatedAt: timestamp,
+          };
           return data;
-        }
+        },
       ).then((data) => data.vps.find((vps) => vps.id === id));
     },
     async delete(id: string) {
@@ -88,7 +103,7 @@ export function createVpsStore(filePath = "data/vps.json") {
           deleted = next.length !== data.vps.length;
           data.vps = next;
           return data;
-        }
+        },
       );
       return deleted;
     },
@@ -138,14 +153,18 @@ export function createVpsStore(filePath = "data/vps.json") {
             });
           }
           return data;
-        }
+        },
       ).then((data) => {
         const found = data.vps.find((v) => v.id === input.id);
         if (!found) throw new Error("Failed to ensure local host record");
         return found;
       });
     },
-    async markSeen(id: string, status: VpsRecord["status"], lastSeenAt: string) {
+    async markSeen(
+      id: string,
+      status: VpsRecord["status"],
+      lastSeenAt: string,
+    ) {
       return readModifyWriteJsonFile<StoreFile>(
         filePath,
         { vps: [] },
@@ -153,11 +172,16 @@ export function createVpsStore(filePath = "data/vps.json") {
           data.vps = data.vps.map(withVpsDefaults);
           const index = data.vps.findIndex((vps) => vps.id === id);
           if (index === -1) return data;
-          data.vps[index] = { ...data.vps[index], status, lastSeenAt, updatedAt: now() };
+          data.vps[index] = {
+            ...data.vps[index],
+            status,
+            lastSeenAt,
+            updatedAt: now(),
+          };
           return data;
-        }
+        },
       ).then((data) => data.vps.find((vps) => vps.id === id));
-    }
+    },
   };
 
   return repository;

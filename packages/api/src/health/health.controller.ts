@@ -1,4 +1,10 @@
-import { Controller, Get, Inject, Optional, ServiceUnavailableException } from "@nestjs/common";
+import {
+  Controller,
+  Get,
+  Inject,
+  Optional,
+  ServiceUnavailableException,
+} from "@nestjs/common";
 import type { Pool } from "pg";
 import type { AppConfig } from "../config/app-config.js";
 import { APP_CONFIG, DATABASE_POOL } from "../tokens.js";
@@ -49,7 +55,9 @@ export class HealthController {
       );
       appliedRows = result.rows;
     } catch {
-      throw new ServiceUnavailableException("Schema migrations table not found or query failed");
+      throw new ServiceUnavailableException(
+        "Schema migrations table not found or query failed",
+      );
     }
 
     const appliedSet = new Set(appliedRows.map((r) => r.id));

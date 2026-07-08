@@ -46,10 +46,14 @@ afterEach(async () => {
 
 function app() {
   return createApp({
-    config: { ...demoConfig, dataDir: join(tempDir, "data"), privateDir: join(tempDir, "private") },
+    config: {
+      ...demoConfig,
+      dataDir: join(tempDir, "data"),
+      privateDir: join(tempDir, "private"),
+    },
     store: createVpsStore(join(tempDir, "data", "vps.json")),
     keys: createKeyService(join(tempDir, "private", "keys")),
-    audit: createJsonAuditRepository(join(tempDir, "data", "audit.json"))
+    audit: createJsonAuditRepository(join(tempDir, "data", "audit.json")),
   });
 }
 
@@ -63,9 +67,17 @@ describe("routes", () => {
     // Mutations blocked in demo mode
     const create = await request(server)
       .post("/api/vps")
-      .send({ name: "prod", host: "203.0.113.20", port: 22, username: "root", password: "secret" })
+      .send({
+        name: "prod",
+        host: "203.0.113.20",
+        port: 22,
+        username: "root",
+        password: "secret",
+      })
       .expect(403);
-    expect(create.body.error.message).toBe("Mutations are disabled in demo mode");
+    expect(create.body.error.message).toBe(
+      "Mutations are disabled in demo mode",
+    );
     expect(JSON.stringify(create.body)).not.toContain("secret");
 
     // Reads still work — demo mode returns seeded demo servers
@@ -75,11 +87,16 @@ describe("routes", () => {
   });
 
   it("sanitizes validation and not-found errors", async () => {
-    const bad = await request(app()).post("/api/vps").send({ password: "secret" }).expect(403);
+    const bad = await request(app())
+      .post("/api/vps")
+      .send({ password: "secret" })
+      .expect(403);
     expect(bad.body.error.message).toBe("Mutations are disabled in demo mode");
     expect(JSON.stringify(bad.body)).not.toContain("secret");
 
-    await request(app()).get("/api/vps/missing").expect(404, { error: { message: "VPS not found" } });
+    await request(app())
+      .get("/api/vps/missing")
+      .expect(404, { error: { message: "VPS not found" } });
   });
 
   it("serves public dashboard assets without exposing private or data directories", async () => {

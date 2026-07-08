@@ -42,7 +42,14 @@ export type DashboardDockerMetrics = {
   agentVersion?: string;
   schemaVersion: 1;
   available: boolean;
-  errorCode?: "socket_missing" | "permission_denied" | "timeout" | "daemon_unreachable" | "unsupported_os" | "bad_response" | string;
+  errorCode?:
+    | "socket_missing"
+    | "permission_denied"
+    | "timeout"
+    | "daemon_unreachable"
+    | "unsupported_os"
+    | "bad_response"
+    | string;
   containerTotal: number;
   containerRunning: number;
   cpuPercent: number;
@@ -217,7 +224,9 @@ async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
     });
   } catch (error) {
     if (error instanceof DOMException && error.name === "AbortError") {
-      throw new Error("Request timed out. Check backend connectivity and retry.");
+      throw new Error(
+        "Request timed out. Check backend connectivity and retry.",
+      );
     }
     throw error;
   } finally {
@@ -272,31 +281,67 @@ export function createVps(payload: CreateVpsPayload) {
   });
 }
 
-export function updateVps(id: string, payload: Partial<Pick<VpsRecord, "dockerMetricsEnabled">>) {
-  return request<VpsRecord>(`/api/vps/${id}`, {
+function vpsPath(id: string): string {
+  return `/api/vps/${encodeURIComponent(id)}`;
+}
+
+export function updateVps(
+  id: string,
+  payload: Partial<Pick<VpsRecord, "dockerMetricsEnabled">>,
+) {
+  return request<VpsRecord>(`${vpsPath(id)}`, {
     method: "PATCH",
     body: JSON.stringify(payload),
   });
 }
 
 export function provisionKey(id: string, password: string) {
-  return request<VpsRecord>(`/api/vps/${id}/provision-key`, {
+  return request<VpsRecord>(`${vpsPath(id)}/provision-key`, {
     method: "POST",
     body: JSON.stringify({ password }),
   });
 }
 
 export function verifyKey(id: string) {
-  return request<{ ok: true }>(`/api/vps/${id}/verify-key`, { method: "POST" });
+  return request<{ ok: true }>(`${vpsPath(id)}/verify-key`, { method: "POST" });
 }
 
 export function installAgent(id: string, password?: string) {
-  return request<{ jobId: string; state: { status: string; lastInstallJobId?: string } }>(`/api/vps/${id}/install-agent`, {
+  return request<{
+    jobId: string;
+    state: { status: string; lastInstallJobId?: string };
+  }>(`${vpsPath(id)}/install-agent`, {
     method: "POST",
     body: JSON.stringify(password ? { password } : {}),
   });
 }
 
 export function deleteVps(id: string) {
-  return request<null>(`/api/vps/${id}`, { method: "DELETE" });
+  return request<null>(`${vpsPath(id)}`, { method: "DELETE" });
+}
+
+// ── Scoped VPS endpoints (Phase 4) ──────────────────────────────────
+
+export function listVpsJobs(
+  id: string,
+  params?: { limit?: number; offset?: number },
+) {
+  const query = params
+    ? `?limit=${params.limit ?? 100}&offset=${params.offset ?? 0}`
+    : "";
+  return request<DashboardJob[]>(`${vpsPath(id)}/jobs${query}`);
+}
+
+export function listVpsMetrics(id: string) {
+  return request<DashboardMetric[]>(`${vpsPath(id)}/metrics`);
+}
+
+export function listVpsAuditEvents(
+  id: string,
+  params?: { limit?: number; offset?: number },
+) {
+  const query = params
+    ? `?limit=${params.limit ?? 100}&offset=${params.offset ?? 0}`
+    : "";
+  return request<AuditEvent[]>(`${vpsPath(id)}/audit${query}`);
 }

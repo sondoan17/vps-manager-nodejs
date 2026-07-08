@@ -81,7 +81,9 @@ const agentDockerMetricsInputSchema = z
   .object({
     collectedAt: z
       .string()
-      .refine((val) => !isNaN(Date.parse(val)), { message: "docker.collectedAt must be a parseable date" })
+      .refine((val) => !isNaN(Date.parse(val)), {
+        message: "docker.collectedAt must be a parseable date",
+      })
       .refine(
         (val) => {
           const ts = new Date(val).getTime();
@@ -94,7 +96,14 @@ const agentDockerMetricsInputSchema = z
     schemaVersion: z.literal(1),
     available: z.boolean(),
     errorCode: z
-      .enum(["socket_missing", "permission_denied", "timeout", "daemon_unreachable", "unsupported_os", "bad_response"])
+      .enum([
+        "socket_missing",
+        "permission_denied",
+        "timeout",
+        "daemon_unreachable",
+        "unsupported_os",
+        "bad_response",
+      ])
       .optional(),
     containerTotal: z.number().int().finite().min(0).safe(),
     containerRunning: z.number().int().finite().min(0).safe(),
@@ -121,7 +130,9 @@ export const agentMetricPayloadSchema = z
     uptime: z.number().finite().min(0),
     collectedAt: z
       .string()
-      .refine((val) => !isNaN(Date.parse(val)), { message: "collectedAt must be a parseable date" })
+      .refine((val) => !isNaN(Date.parse(val)), {
+        message: "collectedAt must be a parseable date",
+      })
       .refine(
         (val) => {
           const ts = new Date(val).getTime();

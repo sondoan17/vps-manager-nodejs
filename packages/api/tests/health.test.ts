@@ -100,13 +100,30 @@ describe("HealthController — Postgres storage", () => {
     const mod = await mockMigrations();
     // Default: core migrations (non-optional)
     mod.loadMigrations.mockResolvedValue([
-      { id: "001_core_schema.sql", path: "/fake/001_core_schema.sql", sql: "CREATE TABLE ..." },
-      { id: "002_metric_indexes.sql", path: "/fake/002_metric_indexes.sql", sql: "CREATE INDEX ..." },
-      { id: "003_timescale_optional.sql", path: "/fake/003_timescale_optional.sql", sql: "CREATE EXTENSION ..." },
-      { id: "006_rate_limit_buckets.sql", path: "/fake/006_rate_limit_buckets.sql", sql: "CREATE TABLE ..." },
+      {
+        id: "001_core_schema.sql",
+        path: "/fake/001_core_schema.sql",
+        sql: "CREATE TABLE ...",
+      },
+      {
+        id: "002_metric_indexes.sql",
+        path: "/fake/002_metric_indexes.sql",
+        sql: "CREATE INDEX ...",
+      },
+      {
+        id: "003_timescale_optional.sql",
+        path: "/fake/003_timescale_optional.sql",
+        sql: "CREATE EXTENSION ...",
+      },
+      {
+        id: "006_rate_limit_buckets.sql",
+        path: "/fake/006_rate_limit_buckets.sql",
+        sql: "CREATE TABLE ...",
+      },
     ]);
-    mod.selectMigrations.mockImplementation((migs: { id: string }[], includeOptional: boolean) =>
-      includeOptional ? migs : migs.filter((m) => !m.id.includes("optional")),
+    mod.selectMigrations.mockImplementation(
+      (migs: { id: string }[], includeOptional: boolean) =>
+        includeOptional ? migs : migs.filter((m) => !m.id.includes("optional")),
     );
   });
 
@@ -159,7 +176,9 @@ describe("HealthController — Postgres storage", () => {
     });
     const ctrl = new HealthController(pgConfig, pool);
     await expect(ctrl.health()).rejects.toThrow(ServiceUnavailableException);
-    await expect(ctrl.health()).rejects.toThrow("Schema migrations table not found");
+    await expect(ctrl.health()).rejects.toThrow(
+      "Schema migrations table not found",
+    );
   });
 
   it("throws ServiceUnavailableException when required migration is missing", async () => {

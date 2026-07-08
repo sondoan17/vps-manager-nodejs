@@ -8,10 +8,7 @@ import {
   CardHeader,
   CardTitle,
 } from "../../ui/card";
-import {
-  chipVariant,
-  freshnessLabel,
-} from "../../../lib/dashboard-formatters";
+import { chipVariant, freshnessLabel } from "../../../lib/dashboard-formatters";
 import type { DashboardOverview } from "../../../lib/api";
 import { formatBytes } from "../shared/formatBytes";
 import { formatUptime } from "../shared/formatUptime";
@@ -245,7 +242,10 @@ function MetricSummaryCard({
       <p className="text-[11px] font-normal uppercase tracking-[0.12em] opacity-75">
         {label}
       </p>
-      <p className="mt-1 truncate text-xs font-normal opacity-70" title={server}>
+      <p
+        className="mt-1 truncate text-xs font-normal opacity-70"
+        title={server}
+      >
         {server}
       </p>
       <p className="mt-1 text-2xl font-normal leading-none">{value}</p>

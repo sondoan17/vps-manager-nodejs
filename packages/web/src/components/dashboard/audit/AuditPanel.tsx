@@ -401,7 +401,8 @@ function AuditDetailsDrawer({
     [event.resourceType, event.resourceId].filter(Boolean).join("/") ||
     "dashboard";
   const payload = JSON.stringify(event, null, 2);
-  const copyText = (value: string) => navigator.clipboard?.writeText(value).catch(() => undefined);
+  const copyText = (value: string) =>
+    navigator.clipboard?.writeText(value).catch(() => undefined);
   return (
     <Drawer
       open
@@ -411,24 +412,84 @@ function AuditDetailsDrawer({
       }}
       direction="right"
     >
-      <DrawerContent showHandle={false} className="inset-y-0 bottom-auto left-auto right-0 mt-0 h-full w-full max-w-2xl select-text rounded-none border-l border-white/10 bg-white/[0.03] shadow-none after:hidden">
+      <DrawerContent
+        showHandle={false}
+        className="inset-y-0 bottom-auto left-auto right-0 mt-0 h-full w-full max-w-2xl select-text rounded-none border-l border-white/10 bg-white/[0.03] shadow-none after:hidden"
+      >
         <DrawerHeader className="border-b border-white/10 p-5 text-left">
           <div className="flex items-start justify-between gap-4">
             <div className="min-w-0">
-              <p className="text-xs font-normal uppercase tracking-[0.18em] text-white/50">Audit event details</p>
-              <DrawerTitle className="mt-2 break-words text-2xl font-normal text-[#ffffff]">{event.actionLabel || event.action}</DrawerTitle>
-              <DrawerDescription className="font-mono text-sm font-normal text-white/50">{event.eventCode || event.action}</DrawerDescription>
+              <p className="text-xs font-normal uppercase tracking-[0.18em] text-white/50">
+                Audit event details
+              </p>
+              <DrawerTitle className="mt-2 break-words text-2xl font-normal text-[#ffffff]">
+                {event.actionLabel || event.action}
+              </DrawerTitle>
+              <DrawerDescription className="font-mono text-sm font-normal text-white/50">
+                {event.eventCode || event.action}
+              </DrawerDescription>
             </div>
-            <Button type="button" variant="outline" size="icon" className="h-9 w-9 shrink-0 border-white/10 bg-white/[0.03] text-white/70 shadow-none" aria-label="Close audit details" onClick={onClose}><X size={16} /></Button>
+            <Button
+              type="button"
+              variant="outline"
+              size="icon"
+              className="h-9 w-9 shrink-0 border-white/10 bg-white/[0.03] text-white/70 shadow-none"
+              aria-label="Close audit details"
+              onClick={onClose}
+            >
+              <X size={16} />
+            </Button>
           </div>
         </DrawerHeader>
         <ScrollArea className="min-h-0 flex-1">
           <div className="p-5">
             <div className="mb-4 flex flex-wrap gap-2 rounded-none border-0 bg-white/[0.03] shadow-none p-3">
-              <Button type="button" variant="outline" size="sm" className="rounded-none bg-white/[0.03] text-xs font-normal" onClick={() => copyText(payload)}><Copy size={14} />Copy payload</Button>
-              {event.requestId ? <Button type="button" variant="outline" size="sm" className="rounded-none bg-white/[0.03] text-xs font-normal" onClick={() => copyText(event.requestId || "")}><Copy size={14} />Copy request ID</Button> : null}
-              {event.serverLabel || event.resourceId ? <Button type="button" variant="outline" size="sm" className="rounded-none bg-white/[0.03] text-xs font-normal" disabled title="Coming soon">Open server</Button> : null}
-              {event.jobId ? <Button type="button" variant="outline" size="sm" className="rounded-none bg-white/[0.03] text-xs font-normal" disabled title="Coming soon">View related job</Button> : null}
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                className="rounded-none bg-white/[0.03] text-xs font-normal"
+                onClick={() => copyText(payload)}
+              >
+                <Copy size={14} />
+                Copy payload
+              </Button>
+              {event.requestId ? (
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  className="rounded-none bg-white/[0.03] text-xs font-normal"
+                  onClick={() => copyText(event.requestId || "")}
+                >
+                  <Copy size={14} />
+                  Copy request ID
+                </Button>
+              ) : null}
+              {event.serverLabel || event.resourceId ? (
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  className="rounded-none bg-white/[0.03] text-xs font-normal"
+                  disabled
+                  title="Coming soon"
+                >
+                  Open server
+                </Button>
+              ) : null}
+              {event.jobId ? (
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  className="rounded-none bg-white/[0.03] text-xs font-normal"
+                  disabled
+                  title="Coming soon"
+                >
+                  View related job
+                </Button>
+              ) : null}
             </div>
             <div className="grid gap-3 sm:grid-cols-2">
               <AuditDetail label="Actor" value={event.actor || "system"} />
@@ -487,7 +548,7 @@ function AuditDetailsDrawer({
               </Button>
             </div>
           </div>
-        </ScrollArea> 
+        </ScrollArea>
       </DrawerContent>
     </Drawer>
   );

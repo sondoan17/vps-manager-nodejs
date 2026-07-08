@@ -3,18 +3,29 @@ import { AuditService } from "../audit/audit.service.js";
 import type { AppConfig } from "../config/app-config.js";
 import { DemoSshDisabledError } from "../common/errors.js";
 import type { VpsRecord } from "../vps/vps.models.js";
-import { assertSshHostAllowedAsync, createHostVerifier } from "./ssh-host-policy.js";
+import {
+  assertSshHostAllowedAsync,
+  createHostVerifier,
+} from "./ssh-host-policy.js";
 import type { SshSecurityOptions } from "./sshService.js";
-import { execCommand, makeDirectory, provisionPublicKey, uploadFile, verifyPrivateKey } from "./sshService.js";
+import {
+  execCommand,
+  makeDirectory,
+  provisionPublicKey,
+  uploadFile,
+  verifyPrivateKey,
+} from "./sshService.js";
 
 @Injectable()
 export class SshService {
   constructor(
     private readonly config: AppConfig,
-    private readonly audit: AuditService
+    private readonly audit: AuditService,
   ) {}
 
-  private async buildSecurityOptions(vps: VpsRecord): Promise<SshSecurityOptions> {
+  private async buildSecurityOptions(
+    vps: VpsRecord,
+  ): Promise<SshSecurityOptions> {
     const vettedHost = await assertSshHostAllowedAsync(vps.host, this.config);
     const hostVerifier = createHostVerifier({
       vpsId: vps.id,
@@ -26,7 +37,9 @@ export class SshService {
     return { vettedHost, hostVerifier };
   }
 
-  private async assertRealSshAllowed(vps: VpsRecord): Promise<SshSecurityOptions> {
+  private async assertRealSshAllowed(
+    vps: VpsRecord,
+  ): Promise<SshSecurityOptions> {
     try {
       if (this.config.mode === "demo") throw new DemoSshDisabledError();
       return await this.buildSecurityOptions(vps);
@@ -37,13 +50,17 @@ export class SshService {
         resourceType: "vps",
         resourceId: vps.id,
         result: "blocked",
-        metadata: { host: vps.host, error }
+        metadata: { host: vps.host, error },
       });
       throw error;
     }
   }
 
-  async provisionPublicKey(vps: VpsRecord, password: string, publicKey: string) {
+  async provisionPublicKey(
+    vps: VpsRecord,
+    password: string,
+    publicKey: string,
+  ) {
     const security = await this.assertRealSshAllowed(vps);
     return provisionPublicKey(vps, password, publicKey, security);
   }

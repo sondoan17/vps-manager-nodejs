@@ -75,7 +75,10 @@ Options:
  * - HTTP is allowed for loopback addresses (127.0.0.1, ::1, localhost) only,
  *   unless --allow-insecure-backend-url is explicitly set.
  */
-export function validateBackendUrl(urlString: string, allowInsecure?: boolean): URL {
+export function validateBackendUrl(
+  urlString: string,
+  allowInsecure?: boolean,
+): URL {
   let url: URL;
   try {
     url = new URL(urlString);
@@ -84,7 +87,9 @@ export function validateBackendUrl(urlString: string, allowInsecure?: boolean): 
   }
 
   if (url.protocol !== "http:" && url.protocol !== "https:") {
-    throw new Error(`Backend URL must use http or https protocol: ${urlString}`);
+    throw new Error(
+      `Backend URL must use http or https protocol: ${urlString}`,
+    );
   }
 
   if (url.protocol === "https:") {
@@ -98,14 +103,12 @@ export function validateBackendUrl(urlString: string, allowInsecure?: boolean): 
   const rawHostname = url.hostname.toLowerCase();
   const hostname = rawHostname.replace(/^\[|\]$/g, "");
   const isLoopback =
-    hostname === "localhost" ||
-    hostname === "127.0.0.1" ||
-    hostname === "::1";
+    hostname === "localhost" || hostname === "127.0.0.1" || hostname === "::1";
 
   if (!isLoopback) {
     throw new Error(
       `Insecure backend URL (http) for non-loopback host "${rawHostname}". ` +
-      `Use https or set --allow-insecure-backend-url.`,
+        `Use https or set --allow-insecure-backend-url.`,
     );
   }
 
@@ -119,7 +122,12 @@ function hashSecret(secret: string): string {
   return createHash("sha256").update(secret).digest("hex");
 }
 
-function parseIntegerOption(name: string, fallback: number, min: number, max: number): number {
+function parseIntegerOption(
+  name: string,
+  fallback: number,
+  min: number,
+  max: number,
+): number {
   const raw = argValue(name);
   if (!raw) return fallback;
   const value = Number(raw);
@@ -158,9 +166,16 @@ export async function bootstrapLocalAgent(): Promise<BootstrapOutput> {
   let requestTimeoutSeconds: number;
   try {
     intervalSeconds = parseIntegerOption("--interval-seconds", 15, 1, 3600);
-    requestTimeoutSeconds = parseIntegerOption("--request-timeout-seconds", 10, 1, 300);
+    requestTimeoutSeconds = parseIntegerOption(
+      "--request-timeout-seconds",
+      10,
+      1,
+      300,
+    );
   } catch (error: unknown) {
-    console.error(`Error: ${error instanceof Error ? error.message : String(error)}`);
+    console.error(
+      `Error: ${error instanceof Error ? error.message : String(error)}`,
+    );
     process.exit(1);
   }
   const rotate = hasFlag("--rotate");
@@ -190,10 +205,18 @@ export async function bootstrapLocalAgent(): Promise<BootstrapOutput> {
   try {
     // ── Ensure local host record ────────────────────────────────────────
     const localHostname = (() => {
-      try { return hostname(); } catch { return "Local host"; }
+      try {
+        return hostname();
+      } catch {
+        return "Local host";
+      }
     })();
     const localUsername = (() => {
-      try { return userInfo().username; } catch { return "root"; }
+      try {
+        return userInfo().username;
+      } catch {
+        return "root";
+      }
     })();
 
     await vpsRepository.ensureLocalHost({
@@ -211,8 +234,11 @@ export async function bootstrapLocalAgent(): Promise<BootstrapOutput> {
     });
 
     // ── Find existing credential / create new ────────────────────────────
-    const existingCredentials = await agentRepository.listCredentialsByVps(vpsId);
-    const activeCredentials = existingCredentials.filter((credential) => credential.status === "active");
+    const existingCredentials =
+      await agentRepository.listCredentialsByVps(vpsId);
+    const activeCredentials = existingCredentials.filter(
+      (credential) => credential.status === "active",
+    );
 
     let credentialId: string;
     let token: string;
@@ -220,7 +246,7 @@ export async function bootstrapLocalAgent(): Promise<BootstrapOutput> {
     if (activeCredentials.length > 0 && !rotate) {
       throw new Error(
         `An active credential already exists for ${vpsId}, and the raw token cannot be recovered. ` +
-        `Reuse the existing agent config or pass --rotate to issue a new token.`,
+          `Reuse the existing agent config or pass --rotate to issue a new token.`,
       );
     } else {
       // Create fresh credential
@@ -237,7 +263,8 @@ export async function bootstrapLocalAgent(): Promise<BootstrapOutput> {
 
     // ── Build output ─────────────────────────────────────────────────────
     const agentConfig = {
-      backendUrl: backendUrl.origin + (backendUrl.pathname.replace(/\/+$/, "") || ""),
+      backendUrl:
+        backendUrl.origin + (backendUrl.pathname.replace(/\/+$/, "") || ""),
       vpsId,
       token,
       intervalSeconds,
@@ -266,10 +293,15 @@ export async function bootstrapLocalAgent(): Promise<BootstrapOutput> {
 }
 
 // Allow both direct execution and import
-const isDirectRun = process.argv[1] ? resolve(process.argv[1]) === fileURLToPath(import.meta.url) : false;
+const isDirectRun = process.argv[1]
+  ? resolve(process.argv[1]) === fileURLToPath(import.meta.url)
+  : false;
 if (isDirectRun) {
   bootstrapLocalAgent().catch((error: unknown) => {
-    console.error("Failed:", error instanceof Error ? error.message : String(error));
+    console.error(
+      "Failed:",
+      error instanceof Error ? error.message : String(error),
+    );
     process.exit(1);
   });
 }

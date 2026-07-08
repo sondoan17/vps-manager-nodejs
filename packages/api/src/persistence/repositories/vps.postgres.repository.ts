@@ -1,8 +1,20 @@
 import { nanoid } from "nanoid";
 import { withTransaction, type DatabasePool } from "../../db/pool.js";
-import type { CreateVpsInput, UpdateVpsInput, VpsRecord } from "../../vps/vps.models.js";
-import { withVpsDefaults, type EnsureLocalHostInput, type VpsRepository } from "./vps.repository.js";
-import { optionalIsoString, requiredIsoString, toDateOrNull } from "./postgres-mappers.js";
+import type {
+  CreateVpsInput,
+  UpdateVpsInput,
+  VpsRecord,
+} from "../../vps/vps.models.js";
+import {
+  withVpsDefaults,
+  type EnsureLocalHostInput,
+  type VpsRepository,
+} from "./vps.repository.js";
+import {
+  optionalIsoString,
+  requiredIsoString,
+  toDateOrNull,
+} from "./postgres-mappers.js";
 
 type VpsRow = {
   id: string;
@@ -26,13 +38,17 @@ type VpsRow = {
 
 export function createPostgresVpsRepository(pool: DatabasePool): VpsRepository {
   async function get(id: string): Promise<VpsRecord | undefined> {
-    const result = await pool.query<VpsRow>("SELECT * FROM vps WHERE id = $1", [id]);
+    const result = await pool.query<VpsRow>("SELECT * FROM vps WHERE id = $1", [
+      id,
+    ]);
     return result.rows[0] ? rowToVps(result.rows[0]) : undefined;
   }
 
   return {
     async list() {
-      const result = await pool.query<VpsRow>("SELECT * FROM vps ORDER BY created_at DESC");
+      const result = await pool.query<VpsRow>(
+        "SELECT * FROM vps ORDER BY created_at DESC",
+      );
       return result.rows.map(rowToVps);
     },
     get,
@@ -57,15 +73,20 @@ export function createPostgresVpsRepository(pool: DatabasePool): VpsRepository {
           "remote",
           "user",
           false,
-          now
-        ]
+          now,
+        ],
       );
       return rowToVps(result.rows[0]!);
     },
     async update(id, input) {
       return withTransaction(pool, async (client) => {
-        const currentResult = await client.query<VpsRow>("SELECT * FROM vps WHERE id = $1 FOR UPDATE", [id]);
-        const current = currentResult.rows[0] ? rowToVps(currentResult.rows[0]) : undefined;
+        const currentResult = await client.query<VpsRow>(
+          "SELECT * FROM vps WHERE id = $1 FOR UPDATE",
+          [id],
+        );
+        const current = currentResult.rows[0]
+          ? rowToVps(currentResult.rows[0])
+          : undefined;
         if (!current) return undefined;
         const next = { ...current, ...input };
         const result = await client.query<VpsRow>(
@@ -75,7 +96,22 @@ export function createPostgresVpsRepository(pool: DatabasePool): VpsRepository {
                docker_metrics_enabled = $14, updated_at = $11
            WHERE id = $1
            RETURNING *`,
-          [id, next.name, next.host, next.port, next.username, next.provider ?? "unknown", next.region ?? null, next.tags ?? [], next.status ?? "unknown", next.notes ?? null, new Date(), next.kind ?? null, next.managedBy ?? null, next.dockerMetricsEnabled ?? false]
+          [
+            id,
+            next.name,
+            next.host,
+            next.port,
+            next.username,
+            next.provider ?? "unknown",
+            next.region ?? null,
+            next.tags ?? [],
+            next.status ?? "unknown",
+            next.notes ?? null,
+            new Date(),
+            next.kind ?? null,
+            next.managedBy ?? null,
+            next.dockerMetricsEnabled ?? false,
+          ],
         );
         return result.rows[0] ? rowToVps(result.rows[0]) : undefined;
       });
@@ -84,7 +120,7 @@ export function createPostgresVpsRepository(pool: DatabasePool): VpsRepository {
       const now = new Date();
       const result = await pool.query<VpsRow>(
         "UPDATE vps SET key_provisioned_at = $2, updated_at = $2 WHERE id = $1 RETURNING *",
-        [id, now]
+        [id, now],
       );
       return result.rows[0] ? rowToVps(result.rows[0]) : undefined;
     },
@@ -125,18 +161,18 @@ export function createPostgresVpsRepository(pool: DatabasePool): VpsRepository {
           input.kind ?? "local",
           input.managedBy ?? "system",
           false,
-          now
-        ]
+          now,
+        ],
       );
       return rowToVps(result.rows[0]!);
     },
     async markSeen(id, status, lastSeenAt) {
       const result = await pool.query<VpsRow>(
         "UPDATE vps SET status = $2, last_seen_at = $3, updated_at = $3 WHERE id = $1 RETURNING *",
-        [id, status, new Date(lastSeenAt)]
+        [id, status, new Date(lastSeenAt)],
       );
       return result.rows[0] ? rowToVps(result.rows[0]) : undefined;
-    }
+    },
   };
 }
 
@@ -158,6 +194,6 @@ function rowToVps(row: VpsRow): VpsRecord {
     managedBy: (row.managed_by as VpsRecord["managedBy"]) ?? undefined,
     dockerMetricsEnabled: row.docker_metrics_enabled ?? false,
     createdAt: requiredIsoString(row.created_at),
-    updatedAt: requiredIsoString(row.updated_at)
+    updatedAt: requiredIsoString(row.updated_at),
   });
 }

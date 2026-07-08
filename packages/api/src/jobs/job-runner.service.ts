@@ -9,7 +9,11 @@ import { JOB_REPOSITORY } from "../tokens.js";
 export type JobTaskContext = {
   jobId: string;
   /** Update progress/step and optionally more fields on the job. */
-  update(step: string, progress: number, patch?: Partial<CommandJob>): Promise<void>;
+  update(
+    step: string,
+    progress: number,
+    patch?: Partial<CommandJob>,
+  ): Promise<void>;
   /** Mark job as failed with a sanitised error message. */
   fail(step: string, error: unknown): Promise<void>;
   /** Mark job as succeeded. */
@@ -90,11 +94,18 @@ export class JobRunnerService {
     });
   }
 
-  private async run(job: CommandJob, task: (ctx: JobTaskContext) => Promise<void>): Promise<void> {
+  private async run(
+    job: CommandJob,
+    task: (ctx: JobTaskContext) => Promise<void>,
+  ): Promise<void> {
     const ctx: JobTaskContext = {
       jobId: job.id,
 
-      update: async (step: string, progress: number, patch?: Partial<CommandJob>) => {
+      update: async (
+        step: string,
+        progress: number,
+        patch?: Partial<CommandJob>,
+      ) => {
         await this.jobRepository.update(job.id, {
           status: "running",
           step,

@@ -86,10 +86,7 @@ export function buildPageMeta(
   return meta;
 }
 
-function parseIntegerParam(
-  value: unknown,
-  name: string,
-): number | undefined {
+function parseIntegerParam(value: unknown, name: string): number | undefined {
   if (value === undefined) return undefined;
 
   // Reject arrays / multiple values

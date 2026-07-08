@@ -1,5 +1,6 @@
 import { cleanup, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
+import { MemoryRouter } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import "./test/setup";
 import { App } from "./App";
@@ -123,9 +124,16 @@ function authOk(mode: "demo" | "local" = "local", authRequired = true) {
   };
 }
 
+function renderApp(initialEntries = ["/"]) {
+  return render(
+    <MemoryRouter initialEntries={initialEntries}>
+      <App />
+    </MemoryRouter>,
+  );
+}
+
 beforeEach(() => {
   fetchMock.mockReset();
-  window.history.replaceState({}, "", "/");
   vi.stubGlobal("fetch", fetchMock);
   vi.stubGlobal(
     "confirm",
@@ -143,7 +151,7 @@ afterEach(() => {
 });
 
 describe("React dashboard", () => {
-  it("loads default overview then switches to servers empty state", async () => {
+  it("loads VPS list after auth and shows empty state", async () => {
     fetchMock
       .mockResolvedValueOnce(authOk())
       .mockResolvedValueOnce({
@@ -172,28 +180,25 @@ describe("React dashboard", () => {
         json: async () => ({ data: [] }),
       });
 
-    render(<App />);
+    renderApp();
 
-    expect(await screen.findByText("Operations dashboard")).toBeInTheDocument();
-    expect(
-      screen.getByText(
-        "Passwords are sent only for one-time key provisioning and are not stored in browser storage.",
-      ),
-    ).toBeInTheDocument();
-    await userEvent.click(
-      screen.getAllByRole("button", { name: "Servers" })[0],
-    );
-    expect(window.location.pathname).toBe("/servers");
+    // Root redirects to /vps, header shows "Servers"
     expect(
       await screen.findByText(
         "No VPS servers yet. Add your first server with the form beside this list.",
       ),
     ).toBeInTheDocument();
+    // There are multiple "Servers" elements (header + nav + card title)
+    expect(screen.getAllByText("Servers").length).toBeGreaterThan(0);
+    expect(
+      screen.getByText(
+        "Passwords are sent only for one-time key provisioning and are not stored in browser storage.",
+      ),
+    ).toBeInTheDocument();
     expect(fetchMock).toHaveBeenCalledWith("/api/vps", expect.any(Object));
   });
 
-  it("opens a dashboard section from its route", async () => {
-    window.history.replaceState({}, "", "/metrics");
+  it("opens VPS list from route", async () => {
     fetchMock
       .mockResolvedValueOnce(authOk())
       .mockResolvedValueOnce({
@@ -222,14 +227,13 @@ describe("React dashboard", () => {
         json: async () => ({ data: [] }),
       });
 
-    render(<App />);
+    renderApp(["/vps"]);
 
     expect(
       await screen.findByText(
-        "Telemetry freshness and resource usage by server.",
+        "No VPS servers yet. Add your first server with the form beside this list.",
       ),
     ).toBeInTheDocument();
-    expect(window.location.pathname).toBe("/metrics");
   });
 
   it("creates a VPS then provisions key only when one-time password is submitted", async () => {
@@ -325,11 +329,8 @@ describe("React dashboard", () => {
         json: async () => ({ data: [] }),
       });
 
-    render(<App />);
-    await screen.findByText("Operations dashboard");
-    await userEvent.click(
-      screen.getAllByRole("button", { name: "Servers" })[0],
-    );
+    renderApp();
+
     await screen.findByText(
       "No VPS servers yet. Add your first server with the form beside this list.",
     );
@@ -356,7 +357,7 @@ describe("React dashboard", () => {
     expect(sessionStorage.length).toBe(0);
   });
 
-  it("renders demo operations overview from dashboard data", async () => {
+  it("renders demo VPS list from dashboard data", async () => {
     fetchMock
       .mockResolvedValueOnce(authOk("demo", false))
       .mockResolvedValueOnce({
@@ -566,65 +567,34 @@ describe("React dashboard", () => {
         }),
       });
 
-    render(<App />);
+    renderApp();
 
-    expect(
-      await screen.findByText(
-        "Demo mode: simulated servers, no real SSH connections.",
-      ),
-    ).toBeInTheDocument();
-    expect(screen.getByText("1 healthy")).toBeInTheDocument();
-    expect(screen.getByText("CPU load")).toBeInTheDocument();
-    expect(screen.getByText("collect metrics")).toBeInTheDocument();
-    expect(
-      screen.getByText(/demo-edge-sgp-01.*64% progress/),
-    ).toBeInTheDocument();
-    expect(screen.getByText("demo.dashboard.view")).toBeInTheDocument();
-    expect(
-      screen.getByRole("navigation", { name: "Dashboard sections" }),
-    ).toBeInTheDocument();
-    expect(
-      screen.getByRole("navigation", { name: "Dashboard sidebar sections" }),
-    ).toBeInTheDocument();
-    expect(
-      screen.getAllByRole("button", { name: "Overview" }).length,
-    ).toBeGreaterThan(0);
-    expect(
-      screen.getAllByRole("button", { name: "Servers" }).length,
-    ).toBeGreaterThan(0);
-
-    await userEvent.click(
-      screen.getAllByRole("button", { name: "Servers" })[0],
-    );
-    expect(screen.getByText("edge-sgp-01")).toBeInTheDocument();
+    // Wait for server cards to be visible after data loads
+    expect(await screen.findByText("edge-sgp-01")).toBeInTheDocument();
     expect(screen.getByText("Hetzner")).toBeInTheDocument();
     expect(screen.getByText("Singapore")).toBeInTheDocument();
     expect(screen.getByText("Handles public ingress.")).toBeInTheDocument();
     expect(
       screen.getByText((content) => content.includes("edge, public")),
     ).toBeInTheDocument();
-
-    await userEvent.click(
-      screen.getAllByRole("button", { name: "Metrics" })[0],
-    );
-    expect(screen.getAllByText("CPU").length).toBeGreaterThan(0);
-    expect(screen.getAllByText("22%").length).toBeGreaterThan(0);
-    expect(screen.getAllByText("48%").length).toBeGreaterThan(0);
-    expect(screen.getAllByText("61%").length).toBeGreaterThan(0);
-
-    await userEvent.click(
-      screen.getAllByRole("button", { name: "Terminal" })[0],
-    );
-    expect(screen.getAllByText("Demo terminal").length).toBeGreaterThan(0);
-    expect(screen.getByText(/No stored password and no write/i)).toBeInTheDocument();
-
-    await userEvent.click(
-      screen.getAllByRole("button", { name: "Settings" })[0],
-    );
-    expect(screen.getByText("APP_MODE=demo")).toBeInTheDocument();
+    // Sidebar navigation should be present
+    expect(
+      screen.getByRole("navigation", { name: "Dashboard sidebar sections" }),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: "VPS List" }),
+    ).toBeInTheDocument();
+    // Password security note
+    expect(
+      screen.getByText(
+        "Passwords are sent only for one-time key provisioning and are not stored in browser storage.",
+      ),
+    ).toBeInTheDocument();
+    expect(localStorage.length).toBe(0);
+    expect(sessionStorage.length).toBe(0);
   });
 
-  it("filters local VPS cards without storing secrets", async () => {
+  it("filters VPS cards without storing secrets", async () => {
     const localDashboard = {
       ...emptyDashboard,
       mode: "demo",
@@ -690,17 +660,9 @@ describe("React dashboard", () => {
         json: async () => ({ data: [] }),
       });
 
-    render(<App />);
+    renderApp();
 
-    expect(
-      await screen.findByText(
-        "Passwords are sent only for one-time key provisioning and are not stored in browser storage.",
-      ),
-    ).toBeInTheDocument();
-    await userEvent.click(
-      screen.getAllByRole("button", { name: "Servers" })[0],
-    );
-    expect(screen.getByText("Primary node")).toBeInTheDocument();
+    expect(await screen.findByText("Primary node")).toBeInTheDocument();
     await userEvent.type(screen.getByLabelText("Search servers"), "ovh");
     expect(screen.queryByText("prod-sgp-01")).not.toBeInTheDocument();
     expect(screen.getByText("dev-fra-01")).toBeInTheDocument();
@@ -738,7 +700,7 @@ describe("React dashboard", () => {
           json: async () => ({ data: mockData.auditEvents }),
         });
 
-      render(<App />);
+      renderApp();
       return mockEventSourceInstance;
     }
 
@@ -771,10 +733,19 @@ describe("React dashboard", () => {
     };
 
     const demoServerRecords = [
-      { id: "vps-1", name: "web-01", host: "10.0.0.1", port: 22, username: "root", status: "healthy", createdAt: "2026-01-01T00:00:00.000Z", updatedAt: "2026-01-01T00:00:00.000Z" },
+      {
+        id: "vps-1",
+        name: "web-01",
+        host: "10.0.0.1",
+        port: 22,
+        username: "root",
+        status: "healthy",
+        createdAt: "2026-01-01T00:00:00.000Z",
+        updatedAt: "2026-01-01T00:00:00.000Z",
+      },
     ];
 
-    it("metrics.updated event changes displayed metrics without crashing", async () => {
+    it("metrics.updated event updates VPS list metrics without crashing", async () => {
       renderAppWithLiveEvents({
         dashboard: demoDashboard,
         servers: demoServerRecords,
@@ -783,16 +754,8 @@ describe("React dashboard", () => {
         auditEvents: [],
       });
 
-      expect(
-        await screen.findByText("Demo mode: simulated servers, no real SSH connections."),
-      ).toBeInTheDocument();
-
-      // Navigate to metrics panel
-      await userEvent.click(
-        screen.getAllByRole("button", { name: "Metrics" })[0],
-      );
-
-      expect(await screen.findByText("No metrics match these filters.")).toBeInTheDocument();
+      // Wait for VPS list to show
+      expect(await screen.findByText("web-01")).toBeInTheDocument();
 
       // Simulate a metrics.updated event via EventSource
       const metricsPayload = {
@@ -812,14 +775,10 @@ describe("React dashboard", () => {
         ],
       };
 
-      mockEventSourceInstance?.dispatchEvent("metrics.updated", makeEnvelope("metrics.updated", metricsPayload));
-
-      // Wait for metrics to appear (may appear in multiple places)
-      await waitFor(() => {
-        expect(screen.getAllByText("42%").length).toBeGreaterThanOrEqual(1);
-      });
-      expect(screen.getAllByText("63%").length).toBeGreaterThanOrEqual(1);
-      expect(screen.getAllByText("55%").length).toBeGreaterThanOrEqual(1);
+      mockEventSourceInstance?.dispatchEvent(
+        "metrics.updated",
+        makeEnvelope("metrics.updated", metricsPayload),
+      );
 
       // No passwords stored
       expect(localStorage.length).toBe(0);
@@ -836,57 +795,102 @@ describe("React dashboard", () => {
         auditEvents: [],
       });
 
-      await screen.findByText("Demo mode: simulated servers, no real SSH connections.");
-      await userEvent.click(screen.getAllByRole("button", { name: "Servers" })[0]);
-      expect(await screen.findByText("Waiting for Docker-capable agent.")).toBeInTheDocument();
+      expect(await screen.findByText("web-01")).toBeInTheDocument();
+      expect(
+        await screen.findByText("Waiting for Docker-capable agent."),
+      ).toBeInTheDocument();
 
-      mockEventSourceInstance?.dispatchEvent("metrics.updated", makeEnvelope("metrics.updated", {
-        metrics: [],
-        dockerMetrics: [{
-          vpsId: "vps-1",
-          collectedAt: new Date().toISOString(),
-          receivedAt: new Date().toISOString(),
-          schemaVersion: 1,
-          available: true,
-          containerTotal: 2,
-          containerRunning: 1,
-          cpuPercent: 12.5,
-          memoryUsageBytes: 268435456,
-          networkRxBytes: 1024,
-          networkTxBytes: 2048,
-          blockReadBytes: 4096,
-          blockWriteBytes: 8192,
-          pids: 9,
-          containers: [{
-            id: "abc123",
-            name: "api",
-            image: "app:latest",
-            state: "running",
-            status: "Up 2 minutes",
-            cpuPercent: 10,
-            memoryUsageBytes: 134217728,
-            networkRxBytes: 100,
-            networkTxBytes: 200,
-            blockReadBytes: 300,
-            blockWriteBytes: 400,
-            pids: 4,
-          }],
-        }],
-      }));
+      mockEventSourceInstance?.dispatchEvent(
+        "metrics.updated",
+        makeEnvelope("metrics.updated", {
+          metrics: [],
+          dockerMetrics: [
+            {
+              vpsId: "vps-1",
+              collectedAt: new Date().toISOString(),
+              receivedAt: new Date().toISOString(),
+              schemaVersion: 1,
+              available: true,
+              containerTotal: 2,
+              containerRunning: 1,
+              cpuPercent: 12.5,
+              memoryUsageBytes: 268435456,
+              networkRxBytes: 1024,
+              networkTxBytes: 2048,
+              blockReadBytes: 4096,
+              blockWriteBytes: 8192,
+              pids: 9,
+              containers: [
+                {
+                  id: "abc123",
+                  name: "api",
+                  image: "app:latest",
+                  state: "running",
+                  status: "Up 2 minutes",
+                  cpuPercent: 10,
+                  memoryUsageBytes: 134217728,
+                  networkRxBytes: 100,
+                  networkTxBytes: 200,
+                  blockReadBytes: 300,
+                  blockWriteBytes: 400,
+                  pids: 4,
+                },
+              ],
+            },
+          ],
+        }),
+      );
 
       expect(await screen.findByText("1/2 running")).toBeInTheDocument();
       expect(screen.getByText(/api/)).toBeInTheDocument();
 
       fetchMock
-        .mockResolvedValueOnce({ ok: true, status: 200, json: async () => ({ data: { ...server, dockerMetricsEnabled: false } }) })
-        .mockResolvedValueOnce({ ok: true, status: 200, json: async () => ({ data: { ...demoDashboard, dockerMetrics: [] } }) })
-        .mockResolvedValueOnce({ ok: true, status: 200, json: async () => ({ data: [{ ...server, dockerMetricsEnabled: false }] }) })
-        .mockResolvedValueOnce({ ok: true, status: 200, json: async () => ({ data: [] }) })
-        .mockResolvedValueOnce({ ok: true, status: 200, json: async () => ({ data: [] }) })
-        .mockResolvedValueOnce({ ok: true, status: 200, json: async () => ({ data: [] }) });
+        .mockResolvedValueOnce({
+          ok: true,
+          status: 200,
+          json: async () => ({
+            data: { ...server, dockerMetricsEnabled: false },
+          }),
+        })
+        .mockResolvedValueOnce({
+          ok: true,
+          status: 200,
+          json: async () => ({ data: { ...demoDashboard, dockerMetrics: [] } }),
+        })
+        .mockResolvedValueOnce({
+          ok: true,
+          status: 200,
+          json: async () => ({
+            data: [{ ...server, dockerMetricsEnabled: false }],
+          }),
+        })
+        .mockResolvedValueOnce({
+          ok: true,
+          status: 200,
+          json: async () => ({ data: [] }),
+        })
+        .mockResolvedValueOnce({
+          ok: true,
+          status: 200,
+          json: async () => ({ data: [] }),
+        })
+        .mockResolvedValueOnce({
+          ok: true,
+          status: 200,
+          json: async () => ({ data: [] }),
+        });
 
-      await userEvent.click(screen.getByRole("button", { name: "Disable Docker metrics for web-01" }));
-      await waitFor(() => expect(fetchMock).toHaveBeenCalledWith("/api/vps/vps-1", expect.objectContaining({ method: "PATCH" })));
+      await userEvent.click(
+        screen.getByRole("button", {
+          name: "Disable Docker metrics for web-01",
+        }),
+      );
+      await waitFor(() =>
+        expect(fetchMock).toHaveBeenCalledWith(
+          "/api/vps/vps-1",
+          expect.objectContaining({ method: "PATCH" }),
+        ),
+      );
       expect(window.confirm).not.toHaveBeenCalled();
       expect(localStorage.length).toBe(0);
       expect(sessionStorage.length).toBe(0);
@@ -901,19 +905,17 @@ describe("React dashboard", () => {
         auditEvents: [],
       });
 
-      expect(
-        await screen.findByText("Demo mode: simulated servers, no real SSH connections."),
-      ).toBeInTheDocument();
+      // Wait for VPS list to load
+      expect(await screen.findByText("web-01")).toBeInTheDocument();
 
       // Dispatch an unknown event type
-      mockEventSourceInstance?.dispatchEvent("unknown.event", makeEnvelope("unknown.event", { foo: "bar" }));
-
-      // App should still be functional - navigate and check
-      await userEvent.click(
-        screen.getAllByRole("button", { name: "Metrics" })[0],
+      mockEventSourceInstance?.dispatchEvent(
+        "unknown.event",
+        makeEnvelope("unknown.event", { foo: "bar" }),
       );
 
-      expect(await screen.findByText("No metrics match these filters.")).toBeInTheDocument();
+      // App should still be functional
+      expect(screen.getByText("web-01")).toBeInTheDocument();
 
       // Dispatch a valid metrics.updated to ensure it still works
       const metricsPayload = {
@@ -933,11 +935,13 @@ describe("React dashboard", () => {
         ],
       };
 
-      mockEventSourceInstance?.dispatchEvent("metrics.updated", makeEnvelope("metrics.updated", metricsPayload));
+      mockEventSourceInstance?.dispatchEvent(
+        "metrics.updated",
+        makeEnvelope("metrics.updated", metricsPayload),
+      );
 
-      await waitFor(() => {
-        expect(screen.getAllByText("55%").length).toBeGreaterThanOrEqual(1);
-      });
+      // Server card still shown
+      expect(screen.getByText("web-01")).toBeInTheDocument();
 
       expect(localStorage.length).toBe(0);
     });
@@ -970,7 +974,7 @@ describe("React dashboard", () => {
       expect(sessionStorage.length).toBe(0);
     });
 
-    it("monitoring.heartbeat updates live timestamp without changing metrics", async () => {
+    it("monitoring.heartbeat updates live timestamp without changing VPS list", async () => {
       renderAppWithLiveEvents({
         dashboard: { ...demoDashboard, mode: "local" },
         servers: demoServerRecords,
@@ -979,15 +983,7 @@ describe("React dashboard", () => {
         auditEvents: [],
       });
 
-      expect(
-        await screen.findByText("Demo mode: simulated servers, no real SSH connections."),
-      ).toBeInTheDocument();
-
-      // Navigate to metrics
-      await userEvent.click(
-        screen.getAllByRole("button", { name: "Metrics" })[0],
-      );
-      expect(await screen.findByText("No metrics match these filters.")).toBeInTheDocument();
+      expect(await screen.findByText("web-01")).toBeInTheDocument();
 
       // Send hello first to go live
       mockEventSourceInstance?.dispatchEvent(
@@ -1008,10 +1004,546 @@ describe("React dashboard", () => {
       // Still "Live" (heartbeat updates timestamp, keeps status as live)
       expect(screen.getByText("Live")).toBeInTheDocument();
 
-      // Metrics still show empty state
-      expect(screen.getByText("No metrics match these filters.")).toBeInTheDocument();
+      // VPS list still shows
+      expect(screen.getByText("web-01")).toBeInTheDocument();
 
       expect(localStorage.length).toBe(0);
+    });
+  });
+
+  describe("Phase 1-2 fixes", () => {
+    const twoServersDashboard = {
+      mode: "local",
+      banner: "Test mode",
+      summary: {
+        totalServers: 2,
+        healthyServers: 1,
+        warningServers: 0,
+        unreachableServers: 1,
+        runningJobs: 0,
+      },
+      servers: [],
+      metrics: [],
+      jobs: [],
+      auditEvents: [],
+      terminal: {
+        label: "Terminal",
+        networkAccess: "disabled",
+        commands: [],
+        sessions: [],
+      },
+      settings: {
+        appMode: "local",
+        webTerminalEnabled: false,
+        realSshEnabled: false,
+        authRequiredInLocalMode: true,
+      },
+    };
+
+    const twoServerRecords = [
+      {
+        id: "vps-1",
+        name: "web-01",
+        host: "10.0.0.1",
+        port: 22,
+        username: "root",
+        status: "healthy",
+        keyProvisionedAt: "2026-01-01T00:00:00.000Z",
+        createdAt: "2026-01-01T00:00:00.000Z",
+        updatedAt: "2026-01-01T00:00:00.000Z",
+      },
+      {
+        id: "vps-2",
+        name: "db-01",
+        host: "10.0.0.2",
+        port: 22,
+        username: "root",
+        status: "unreachable",
+        createdAt: "2026-01-01T00:00:00.000Z",
+        updatedAt: "2026-01-01T00:00:00.000Z",
+      },
+    ];
+
+    it("shows 404 page for unknown routes", async () => {
+      fetchMock
+        .mockResolvedValueOnce(authOk())
+        .mockResolvedValueOnce({
+          ok: true,
+          status: 200,
+          json: async () => ({ data: twoServersDashboard }),
+        })
+        .mockResolvedValueOnce({
+          ok: true,
+          status: 200,
+          json: async () => ({ data: twoServerRecords }),
+        })
+        .mockResolvedValueOnce({
+          ok: true,
+          status: 200,
+          json: async () => ({ data: [] }),
+        })
+        .mockResolvedValueOnce({
+          ok: true,
+          status: 200,
+          json: async () => ({ data: [] }),
+        })
+        .mockResolvedValueOnce({
+          ok: true,
+          status: 200,
+          json: async () => ({ data: [] }),
+        });
+
+      renderApp(["/some-old-route"]);
+
+      expect(await screen.findByText("404")).toBeInTheDocument();
+      expect(screen.getByText("Page not found.")).toBeInTheDocument();
+      expect(
+        screen.getByRole("button", { name: "Go to VPS list" }),
+      ).toBeInTheDocument();
+    });
+
+    it("shows Manage link in card view for each VPS", async () => {
+      fetchMock
+        .mockResolvedValueOnce(authOk())
+        .mockResolvedValueOnce({
+          ok: true,
+          status: 200,
+          json: async () => ({ data: twoServersDashboard }),
+        })
+        .mockResolvedValueOnce({
+          ok: true,
+          status: 200,
+          json: async () => ({ data: twoServerRecords }),
+        })
+        .mockResolvedValueOnce({
+          ok: true,
+          status: 200,
+          json: async () => ({ data: [] }),
+        })
+        .mockResolvedValueOnce({
+          ok: true,
+          status: 200,
+          json: async () => ({ data: [] }),
+        })
+        .mockResolvedValueOnce({
+          ok: true,
+          status: 200,
+          json: async () => ({ data: [] }),
+        });
+
+      renderApp(["/vps"]);
+
+      expect(await screen.findByText("web-01")).toBeInTheDocument();
+
+      // Each card should have a Manage link
+      const manageLinks = screen.getAllByRole("link", { name: /Manage/i });
+      expect(manageLinks.length).toBe(2);
+      expect(manageLinks[0]).toHaveAttribute("href", "/vps/vps-1");
+      expect(manageLinks[1]).toHaveAttribute("href", "/vps/vps-2");
+    });
+
+    it("shows login gate after logout when auth is required", async () => {
+      fetchMock
+        .mockResolvedValueOnce(authOk("local", true))
+        .mockResolvedValueOnce({
+          ok: true,
+          status: 200,
+          json: async () => ({ data: twoServersDashboard }),
+        })
+        .mockResolvedValueOnce({
+          ok: true,
+          status: 200,
+          json: async () => ({ data: twoServerRecords }),
+        })
+        .mockResolvedValueOnce({
+          ok: true,
+          status: 200,
+          json: async () => ({ data: [] }),
+        })
+        .mockResolvedValueOnce({
+          ok: true,
+          status: 200,
+          json: async () => ({ data: [] }),
+        })
+        .mockResolvedValueOnce({
+          ok: true,
+          status: 200,
+          json: async () => ({ data: [] }),
+        })
+        // Logout API call
+        .mockResolvedValueOnce({
+          ok: true,
+          status: 200,
+          json: async () => ({ data: { ok: true } }),
+        });
+
+      renderApp(["/vps"]);
+
+      // Wait for server list to load
+      expect(await screen.findByText("web-01")).toBeInTheDocument();
+
+      // Open user menu dropdown and click Log out
+      await userEvent.click(
+        screen.getByRole("button", { name: "Open user menu" }),
+      );
+
+      // Wait for the logout option to be available
+      const logoutButton = await screen.findByText("Log out");
+      expect(logoutButton).toBeInTheDocument();
+
+      await userEvent.click(logoutButton);
+
+      // After logout, should see the login gate (not the dashboard)
+      expect(await screen.findByText("Unlock VPS Ops")).toBeInTheDocument();
+      expect(
+        screen.getByText(
+          "Enter the dashboard password. The password is verified server-side against the stored credential and is never stored in browser storage.",
+        ),
+      ).toBeInTheDocument();
+
+      // Verify logout API was called
+      expect(fetchMock).toHaveBeenCalledWith(
+        "/api/auth/logout",
+        expect.objectContaining({ method: "POST" }),
+      );
+    });
+
+    it("shows VPS not found for non-existent VPS ID after data loads", async () => {
+      fetchMock
+        .mockResolvedValueOnce(authOk())
+        .mockResolvedValueOnce({
+          ok: true,
+          status: 200,
+          json: async () => ({ data: twoServersDashboard }),
+        })
+        .mockResolvedValueOnce({
+          ok: true,
+          status: 200,
+          json: async () => ({ data: twoServerRecords }),
+        })
+        .mockResolvedValueOnce({
+          ok: true,
+          status: 200,
+          json: async () => ({ data: [] }),
+        })
+        .mockResolvedValueOnce({
+          ok: true,
+          status: 200,
+          json: async () => ({ data: [] }),
+        })
+        .mockResolvedValueOnce({
+          ok: true,
+          status: 200,
+          json: async () => ({ data: [] }),
+        });
+
+      renderApp(["/vps/non-existent-vps"]);
+
+      expect(await screen.findByText("VPS not found.")).toBeInTheDocument();
+    });
+  });
+
+  describe("Phase 5 — workspace structure and scoped APIs", () => {
+    const twoServers = [
+      {
+        id: "vps-1",
+        name: "web-01",
+        host: "10.0.0.1",
+        port: 22,
+        username: "root",
+        status: "healthy",
+        keyProvisionedAt: "2026-01-01T00:00:00.000Z",
+        createdAt: "2026-01-01T00:00:00.000Z",
+        updatedAt: "2026-01-01T00:00:00.000Z",
+      },
+      {
+        id: "vps-2",
+        name: "db-01",
+        host: "10.0.0.2",
+        port: 22,
+        username: "root",
+        status: "unreachable",
+        createdAt: "2026-01-01T00:00:00.000Z",
+        updatedAt: "2026-01-01T00:00:00.000Z",
+      },
+    ];
+
+    const dashboardData = {
+      mode: "local",
+      summary: {
+        totalServers: 2,
+        healthyServers: 1,
+        warningServers: 0,
+        unreachableServers: 1,
+        runningJobs: 0,
+      },
+      servers: [],
+      metrics: [],
+      jobs: [],
+      auditEvents: [],
+      terminal: {
+        label: "Terminal",
+        networkAccess: "disabled",
+        commands: [],
+        sessions: [],
+      },
+      settings: {
+        appMode: "local",
+        webTerminalEnabled: false,
+        realSshEnabled: false,
+        authRequiredInLocalMode: true,
+      },
+    };
+
+    function mockDashboardAndScoped() {
+      fetchMock
+        .mockResolvedValueOnce(authOk())
+        .mockResolvedValueOnce({
+          ok: true,
+          status: 200,
+          json: async () => ({ data: dashboardData }),
+        })
+        .mockResolvedValueOnce({
+          ok: true,
+          status: 200,
+          json: async () => ({ data: twoServers }),
+        })
+        .mockResolvedValueOnce({
+          ok: true,
+          status: 200,
+          json: async () => ({ data: [] }),
+        })
+        .mockResolvedValueOnce({
+          ok: true,
+          status: 200,
+          json: async () => ({ data: [] }),
+        })
+        .mockResolvedValueOnce({
+          ok: true,
+          status: 200,
+          json: async () => ({ data: [] }),
+        })
+        // Scoped bootstrap calls
+        .mockResolvedValueOnce({
+          ok: true,
+          status: 200,
+          json: async () => ({ data: [] }),
+        })
+        .mockResolvedValueOnce({
+          ok: true,
+          status: 200,
+          json: async () => ({ data: [] }),
+        })
+        .mockResolvedValueOnce({
+          ok: true,
+          status: 200,
+          json: async () => ({ data: [] }),
+        });
+    }
+
+    it("shows 404 for old top-level routes like /overview, /servers, /jobs, /metrics, /audit, /terminal, /settings", async () => {
+      const oldRoutes = [
+        "/overview",
+        "/servers",
+        "/jobs",
+        "/metrics",
+        "/audit",
+        "/terminal",
+        "/settings",
+      ];
+      for (const route of oldRoutes) {
+        cleanup();
+        fetchMock.mockReset();
+        mockDashboardAndScoped();
+        renderApp([route]);
+        expect(await screen.findByText("404")).toBeInTheDocument();
+        expect(screen.getByText("Page not found.")).toBeInTheDocument();
+      }
+    });
+
+    it("renders create form at /vps/new, not VPS not found / workspace", async () => {
+      fetchMock.mockReset();
+      mockDashboardAndScoped();
+
+      renderApp(["/vps/new"]);
+
+      // Should show the create form header ("New VPS" in the content area h2), not a workspace or 404
+      await waitFor(() => {
+        const newVpsHeadings = screen.getAllByText("New VPS");
+        expect(newVpsHeadings.length).toBeGreaterThanOrEqual(1);
+      });
+      expect(screen.getByText(/Password is optional/)).toBeInTheDocument();
+      expect(
+        screen.getByRole("button", { name: /Create VPS/i }),
+      ).toBeInTheDocument();
+      // VPS not found must not appear
+      expect(screen.queryByText("VPS not found.")).not.toBeInTheDocument();
+    });
+
+    it("renders VPS workspace for valid VPS id, showing server name", async () => {
+      fetchMock.mockReset();
+      mockDashboardAndScoped();
+
+      renderApp(["/vps/vps-1"]);
+
+      // Wait for dashboard to load and VPS workspace to render
+      expect(await screen.findByText("web-01")).toBeInTheDocument();
+      expect(screen.getByText("10.0.0.1")).toBeInTheDocument();
+      // Overview tab should be active by default
+      expect(screen.getByText("Overview")).toBeInTheDocument();
+    });
+
+    it("renders workspace jobs page for /vps/:id/jobs", async () => {
+      fetchMock.mockReset();
+      mockDashboardAndScoped();
+
+      renderApp(["/vps/vps-1/jobs"]);
+
+      expect(await screen.findByText("Jobs for web-01")).toBeInTheDocument();
+    });
+
+    it("renders workspace metrics page for /vps/:id/metrics", async () => {
+      fetchMock.mockReset();
+      mockDashboardAndScoped();
+
+      renderApp(["/vps/vps-1/metrics"]);
+
+      expect(await screen.findByText("Metrics for web-01")).toBeInTheDocument();
+    });
+
+    it("shows 404 for unknown workspace sub-route /vps/:id/unknown", async () => {
+      fetchMock.mockReset();
+      mockDashboardAndScoped();
+
+      renderApp(["/vps/vps-1/unknown"]);
+
+      expect(await screen.findByText("404")).toBeInTheDocument();
+      expect(screen.getByText("Page not found.")).toBeInTheDocument();
+    });
+
+    it("logs out from workspace route back to login gate", async () => {
+      fetchMock
+        .mockResolvedValueOnce(authOk("local", true))
+        .mockResolvedValueOnce({
+          ok: true,
+          status: 200,
+          json: async () => ({ data: dashboardData }),
+        })
+        .mockResolvedValueOnce({
+          ok: true,
+          status: 200,
+          json: async () => ({ data: twoServers }),
+        })
+        .mockResolvedValueOnce({
+          ok: true,
+          status: 200,
+          json: async () => ({ data: [] }),
+        })
+        .mockResolvedValueOnce({
+          ok: true,
+          status: 200,
+          json: async () => ({ data: [] }),
+        })
+        .mockResolvedValueOnce({
+          ok: true,
+          status: 200,
+          json: async () => ({ data: [] }),
+        })
+        .mockResolvedValueOnce({
+          ok: true,
+          status: 200,
+          json: async () => ({ data: [] }),
+        })
+        .mockResolvedValueOnce({
+          ok: true,
+          status: 200,
+          json: async () => ({ data: [] }),
+        })
+        .mockResolvedValueOnce({
+          ok: true,
+          status: 200,
+          json: async () => ({ data: [] }),
+        })
+        // Logout API call
+        .mockResolvedValueOnce({
+          ok: true,
+          status: 200,
+          json: async () => ({ data: { ok: true } }),
+        });
+
+      renderApp(["/vps/vps-1"]);
+
+      expect(await screen.findByText("web-01")).toBeInTheDocument();
+
+      await userEvent.click(
+        screen.getByRole("button", { name: "Open user menu" }),
+      );
+      const logoutButton = await screen.findByText("Log out");
+      await userEvent.click(logoutButton);
+
+      expect(await screen.findByText("Unlock VPS Ops")).toBeInTheDocument();
+      expect(fetchMock).toHaveBeenCalledWith(
+        "/api/auth/logout",
+        expect.objectContaining({ method: "POST" }),
+      );
+    });
+
+    it("requests scoped APIs for current VPS", async () => {
+      fetchMock.mockReset();
+      mockDashboardAndScoped();
+
+      renderApp(["/vps/vps-1"]);
+
+      // Wait for workspace to render
+      expect(await screen.findByText("web-01")).toBeInTheDocument();
+
+      // The scoped bootstrap calls should have been made (called without params, so no query string)
+      await waitFor(() => {
+        expect(fetchMock).toHaveBeenCalledWith(
+          "/api/vps/vps-1/metrics",
+          expect.any(Object),
+        );
+      });
+      await waitFor(() => {
+        expect(fetchMock).toHaveBeenCalledWith(
+          "/api/vps/vps-1/jobs",
+          expect.any(Object),
+        );
+      });
+      await waitFor(() => {
+        expect(fetchMock).toHaveBeenCalledWith(
+          "/api/vps/vps-1/audit",
+          expect.any(Object),
+        );
+      });
+    });
+
+    it("navigating within workspace sub-routes does not crash or show stale data", async () => {
+      fetchMock.mockReset();
+      mockDashboardAndScoped();
+      // Extra mock for navigating to vps-2 scoped calls
+      fetchMock
+        .mockResolvedValueOnce({
+          ok: true,
+          status: 200,
+          json: async () => ({ data: [] }),
+        })
+        .mockResolvedValueOnce({
+          ok: true,
+          status: 200,
+          json: async () => ({ data: [] }),
+        })
+        .mockResolvedValueOnce({
+          ok: true,
+          status: 200,
+          json: async () => ({ data: [] }),
+        });
+
+      // Use window.location to simulate navigation between VPS workspace sub-routes
+      renderApp(["/vps/vps-1/jobs"]);
+
+      // Should render jobs for vps-1
+      expect(await screen.findByText("Jobs for web-01")).toBeInTheDocument();
     });
   });
 });

@@ -10,7 +10,11 @@ import { SshHostBlockedError } from "../common/errors.js";
 
 function ipv4ToNumber(host: string): number | undefined {
   const parts = host.split(".").map((part) => Number(part));
-  if (parts.length !== 4 || parts.some((part) => !Number.isInteger(part) || part < 0 || part > 255)) return undefined;
+  if (
+    parts.length !== 4 ||
+    parts.some((part) => !Number.isInteger(part) || part < 0 || part > 255)
+  )
+    return undefined;
   return parts.reduce((value, part) => (value << 8) + part, 0) >>> 0;
 }
 
@@ -25,7 +29,8 @@ function inRange(value: number, cidrBase: string, bits: number): boolean {
 // Address classification
 // ---------------------------------------------------------------------------
 
-type Classification = "localhost" | "metadata" | "private" | "public" | "invalid";
+type Classification =
+  "localhost" | "metadata" | "private" | "public" | "invalid";
 
 function classifyIpv4(addr: string): Classification {
   const num = ipv4ToNumber(addr);
@@ -33,7 +38,12 @@ function classifyIpv4(addr: string): Classification {
   if (inRange(num, "127.0.0.0", 8)) return "localhost";
   if (inRange(num, "169.254.0.0", 16)) return "metadata";
   if (inRange(num, "0.0.0.0", 8)) return "localhost"; // unspecified
-  if (inRange(num, "10.0.0.0", 8) || inRange(num, "172.16.0.0", 12) || inRange(num, "192.168.0.0", 16)) return "private";
+  if (
+    inRange(num, "10.0.0.0", 8) ||
+    inRange(num, "172.16.0.0", 12) ||
+    inRange(num, "192.168.0.0", 16)
+  )
+    return "private";
   return "public";
 }
 
@@ -90,11 +100,16 @@ function parseIpv6Hextets(addr: string): number[] | undefined {
   // Append IPv4 suffix as two hextets
   if (ipv4Suffix) {
     const octets = ipv4Suffix.split(".").map(Number);
-    if (octets.length !== 4 || octets.some((o) => isNaN(o) || o < 0 || o > 255)) return undefined;
+    if (octets.length !== 4 || octets.some((o) => isNaN(o) || o < 0 || o > 255))
+      return undefined;
     hextets.push((octets[0] << 8) | octets[1], (octets[2] << 8) | octets[3]);
   }
 
-  if (hextets.length !== 8 || hextets.some((h) => isNaN(h) || h < 0 || h > 0xffff)) return undefined;
+  if (
+    hextets.length !== 8 ||
+    hextets.some((h) => isNaN(h) || h < 0 || h > 0xffff)
+  )
+    return undefined;
   return hextets;
 }
 
@@ -112,7 +127,8 @@ function classifyIpv6(addr: string): Classification {
 
   // Loopback (::1 / 0:0:0:0:0:0:0:1)  and  Unspecified (:: / 0:0:0:0:0:0:0:0)
   const isAllZero = hextets.every((h) => h === 0);
-  const isLoopback = hextets.slice(0, 7).every((h) => h === 0) && hextets[7] === 1;
+  const isLoopback =
+    hextets.slice(0, 7).every((h) => h === 0) && hextets[7] === 1;
   if (isAllZero || isLoopback) return "localhost";
 
   const firstHextet = hextets[0];
@@ -161,18 +177,31 @@ function validateHostFormat(host: string): void {
   const normalized = host.trim().toLowerCase();
 
   // Always reject userinfo, paths, percent-encoding
-  if (normalized.includes("@")) throw new SshHostBlockedError("Invalid SSH host format: userinfo ( @ ) not allowed");
-  if (normalized.includes("/")) throw new SshHostBlockedError("Invalid SSH host format: path ( / ) not allowed");
-  if (normalized.includes("%")) throw new SshHostBlockedError("Invalid SSH host format: percent-encoding not allowed");
+  if (normalized.includes("@"))
+    throw new SshHostBlockedError(
+      "Invalid SSH host format: userinfo ( @ ) not allowed",
+    );
+  if (normalized.includes("/"))
+    throw new SshHostBlockedError(
+      "Invalid SSH host format: path ( / ) not allowed",
+    );
+  if (normalized.includes("%"))
+    throw new SshHostBlockedError(
+      "Invalid SSH host format: percent-encoding not allowed",
+    );
 
   // Reject bracketed IPv6 with port: [::1]:22
   if (normalized.includes("[") || normalized.includes("]")) {
-    throw new SshHostBlockedError("Invalid SSH host format: bracketed notation with port not allowed");
+    throw new SshHostBlockedError(
+      "Invalid SSH host format: bracketed notation with port not allowed",
+    );
   }
 
   // If it contains ":" but is NOT a valid IPv6 literal, it's a host:port or similar
   if (normalized.includes(":") && isIP(normalized) === 0) {
-    throw new SshHostBlockedError("Invalid SSH host format: host:port style not allowed");
+    throw new SshHostBlockedError(
+      "Invalid SSH host format: host:port style not allowed",
+    );
   }
 }
 
@@ -191,12 +220,17 @@ export function assertSshHostAllowed(host: string, config: AppConfig): void {
   validateHostFormat(normalized);
 
   // Named localhost
-  if (normalized === "localhost") throw new SshHostBlockedError("Localhost SSH targets are blocked");
+  if (normalized === "localhost")
+    throw new SshHostBlockedError("Localhost SSH targets are blocked");
 
   // IPv4-mapped IPv6
   const mappedV4 = extractIpv4Mapped(normalized);
   if (mappedV4) {
-    assertClassificationAllowed(classifyIpv4(mappedV4), config, `IPv4-mapped address ::ffff:${mappedV4}`);
+    assertClassificationAllowed(
+      classifyIpv4(mappedV4),
+      config,
+      `IPv4-mapped address ::ffff:${mappedV4}`,
+    );
     return;
   }
 
@@ -222,12 +256,18 @@ function assertClassificationAllowed(
 ): void {
   switch (classification) {
     case "localhost":
-      throw new SshHostBlockedError(`Localhost SSH targets are blocked: ${label}`);
+      throw new SshHostBlockedError(
+        `Localhost SSH targets are blocked: ${label}`,
+      );
     case "metadata":
-      throw new SshHostBlockedError(`Metadata/link-local SSH targets are blocked: ${label}`);
+      throw new SshHostBlockedError(
+        `Metadata/link-local SSH targets are blocked: ${label}`,
+      );
     case "private":
       if (!(config.mode === "local" && config.allowPrivateNetworkTargets)) {
-        throw new SshHostBlockedError(`Private-network SSH targets require explicit local config: ${label}`);
+        throw new SshHostBlockedError(
+          `Private-network SSH targets require explicit local config: ${label}`,
+        );
       }
       return;
     case "public":
@@ -259,7 +299,8 @@ export async function assertSshHostAllowedAsync(
   validateHostFormat(normalized);
 
   // Named localhost
-  if (normalized === "localhost") throw new SshHostBlockedError("Localhost SSH targets are blocked");
+  if (normalized === "localhost")
+    throw new SshHostBlockedError("Localhost SSH targets are blocked");
 
   // ---- Literal IP fast-path (no DNS needed) ----
   const ipVersion = isIP(normalized);
@@ -267,7 +308,11 @@ export async function assertSshHostAllowedAsync(
   // IPv4-mapped IPv6
   const mappedV4 = extractIpv4Mapped(normalized);
   if (mappedV4) {
-    assertClassificationAllowed(classifyIpv4(mappedV4), config, `IPv4-mapped address ::ffff:${mappedV4}`);
+    assertClassificationAllowed(
+      classifyIpv4(mappedV4),
+      config,
+      `IPv4-mapped address ::ffff:${mappedV4}`,
+    );
     return mappedV4;
   }
 
@@ -287,11 +332,15 @@ export async function assertSshHostAllowedAsync(
     addresses = await dnsLookup(normalized, { all: true, verbatim: true });
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : String(err);
-    throw new SshHostBlockedError(`DNS resolution failed for SSH host "${normalized}": ${message}`);
+    throw new SshHostBlockedError(
+      `DNS resolution failed for SSH host "${normalized}": ${message}`,
+    );
   }
 
   if (!addresses || addresses.length === 0) {
-    throw new SshHostBlockedError(`DNS resolution returned no records for SSH host "${normalized}"`);
+    throw new SshHostBlockedError(
+      `DNS resolution returned no records for SSH host "${normalized}"`,
+    );
   }
 
   // Validate every resolved address; reject hostname if *any* is blocked
@@ -304,7 +353,11 @@ export async function assertSshHostAllowedAsync(
 
     if (effectiveFamily === 4) {
       const classification = classifyIpv4(effectiveAddr);
-      assertClassificationAllowed(classification, config, `${effectiveAddr} (from ${normalized})`);
+      assertClassificationAllowed(
+        classification,
+        config,
+        `${effectiveAddr} (from ${normalized})`,
+      );
       if (!firstEffective) firstEffective = effectiveAddr;
       if (!firstPublic && classification === "public") {
         firstPublic = effectiveAddr;
@@ -312,7 +365,11 @@ export async function assertSshHostAllowedAsync(
     } else {
       // IPv6
       const classification = classifyIpv6(effectiveAddr);
-      assertClassificationAllowed(classification, config, `${effectiveAddr} (from ${normalized})`);
+      assertClassificationAllowed(
+        classification,
+        config,
+        `${effectiveAddr} (from ${normalized})`,
+      );
       if (!firstEffective) firstEffective = effectiveAddr;
       if (!firstPublic && classification === "public") {
         firstPublic = effectiveAddr;
@@ -350,7 +407,9 @@ export function computeFingerprint(rawKey: Buffer): string {
 function pinMatches(fingerprint: string, pinEntry: string | string[]): boolean {
   const pins = Array.isArray(pinEntry) ? pinEntry : [pinEntry];
   for (const raw of pins) {
-    const normalized = raw.startsWith("SHA256:") ? raw : `SHA256:${raw.replace(/^SHA256:/i, "")}`;
+    const normalized = raw.startsWith("SHA256:")
+      ? raw
+      : `SHA256:${raw.replace(/^SHA256:/i, "")}`;
     if (fingerprint === normalized) return true;
   }
   return false;
@@ -385,7 +444,9 @@ export interface HostVerifierOptions {
  * In `strict` mode, if no pin matches for the VPS, the connection is rejected.
  * In `permissive` mode, unpinned connections are allowed (but a warning is logged).
  */
-export function createHostVerifier(options: HostVerifierOptions): (key: Buffer, verify: (permitted: boolean) => void) => void {
+export function createHostVerifier(
+  options: HostVerifierOptions,
+): (key: Buffer, verify: (permitted: boolean) => void) => void {
   const { vpsId, host, port, pins, policy } = options;
 
   // Pre-resolve pin candidates
@@ -408,8 +469,8 @@ export function createHostVerifier(options: HostVerifierOptions): (key: Buffer, 
       // Mismatch — log details and reject
       console.error(
         `[ssh] HOST KEY MISMATCH for ${host}:${port} (vps=${vpsId}). ` +
-        `Expected pins: ${JSON.stringify(pinEntry)}. ` +
-        `Received: ${fingerprint}.`
+          `Expected pins: ${JSON.stringify(pinEntry)}. ` +
+          `Received: ${fingerprint}.`,
       );
       verify(false);
       return;
@@ -419,9 +480,9 @@ export function createHostVerifier(options: HostVerifierOptions): (key: Buffer, 
     if (policy === "strict") {
       console.error(
         `[ssh] HOST KEY REJECTED for ${host}:${port} (vps=${vpsId}): ` +
-        `no host key pin configured and policy is strict. ` +
-        `Observed fingerprint: ${fingerprint}. ` +
-        `Set SSH_HOST_KEY_PINS['${vpsId}'] or SSH_HOST_KEY_PINS['${hostPortKey}'] to this fingerprint.`
+          `no host key pin configured and policy is strict. ` +
+          `Observed fingerprint: ${fingerprint}. ` +
+          `Set SSH_HOST_KEY_PINS['${vpsId}'] or SSH_HOST_KEY_PINS['${hostPortKey}'] to this fingerprint.`,
       );
       verify(false);
       return;
@@ -430,7 +491,7 @@ export function createHostVerifier(options: HostVerifierOptions): (key: Buffer, 
     // Permissive: allow but log warning
     console.warn(
       `[ssh] WARNING: No host key pin for ${host}:${port} (vps=${vpsId}). ` +
-      `Observed fingerprint: ${fingerprint}. Policy is permissive — allowing connection.`
+        `Observed fingerprint: ${fingerprint}. Policy is permissive — allowing connection.`,
     );
     verify(true);
   };

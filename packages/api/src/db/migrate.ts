@@ -7,7 +7,9 @@ const includeOptional = process.argv.includes("--include-optional");
 const config = loadAppConfig();
 
 if (config.storageDriver !== "postgres") {
-  throw new Error("Set STORAGE_DRIVER=postgres before running database migrations");
+  throw new Error(
+    "Set STORAGE_DRIVER=postgres before running database migrations",
+  );
 }
 
 const pool = createDatabasePool(config);
