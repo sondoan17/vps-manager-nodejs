@@ -144,6 +144,7 @@ describe("database migrations", () => {
       "007_local_host_fields.sql",
       "008_system_info.sql",
       "009_docker_metrics.sql",
+      "010_ssh_host_key_pins.sql",
     ]);
     expect(migrations[0]?.sql).toContain("CREATE TABLE IF NOT EXISTS vps");
     expect(migrations[1]?.sql).toContain("metric_samples_vps_effective_idx");
@@ -169,6 +170,9 @@ describe("database migrations", () => {
     expect(migrations[8]?.sql).toContain(
       "CREATE TABLE IF NOT EXISTS agent_docker_metrics",
     );
+    expect(migrations[9]?.sql).toContain(
+      "CREATE TABLE IF NOT EXISTS ssh_host_key_pins",
+    );
   });
 
   it("excludes optional migrations unless requested", async () => {
@@ -185,6 +189,7 @@ describe("database migrations", () => {
       "007_local_host_fields.sql",
       "008_system_info.sql",
       "009_docker_metrics.sql",
+      "010_ssh_host_key_pins.sql",
     ]);
     expect(
       selectMigrations(migrations, true).map((migration) => migration.id),
@@ -198,6 +203,7 @@ describe("database migrations", () => {
       "007_local_host_fields.sql",
       "008_system_info.sql",
       "009_docker_metrics.sql",
+      "010_ssh_host_key_pins.sql",
     ]);
   });
 });
