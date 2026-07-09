@@ -323,8 +323,7 @@ jobs:
           DASHBOARD_COOKIE_SECURE_VALUE="${DASHBOARD_COOKIE_SECURE_VALUE:-true}"
           DASHBOARD_COOKIE_SAME_SITE_VALUE="${DASHBOARD_COOKIE_SAME_SITE_VALUE:-lax}"
           TRUST_PROXY_HOPS_VALUE="${TRUST_PROXY_HOPS_VALUE:-0}"
-          SSH_BASE=(
-            ssh
+          SSH_OPTS=(
             -i ~/.ssh/deploy_key
             -p "${VPS_PORT:-22}"
             -o BatchMode=yes
@@ -332,8 +331,25 @@ jobs:
             -o ConnectionAttempts=3
             -o ServerAliveInterval=15
             -o ServerAliveCountMax=4
-            "${VPS_USER}@${VPS_HOST}"
+            -o ControlMaster=auto
+            -o ControlPersist=10m
+            -o ControlPath="$HOME/.ssh/deploy-%C"
           )
+          SSH_BASE=(ssh "${SSH_OPTS[@]}" "${VPS_USER}@${VPS_HOST}")
+          # Open one persistent control connection and reuse it for the deploy.
+          # This avoids many short-lived SSH TCP handshakes that can trip
+          # fail2ban/firewall rate limits on the production host.
+          for attempt in 1 2 3; do
+            if ssh "${SSH_OPTS[@]}" -fN "${VPS_USER}@${VPS_HOST}"; then
+              break
+            fi
+            if [ "$attempt" = "3" ]; then
+              exit 1
+            fi
+            echo "SSH control connection failed on attempt ${attempt}/3; retrying..." >&2
+            sleep $((attempt * 10))
+          done
+          trap 'ssh "${SSH_OPTS[@]}" -O exit "${VPS_USER}@${VPS_HOST}" 2>/dev/null || true' EXIT
           ssh_retry() {
             local attempt
             for attempt in 1 2 3; do
