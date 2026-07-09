@@ -34,6 +34,8 @@ import type { MetricRepository } from "./persistence/repositories/metric.reposit
 import type { SessionRepository } from "./persistence/repositories/session.repository.js";
 import { createKeyService, type KeyService } from "./ssh/keyService.js";
 import { SshService } from "./ssh/ssh.service.js";
+import { HostKeyPinService } from "./ssh/host-key-pin.service.js";
+import type { HostKeyPinRepository } from "./ssh/host-key-pin.repository.js";
 import { AgentInstallerService } from "./agents/agent-installer.service.js";
 import { AgentService } from "./agents/agent.service.js";
 import { VpsService } from "./vps/vps.service.js";
@@ -45,6 +47,7 @@ import {
   APP_CONFIG,
   AUDIT_REPOSITORY,
   DATABASE_POOL,
+  HOST_KEY_PIN_REPOSITORY,
   JOB_REPOSITORY,
   KEY_SERVICE,
   METRIC_REPOSITORY,
@@ -58,6 +61,7 @@ export {
   APP_CONFIG,
   AUDIT_REPOSITORY,
   DATABASE_POOL,
+  HOST_KEY_PIN_REPOSITORY,
   JOB_REPOSITORY,
   KEY_SERVICE,
   METRIC_REPOSITORY,
@@ -77,6 +81,7 @@ export type AppDependencies = {
   agent?: AgentRepository;
   sessions?: SessionRepository;
   adminCredential?: AdminCredentialRepository;
+  hostKeyPins?: HostKeyPinRepository;
   /** Optional pre-created DB pool. Caller owns lifecycle unless ownsPool=true. */
   pool?: Pool;
   ownsPool?: boolean;
@@ -108,7 +113,8 @@ export function createAppModule(deps: AppDependencies = {}): DynamicModule {
     !deps.metrics ||
     !deps.agent ||
     !deps.sessions ||
-    !deps.adminCredential;
+    !deps.adminCredential ||
+    !deps.hostKeyPins;
   const repositories = needsRepositories
     ? createRepositories(config, deps.pool)
     : undefined;
@@ -194,6 +200,11 @@ export function createAppModule(deps: AppDependencies = {}): DynamicModule {
           new SshService(appConfig, audit),
       },
       {
+        provide: HOST_KEY_PIN_REPOSITORY,
+        useValue: deps.hostKeyPins ?? repositories!.hostKeyPins,
+      },
+      HostKeyPinService,
+      {
         provide: VpsService,
         inject: [
           VPS_REPOSITORY,
@@ -203,6 +214,7 @@ export function createAppModule(deps: AppDependencies = {}): DynamicModule {
           APP_CONFIG,
           AgentInstallerService,
           AGENT_REPOSITORY,
+          HostKeyPinService,
         ],
         useFactory: (
           store: VpsRepository,
@@ -212,6 +224,7 @@ export function createAppModule(deps: AppDependencies = {}): DynamicModule {
           appConfig: AppConfig,
           installer: AgentInstallerService,
           agentRepo: AgentRepository,
+          hostKeyPin: HostKeyPinService,
         ) =>
           new VpsService(
             store,
@@ -221,6 +234,7 @@ export function createAppModule(deps: AppDependencies = {}): DynamicModule {
             appConfig,
             installer,
             agentRepo,
+            hostKeyPin,
           ),
       },
     ],

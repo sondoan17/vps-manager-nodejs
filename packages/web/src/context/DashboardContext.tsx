@@ -10,9 +10,20 @@ import {
 import { useNavigate } from "react-router-dom";
 import { Alert } from "../components/ui/alert";
 import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "../components/ui/alert-dialog";
+import {
   createVps,
   deleteVps,
   getDashboardOverview,
+  getHostKeyTrustRequired,
   listAuditEvents,
   listJobs,
   listMetrics,
@@ -20,6 +31,7 @@ import {
   installAgent,
   logoutDashboard,
   provisionKey,
+  trustSshHostKey,
   updateVps,
   verifyKey,
   type DashboardMetric,
@@ -32,6 +44,17 @@ import { subscribeMonitoring, type LiveConnectionState } from "../lib/live-api";
 
 type StatusKind = "default" | "success" | "destructive";
 type Status = { message: string; kind: StatusKind };
+
+type PendingHostKeyTrust = {
+  vpsId: string;
+  vpsName: string;
+  host: string;
+  port: number;
+  fingerprint?: string;
+  keyType?: string;
+  password: string;
+  afterTrustPath?: string;
+};
 
 const initialCreateForm = {
   name: "",
@@ -172,6 +195,8 @@ export function DashboardProvider({
   const [liveState, setLiveState] = useState<LiveConnectionState>({
     status: "connecting",
   });
+  const [pendingHostKeyTrust, setPendingHostKeyTrust] =
+    useState<PendingHostKeyTrust | null>(null);
   const unsubscribeRef = useRef<(() => void) | null>(null);
   const [initialLoadDone, setInitialLoadDone] = useState(false);
 
@@ -336,7 +361,29 @@ export function DashboardProvider({
           message: `Created ${result.name}. Installing SSH key...`,
           kind: "default",
         });
-        await provisionKey(result.id, password);
+        try {
+          await provisionKey(result.id, password);
+        } catch (error) {
+          const trust = getHostKeyTrustRequired(error);
+          if (trust) {
+            setPendingHostKeyTrust({
+              vpsId: result.id,
+              vpsName: result.name,
+              host: trust.host,
+              port: trust.port,
+              fingerprint: trust.fingerprint,
+              keyType: trust.keyType,
+              password,
+              afterTrustPath: `/vps/${encodeURIComponent(result.id)}`,
+            });
+            setStatus({
+              message: `Created ${result.name}. Trust the SSH host key to continue provisioning.`,
+              kind: "default",
+            });
+            return result;
+          }
+          throw error;
+        }
         setStatus({
           message: `Created VPS and installed key for ${result.name}. Password was not stored.`,
           kind: "success",
@@ -367,12 +414,62 @@ export function DashboardProvider({
     }
 
     await runAction(`Installing key for ${vps.name}...`, async () => {
-      await provisionKey(vps.id, password);
+      try {
+        await provisionKey(vps.id, password);
+      } catch (error) {
+        const trust = getHostKeyTrustRequired(error);
+        if (trust) {
+          setPendingHostKeyTrust({
+            vpsId: vps.id,
+            vpsName: vps.name,
+            host: trust.host,
+            port: trust.port,
+            fingerprint: trust.fingerprint,
+            keyType: trust.keyType,
+            password,
+          });
+          setStatus({
+            message: `Trust the SSH host key for ${vps.name} to continue provisioning.`,
+            kind: "default",
+          });
+          return;
+        }
+        throw error;
+      }
       setProvisionPasswords((current) => ({ ...current, [vps.id]: "" }));
       setStatus({
         message: `Installed SSH key for ${vps.name}. Password was not stored.`,
         kind: "success",
       });
+    });
+  }
+
+  async function confirmHostKeyTrust() {
+    const pending = pendingHostKeyTrust;
+    if (!pending?.fingerprint) return;
+    await runAction(`Trusting SSH host key for ${pending.vpsName}...`, async () => {
+      await trustSshHostKey(pending.vpsId, {
+        fingerprint: pending.fingerprint!,
+        keyType: pending.keyType,
+      });
+      await provisionKey(pending.vpsId, pending.password);
+      setProvisionPasswords((current) => ({ ...current, [pending.vpsId]: "" }));
+      setPendingHostKeyTrust(null);
+      setCreateForm(initialCreateForm);
+      setStatus({
+        message: `Trusted host key and installed SSH key for ${pending.vpsName}. Password was not stored.`,
+        kind: "success",
+      });
+      if (pending.afterTrustPath) navigate(pending.afterTrustPath);
+    });
+  }
+
+  function cancelHostKeyTrust() {
+    setPendingHostKeyTrust(null);
+    setStatus({
+      message:
+        "SSH host key was not trusted. The VPS remains created; provisioning can be retried later.",
+      kind: "destructive",
     });
   }
 
@@ -500,6 +597,64 @@ export function DashboardProvider({
   return (
     <DashboardContext.Provider value={ctx}>
       {children}
+      <AlertDialog
+        open={Boolean(pendingHostKeyTrust)}
+        onOpenChange={(open) => {
+          if (!open) cancelHostKeyTrust();
+        }}
+      >
+        <AlertDialogContent className="border-white/10 bg-[#111318] text-white">
+          <AlertDialogHeader>
+            <AlertDialogTitle>Trust SSH host key?</AlertDialogTitle>
+            <AlertDialogDescription className="text-white/60">
+              Only trust this fingerprint if it matches your VPS provider console
+              or your own ssh-keyscan result.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          {pendingHostKeyTrust ? (
+            <div className="grid gap-3 rounded-none border border-white/10 bg-white/[0.03] p-4 text-sm">
+              <div>
+                <div className="text-xs uppercase tracking-[0.14em] text-white/40">
+                  Host
+                </div>
+                <div className="mt-1 font-mono text-white">
+                  {pendingHostKeyTrust.host}:{pendingHostKeyTrust.port}
+                </div>
+              </div>
+              <div>
+                <div className="text-xs uppercase tracking-[0.14em] text-white/40">
+                  Fingerprint
+                </div>
+                <div className="mt-1 break-all font-mono text-white">
+                  {pendingHostKeyTrust.fingerprint || "Unavailable"}
+                </div>
+              </div>
+              <div>
+                <div className="text-xs uppercase tracking-[0.14em] text-white/40">
+                  Key type
+                </div>
+                <div className="mt-1 font-mono text-white">
+                  {pendingHostKeyTrust.keyType || "Unknown"}
+                </div>
+              </div>
+            </div>
+          ) : null}
+          <AlertDialogFooter>
+            <AlertDialogCancel onClick={cancelHostKeyTrust}>
+              Cancel
+            </AlertDialogCancel>
+            <AlertDialogAction
+              disabled={!pendingHostKeyTrust?.fingerprint || busy}
+              onClick={(event) => {
+                event.preventDefault();
+                void confirmHostKeyTrust();
+              }}
+            >
+              Trust and continue
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </DashboardContext.Provider>
   );
 }

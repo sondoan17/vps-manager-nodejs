@@ -35,6 +35,11 @@ import {
   type SessionRepository,
 } from "./session.repository.js";
 import { createPostgresSessionRepository } from "./session.postgres.repository.js";
+import {
+  createJsonHostKeyPinRepository,
+  type HostKeyPinRepository,
+} from "../../ssh/host-key-pin.repository.js";
+import { createPostgresHostKeyPinRepository } from "../../ssh/host-key-pin.postgres.repository.js";
 
 export type RepositorySet = {
   vps: VpsRepository;
@@ -44,6 +49,7 @@ export type RepositorySet = {
   agent: AgentRepository;
   sessions: SessionRepository;
   adminCredential: AdminCredentialRepository;
+  hostKeyPins: HostKeyPinRepository;
   pool?: Pool;
 };
 
@@ -68,6 +74,7 @@ export function createRepositories(
       agent: createPostgresAgentRepository(pool),
       sessions: createPostgresSessionRepository(pool),
       adminCredential: createPostgresAdminCredentialRepository(pool),
+      hostKeyPins: createPostgresHostKeyPinRepository(pool),
     };
   }
 
@@ -82,6 +89,9 @@ export function createRepositories(
     ),
     adminCredential: createJsonAdminCredentialRepository(
       join(config.dataDir, "admin-credential.json"),
+    ),
+    hostKeyPins: createJsonHostKeyPinRepository(
+      join(config.dataDir, "host-key-pins.json"),
     ),
   };
 }

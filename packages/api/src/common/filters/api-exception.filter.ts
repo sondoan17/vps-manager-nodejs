@@ -12,6 +12,7 @@ import {
   DemoSshDisabledError,
   DuplicateAgentInstallError,
   SshHostBlockedError,
+  SshHostKeyTrustRequiredError,
   SshOperationError,
   VpsNotFoundError,
 } from "../errors.js";
@@ -49,6 +50,15 @@ export class ApiExceptionFilter implements ExceptionFilter {
       return response
         .status(502)
         .json(errorBody(safeErrorMessage(error), requestId));
+    }
+
+    if (error instanceof SshHostKeyTrustRequiredError) {
+      return response.status(409).json({
+        error: {
+          message: safeErrorMessage(error),
+          ...error.info,
+        },
+      });
     }
 
     if (error instanceof AgentAuthError) {

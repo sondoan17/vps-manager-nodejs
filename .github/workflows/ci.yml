@@ -323,7 +323,29 @@ jobs:
           DASHBOARD_COOKIE_SECURE_VALUE="${DASHBOARD_COOKIE_SECURE_VALUE:-true}"
           DASHBOARD_COOKIE_SAME_SITE_VALUE="${DASHBOARD_COOKIE_SAME_SITE_VALUE:-lax}"
           TRUST_PROXY_HOPS_VALUE="${TRUST_PROXY_HOPS_VALUE:-0}"
-          SSH="ssh -i ~/.ssh/deploy_key -p ${VPS_PORT:-22} ${VPS_USER}@${VPS_HOST}"
+          SSH_BASE=(
+            ssh
+            -i ~/.ssh/deploy_key
+            -p "${VPS_PORT:-22}"
+            -o BatchMode=yes
+            -o ConnectTimeout=20
+            -o ConnectionAttempts=3
+            -o ServerAliveInterval=15
+            -o ServerAliveCountMax=4
+            "${VPS_USER}@${VPS_HOST}"
+          )
+          ssh_retry() {
+            local attempt
+            for attempt in 1 2 3; do
+              if "${SSH_BASE[@]}" "$@"; then
+                return 0
+              fi
+              echo "SSH command failed on attempt ${attempt}/3; retrying..." >&2
+              sleep $((attempt * 10))
+            done
+            return 1
+          }
+          SSH=ssh_retry
           printf '%s' "$GHCR_TOKEN" | $SSH "docker login ghcr.io -u '$GHCR_USER' --password-stdin"
           $SSH "mkdir -p '$DEPLOY_PATH'"
           $SSH "cat > '$DEPLOY_PATH/.env'" <<EOF

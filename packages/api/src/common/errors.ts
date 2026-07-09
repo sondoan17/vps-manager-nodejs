@@ -57,3 +57,27 @@ export class DemoMutationBlockedError extends Error {
     super("Mutations are disabled in demo mode");
   }
 }
+
+export class SshHostKeyTrustRequiredError extends Error {
+  /** Structured payload returned to the caller. */
+  public readonly info: {
+    error: "SSH_HOST_KEY_TRUST_REQUIRED";
+    vpsId: string;
+    host: string;
+    port: number;
+    fingerprint?: string;
+    keyType?: string;
+  };
+
+  constructor(info: {
+    vpsId: string;
+    host: string;
+    port: number;
+    fingerprint?: string;
+    keyType?: string;
+  }) {
+    super("SSH host key trust is required before provisioning");
+    this.name = "SshHostKeyTrustRequiredError";
+    this.info = { error: "SSH_HOST_KEY_TRUST_REQUIRED", ...info };
+  }
+}

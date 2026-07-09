@@ -189,8 +189,34 @@ export type CreateVpsPayload = {
   username: string;
 };
 
-type ApiResponse<T> = { data?: T; error?: { message?: string } };
+type ApiResponse<T> = { data?: T; error?: { message?: string; [key: string]: unknown } };
 const REQUEST_TIMEOUT_MS = 45_000;
+
+export type SshHostKeyTrustRequired = {
+  error: "SSH_HOST_KEY_TRUST_REQUIRED";
+  vpsId: string;
+  host: string;
+  port: number;
+  fingerprint?: string;
+  keyType?: string;
+  message?: string;
+};
+
+export class ApiError extends Error {
+  readonly payload?: ApiResponse<unknown>["error"];
+
+  constructor(message: string, payload?: ApiResponse<unknown>["error"]) {
+    super(message);
+    this.name = "ApiError";
+    this.payload = payload;
+  }
+}
+
+export function getHostKeyTrustRequired(error: unknown): SshHostKeyTrustRequired | undefined {
+  if (!(error instanceof ApiError)) return undefined;
+  if (error.payload?.error !== "SSH_HOST_KEY_TRUST_REQUIRED") return undefined;
+  return error.payload as SshHostKeyTrustRequired;
+}
 
 export type AuthSession = {
   user?: string;
@@ -235,7 +261,9 @@ async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
 
   if (response.status === 204) return null as T;
   const payload = (await response.json().catch(() => ({}))) as ApiResponse<T>;
-  if (!response.ok) throw new Error(payload.error?.message || "Request failed");
+  if (!response.ok) {
+    throw new ApiError(payload.error?.message || "Request failed", payload.error);
+  }
   return payload.data as T;
 }
 
@@ -299,6 +327,29 @@ export function provisionKey(id: string, password: string) {
   return request<VpsRecord>(`${vpsPath(id)}/provision-key`, {
     method: "POST",
     body: JSON.stringify({ password }),
+  });
+}
+
+export type SshHostKeyScanResult = {
+  vpsId: string;
+  host: string;
+  port: number;
+  keys: Array<{ type: string; key: string; fingerprint: string }>;
+};
+
+export function scanSshHostKey(id: string) {
+  return request<SshHostKeyScanResult>(`${vpsPath(id)}/ssh/host-key/scan`, {
+    method: "POST",
+  });
+}
+
+export function trustSshHostKey(
+  id: string,
+  payload: { fingerprint: string; keyType?: string },
+) {
+  return request<unknown>(`${vpsPath(id)}/ssh/host-key/trust`, {
+    method: "POST",
+    body: JSON.stringify(payload),
   });
 }
 

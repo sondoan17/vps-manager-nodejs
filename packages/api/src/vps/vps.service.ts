@@ -4,6 +4,7 @@ import type { AppConfig } from "../config/app-config.js";
 import { demoServers } from "../demo/demo-fixtures.js";
 import {
   DemoMutationBlockedError,
+  SshHostKeyTrustRequiredError,
   VpsNotFoundError,
 } from "../common/errors.js";
 import type { KeyService } from "../ssh/keyService.js";
@@ -19,6 +20,7 @@ import {
 import { AgentInstallerService } from "../agents/agent-installer.service.js";
 import { AGENT_REPOSITORY } from "../tokens.js";
 import type { AgentRepository } from "../persistence/repositories/agent.repository.js";
+import { HostKeyPinService } from "../ssh/host-key-pin.service.js";
 
 @Injectable()
 export class VpsService {
@@ -30,6 +32,7 @@ export class VpsService {
     private readonly config: AppConfig,
     private readonly agentInstaller: AgentInstallerService,
     @Inject(AGENT_REPOSITORY) private readonly agentRepository: AgentRepository,
+    private readonly hostKeyPin: HostKeyPinService,
   ) {}
 
   async list() {
@@ -194,6 +197,38 @@ export class VpsService {
     const vps = await this.get(id);
     this.assertRemoteUserManaged(vps);
     const { password } = provisionKeySchema.parse(body);
+
+    // In strict mode, check host key trust before connecting.
+    // If no pin is configured, scan the host key and return a structured
+    // SSH_HOST_KEY_TRUST_REQUIRED error so the caller can trust it first.
+    if (this.config.sshHostKeyPolicy === "strict") {
+      const trustedPins = await this.hostKeyPin.getTrustedFingerprints(
+        vps.id,
+        vps.host,
+        vps.port,
+      );
+      if (trustedPins.length === 0) {
+        try {
+          const scanResult = await this.hostKeyPin.scanHostKey(
+            vps.id,
+            vps.host,
+            vps.port,
+          );
+          const firstKey = scanResult.keys[0];
+          throw new SshHostKeyTrustRequiredError({
+            vpsId: vps.id,
+            host: vps.host,
+            port: vps.port,
+            fingerprint: firstKey?.fingerprint,
+            keyType: firstKey?.type,
+          });
+        } catch (error) {
+          if (error instanceof SshHostKeyTrustRequiredError) throw error;
+          // If scan fails (e.g. host unreachable), fall through to existing SSH behavior
+        }
+      }
+    }
+
     const keyPair = await this.keys.ensureKeyPair(vps.id);
     try {
       await this.ssh.provisionPublicKey(vps, password, keyPair.publicKey);

@@ -26,6 +26,7 @@ import { AuditService, type AuditFilter } from "../audit/audit.service.js";
 import { JobService } from "../jobs/job.service.js";
 import { MetricService } from "../metrics/metric.service.js";
 import { MonitoringService } from "../monitoring/monitoring.service.js";
+import { HostKeyPinService } from "../ssh/host-key-pin.service.js";
 import { VpsService } from "./vps.service.js";
 
 @Controller("api/vps")
@@ -37,6 +38,7 @@ export class VpsController {
     @Inject(MetricService) private readonly metrics: MetricService,
     @Inject(AuditService) private readonly audit: AuditService,
     @Inject(MonitoringService) private readonly monitoring: MonitoringService,
+    @Inject(HostKeyPinService) private readonly hostKeyPin: HostKeyPinService,
   ) {}
 
   @Get()
@@ -176,5 +178,46 @@ export class VpsController {
         res.status(500).json({ error: { message: "Internal server error" } });
       }
     }
+  }
+
+  // ── SSH host key trust endpoints ──────────────────────────────────────
+
+  /**
+   * Scan a VPS host key using ssh-keyscan. Validates VPS exists.
+   */
+  @Post(":id/ssh/host-key/scan")
+  async scanHostKey(@Param("id") id: string) {
+    const vps = await this.vps.get(id);
+    const result = await this.hostKeyPin.scanHostKey(vps.id, vps.host, vps.port);
+    return { data: result };
+  }
+
+  /**
+   * Trust a scanned host key. Validates VPS exists.
+   */
+  @Post(":id/ssh/host-key/trust")
+  async trustHostKey(
+    @Param("id") id: string,
+    @Body() body: { fingerprint: string; keyType?: string },
+  ) {
+    const vps = await this.vps.get(id);
+    const pin = await this.hostKeyPin.trustKey(
+      vps.id,
+      vps.host,
+      vps.port,
+      body.fingerprint,
+      body.keyType,
+    );
+    return { data: pin };
+  }
+
+  /**
+   * Revoke trust for a VPS host key. Validates VPS exists.
+   */
+  @HttpCode(204)
+  @Delete(":id/ssh/host-key/trust")
+  async revokeHostKeyTrust(@Param("id") id: string) {
+    await this.vps.get(id);
+    await this.hostKeyPin.revokeTrust(id);
   }
 }
