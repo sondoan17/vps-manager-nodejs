@@ -489,29 +489,57 @@ function ServerMetricStrip({
   metric?: DashboardOverview["metrics"][number];
 }) {
   const base = "flex items-baseline justify-between gap-3 text-xs text-white/70";
-  if (!metric)
-    return (
-      <section className="min-w-0 p-3 sm:p-4" aria-label="Resource usage">
-        <SectionLabel>Resources</SectionLabel>
-        <div className="mt-2 grid gap-1.5">
-          {(["CPU", "RAM", "Disk", "Load"] as const).map((label) => (
-            <p className={base} key={label}>
-              <span className="text-white/50">{label}</span><span>n/a</span>
-            </p>
-          ))}
-        </div>
-      </section>
-    );
   return (
     <section className="min-w-0 p-3 sm:p-4" aria-label="Resource usage">
       <SectionLabel>Resources</SectionLabel>
-      <div className="mt-2 grid gap-1.5">
-        <p className={base}><span className="text-white/50">CPU</span><span>{metric.cpu}%</span></p>
-        <p className={base}><span className="text-white/50">RAM</span><span>{metric.memory}%</span></p>
-        <p className={base}><span className="text-white/50">Disk</span><span>{metric.disk}%</span></p>
-        <p className={base}><span className="text-white/50">Load</span><span>{metric.loadAverage}</span></p>
+      <div className="mt-2 grid gap-2.5">
+        <TelemetryMeter label="CPU" value={metric?.cpu} />
+        <TelemetryMeter label="RAM" value={metric?.memory} />
+        <TelemetryMeter label="Disk" value={metric?.disk} />
+        <p className={base}>
+          <span className="text-white/50">Load</span>
+          <span>{metric ? metric.loadAverage : "n/a"}</span>
+        </p>
       </div>
     </section>
+  );
+}
+
+function TelemetryMeter({ label, value }: { label: string; value?: number }) {
+  const hasValue = typeof value === "number" && Number.isFinite(value);
+  const normalizedValue = hasValue ? Math.min(100, Math.max(0, value)) : 0;
+  const meterColor = !hasValue
+    ? "bg-white/20"
+    : value >= 90
+      ? "bg-red-500"
+      : value >= 70
+        ? "bg-amber-400"
+        : "bg-emerald-500";
+
+  return (
+    <div className="min-w-0">
+      <div className="flex items-baseline justify-between gap-3 text-xs">
+        <span className="text-white/50">{label}</span>
+        <span className="text-white/70">{hasValue ? `${value}%` : "n/a"}</span>
+      </div>
+      {hasValue ? (
+        <div
+          role="progressbar"
+          aria-label={`${label} utilization`}
+          aria-valuemin={0}
+          aria-valuemax={100}
+          aria-valuenow={normalizedValue}
+          className="mt-1.5 h-1 w-full overflow-hidden bg-white/10"
+        >
+          <div
+            className={`h-full ${meterColor} transition-[width] duration-300`}
+            style={{ width: `${normalizedValue}%` }}
+          />
+        </div>
+      ) : (
+        <div className="mt-1.5 h-1 w-full bg-white/10" aria-hidden="true" />
+      )}
+    </div>
   );
 }
 
