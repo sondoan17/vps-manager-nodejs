@@ -103,18 +103,18 @@ export function ServerCard({
 
   return (
     <article
-      className={`min-w-0 rounded-none border px-4 py-4 shadow-none transition duration-300 ${isDown ? "border-white/10 bg-white/[0.03] shadow-black/5 ring-1 ring-white/10" : "border-0 bg-white/[0.03] shadow-none  hover:border-white/20 "}`}
+      className={`min-w-0 overflow-hidden rounded-none border bg-white/[0.03] shadow-none transition duration-300 ${isDown ? "border-white/20 ring-1 ring-white/10" : "border-white/10 hover:border-white/20"}`}
     >
-      <div
-        className={`grid gap-4 xl:grid-cols-[minmax(320px,1.25fr)_minmax(230px,0.8fr)_minmax(220px,0.55fr)_auto] xl:items-center ${isDown ? "border-l-4 border-[#ffffff] pl-3" : ""}`}
+      <header
+        className={`flex min-w-0 flex-col gap-3 border-b border-white/10 px-3 py-3 sm:flex-row sm:items-start sm:justify-between sm:px-4 ${isDown ? "border-l-4 border-l-white" : ""}`}
       >
         <div className="min-w-0">
-          <div className="flex flex-wrap items-center gap-2">
-            <h3 className="truncate text-[17px] font-normal tracking-normal text-[#ffffff]">
+          <div className="flex min-w-0 flex-wrap items-center gap-1.5">
+            <h3 className="min-w-0 truncate text-base font-normal text-white sm:text-[17px]">
               {vps.name}
             </h3>
             {isDown ? (
-              <span className="inline-flex items-center gap-1 rounded-none border border-white/10 bg-white/[0.03] px-2 py-0.5 text-xs font-normal uppercase text-white/70">
+              <span className="inline-flex shrink-0 items-center gap-1 border border-white/20 bg-white/[0.06] px-2 py-1 text-[11px] font-normal uppercase tracking-[0.08em] text-white">
                 <AlertTriangle size={13} />
                 Down
               </span>
@@ -131,81 +131,55 @@ export function ServerCard({
                   : "Needs password"}
             </Badge>
           </div>
-          <p className="mt-1 break-all text-sm font-normal leading-6 text-white/50">
+          <p className="mt-1.5 break-all font-mono text-xs text-white/60 sm:text-[13px]">
             {vps.username}@{vps.host}:{vps.port}
           </p>
-          <p className="mt-1 break-all font-mono text-xs font-normal text-white/50">
-            ID: {vps.id}
+          <p
+            className="mt-1 truncate font-mono text-[11px] text-white/40"
+            title={`Server ID: ${vps.id}`}
+          >
+            ID {vps.id}
           </p>
-          <div className="mt-2 flex flex-wrap items-center gap-x-2 gap-y-1.5 text-[13px] font-normal text-white/50">
-            <span className="flex items-center gap-1.5">
-              <ServerCog size={14} />
-              {vps.provider || "Provider not set"}
-            </span>
-            <span className="text-white/50">/</span>
-            <span className="flex items-center gap-1.5">
-              <MapPin size={14} />
-              {vps.region || "Region not set"}
-            </span>
-            <span className="text-white/50">/</span>
-            <span className="flex items-center gap-1.5">
-              <Clock3 size={14} />
-              Seen {formatDate(vps.lastSeenAt)}
-            </span>
-          </div>
-          {vps.tags?.length ? (
-            <p
-              className="mt-2 truncate text-xs font-normal text-white/50"
-              title={`Tags: ${vps.tags.join(", ")}`}
-            >
-              <span className="font-normal uppercase tracking-[0.08em] text-white/30">
-                Tags:
-              </span>{" "}
-              {vps.tags.join(", ")}
-            </p>
-          ) : null}
-          {vps.notes ? (
-            <p className="mt-2 line-clamp-2 text-sm leading-5 text-white/50">
-              {vps.notes}
-            </p>
-          ) : null}
-          <ServerSystemInfoStrip systemInfo={systemInfo} />
         </div>
-        <ServerRuntimeMeta
-          metric={metric}
-          systemInfo={systemInfo}
-          jobs={jobs}
-        />
+        <div className="flex shrink-0 items-center gap-1.5 text-xs text-white/50 sm:pt-0.5">
+          <Clock3 size={14} aria-hidden="true" />
+          <span>Seen {formatDate(vps.lastSeenAt)}</span>
+        </div>
+      </header>
+
+      <div className="grid min-w-0 divide-y divide-white/10 md:grid-cols-3 md:divide-x md:divide-y-0">
+        <ServerSystemInfoStrip vps={vps} systemInfo={systemInfo} />
         <ServerMetricStrip metric={metric} />
-        <DockerMetricsPanel
-          vps={vps}
-          dockerMetrics={dockerMetrics}
-          busy={busy}
-          onToggle={onToggleDockerMetrics}
-        />
-        <div className="flex min-w-0 flex-wrap items-start justify-start gap-2 xl:justify-end">
-          <>
-            <Link
-              to={`/vps/${encodeURIComponent(vps.id)}`}
-              className="inline-flex items-center justify-center min-w-0 h-9 rounded-none px-4 text-sm font-normal transition-colors border border-white/10 bg-white/[0.03] text-[#ffffff] shadow-none hover:bg-white/[0.03]"
-            >
-              <Server size={16} />
-              <span className="ml-2">Manage</span>
-            </Link>
-          </>
+        <div className="min-w-0 p-3 sm:p-4">
+          <DockerMetricsPanel
+            vps={vps}
+            dockerMetrics={dockerMetrics}
+            busy={busy}
+            onToggle={onToggleDockerMetrics}
+          />
+        </div>
+      </div>
+
+      <footer className="border-t border-white/10 px-3 py-3 sm:px-4">
+        <div className="flex min-w-0 flex-col gap-3 xl:flex-row xl:items-center xl:justify-between">
+          <ServerRuntimeMeta
+            metric={metric}
+            systemInfo={systemInfo}
+            jobs={jobs}
+          />
+          <div className="flex min-w-0 flex-wrap items-center gap-2 xl:justify-end">
+          <Link
+            to={`/vps/${encodeURIComponent(vps.id)}`}
+            className="inline-flex h-9 min-w-0 items-center justify-center border border-white/10 bg-white/[0.03] px-3 text-sm font-normal text-white transition-colors hover:bg-white/[0.08]"
+          >
+            <Server size={16} />
+            <span className="ml-2">Manage</span>
+          </Link>
           {isLocalHost ? (
-            <>
-              <Button
-                type="button"
-                size="sm"
-                variant="secondary"
-                className="border-0 bg-white/[0.03] shadow-none text-white/70 shadow-none hover:bg-white/[0.03] disabled:opacity-100"
-                disabled
-              >
-                <Activity size={16} />
-                Managed locally
-              </Button>
-            </>
+            <span className="inline-flex h-9 items-center gap-2 px-2 text-sm text-white/50">
+              <Activity size={16} aria-hidden="true" />
+              Managed locally
+            </span>
           ) : isReady ? (
             <>
               <Button
@@ -272,8 +246,9 @@ export function ServerCard({
               window.setTimeout(() => setDeleteTarget(vps), 0);
             }}
           />
+          </div>
         </div>
-      </div>
+      </footer>
       {/* Delete confirmation – rendered outside DropdownMenu to avoid focus-trap nesting */}
       <AlertDialog
         open={deleteTarget?.id === vps.id}
@@ -306,7 +281,7 @@ export function ServerCard({
         <form
           onSubmit={(event) => event.preventDefault()}
           autoComplete="off"
-          className="mt-3 grid gap-2 border-t border-white/10 pt-3 sm:grid-cols-[minmax(0,1fr)_auto]"
+          className="grid gap-2 border-t border-white/10 bg-white/[0.02] px-3 py-3 sm:grid-cols-[minmax(0,1fr)_auto] sm:px-4"
         >
           <Label>
             {isReady ? "One-time password for rotation" : "One-time password"}
@@ -388,9 +363,9 @@ function ServerRuntimeMeta({
     `${runningJobs} running job${runningJobs === 1 ? "" : "s"}`,
   ].filter(Boolean);
   return (
-    <div className="min-w-0 rounded-none border-0 bg-white/[0.03] shadow-none/90 px-3 py-2 text-[12px] font-normal leading-5 text-white/50 shadow-none">
-      <p className="truncate" title={parts.join(" / ")}>
-        {parts.join(" / ")}
+    <div className="min-w-0 text-xs font-normal leading-5 text-white/50">
+      <p className="whitespace-normal" title={parts.join(" / ")}>
+        {parts.join(" · ")}
       </p>
     </div>
   );
@@ -399,15 +374,22 @@ function ServerRuntimeMeta({
 // ── ServerSystemInfoStrip ────────────────────────────────────────────
 
 function ServerSystemInfoStrip({
+  vps,
   systemInfo,
 }: {
+  vps: VpsRecord;
   systemInfo?: DashboardOverview["systemInfo"][number];
 }) {
   if (!systemInfo) {
     return (
-      <div className="mt-3 rounded-none border border-dashed border-white/10 bg-white/[0.03] px-3 py-2 text-xs font-normal text-white/30">
-        System info not reported yet.
-      </div>
+      <section className="min-w-0 p-3 sm:p-4" aria-label="System information">
+        <SectionLabel>System</SectionLabel>
+        <p className="mt-2 text-xs font-normal text-white/40">
+          System info not reported yet.
+        </p>
+        <ServerLocationMeta vps={vps} />
+        <ServerAnnotations vps={vps} />
+      </section>
     );
   }
 
@@ -435,24 +417,67 @@ function ServerSystemInfoStrip({
     : "Disk n/a";
 
   return (
-    <div className="mt-3 grid gap-2 rounded-none border border-white/10 bg-white/[0.03] px-3 py-2 text-xs text-white/50 shadow-none">
-      <p className="truncate font-normal text-white/70" title={osLabel}>
+    <section className="min-w-0 p-3 sm:p-4" aria-label="System information">
+      <SectionLabel>System</SectionLabel>
+      <p className="mt-2 truncate text-sm font-normal text-white/80" title={osLabel}>
         {osLabel}
       </p>
-      <div className="flex flex-wrap gap-x-2 gap-y-1 font-normal">
-        <span className="truncate" title={kernelParts.join(" · ") || undefined}>
+      <div className="mt-1 grid gap-0.5 text-xs leading-5 text-white/50">
+        <p className="truncate" title={kernelParts.join(" · ") || undefined}>
           {kernelParts.length ? kernelParts.join(" · ") : "Kernel n/a"}
-        </span>
-        <span className="text-white/50">/</span>
-        <span className="truncate" title={cpuLabel}>
-          {cpuLabel}
-        </span>
-        <span className="text-white/50">/</span>
-        <span>{memoryLabel}</span>
-        <span className="text-white/50">/</span>
-        <span>{diskLabel}</span>
+        </p>
+        <p className="truncate" title={cpuLabel}>{cpuLabel}</p>
+        <p className="truncate" title={`${memoryLabel} · ${diskLabel}`}>
+          {memoryLabel} · {diskLabel}
+        </p>
       </div>
+      <ServerLocationMeta vps={vps} />
+      <ServerAnnotations vps={vps} />
+    </section>
+  );
+}
+
+function ServerLocationMeta({ vps }: { vps: VpsRecord }) {
+  return (
+    <div className="mt-2 flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1 text-[11px] text-white/40">
+      <span className="inline-flex min-w-0 items-center gap-1">
+        <ServerCog size={12} aria-hidden="true" />
+        <span className="truncate">{vps.provider || "Provider not set"}</span>
+      </span>
+      <span aria-hidden="true">·</span>
+      <span className="inline-flex min-w-0 items-center gap-1">
+        <MapPin size={12} aria-hidden="true" />
+        <span className="truncate">{vps.region || "Region not set"}</span>
+      </span>
     </div>
+  );
+}
+
+function ServerAnnotations({ vps }: { vps: VpsRecord }) {
+  return (
+    <>
+      {vps.tags?.length ? (
+        <p
+          className="mt-2 truncate text-[11px] text-white/40"
+          title={`Tags: ${vps.tags.join(", ")}`}
+        >
+          Tags · {vps.tags.join(", ")}
+        </p>
+      ) : null}
+      {vps.notes ? (
+        <p className="mt-1 line-clamp-2 text-xs leading-5 text-white/50">
+          {vps.notes}
+        </p>
+      ) : null}
+    </>
+  );
+}
+
+function SectionLabel({ children }: { children: React.ReactNode }) {
+  return (
+    <p className="text-[11px] font-normal uppercase tracking-[0.14em] text-white/50">
+      {children}
+    </p>
   );
 }
 
@@ -463,32 +488,30 @@ function ServerMetricStrip({
 }: {
   metric?: DashboardOverview["metrics"][number];
 }) {
-  const base =
-    "rounded-none border-0 bg-white/[0.03] shadow-none px-2.5 py-1 text-[12px] font-normal text-white/70 shadow-none";
+  const base = "flex items-baseline justify-between gap-3 text-xs text-white/70";
   if (!metric)
     return (
-      <div className="flex flex-wrap items-center gap-1.5 xl:justify-end">
-        <span className={base}>CPU n/a</span>
-        <span className={base}>RAM n/a</span>
-        <span className={base}>Disk n/a</span>
-        <span className={base}>Load n/a</span>
-      </div>
+      <section className="min-w-0 p-3 sm:p-4" aria-label="Resource usage">
+        <SectionLabel>Resources</SectionLabel>
+        <div className="mt-2 grid gap-1.5">
+          {(["CPU", "RAM", "Disk", "Load"] as const).map((label) => (
+            <p className={base} key={label}>
+              <span className="text-white/50">{label}</span><span>n/a</span>
+            </p>
+          ))}
+        </div>
+      </section>
     );
   return (
-    <div className="flex flex-wrap items-center gap-1.5 xl:justify-end">
-      <span className={base}>
-        <span className="text-white/50">CPU</span> {metric.cpu}%
-      </span>
-      <span className={base}>
-        <span className="text-white/50">RAM</span> {metric.memory}%
-      </span>
-      <span className={base}>
-        <span className="text-white/50">Disk</span> {metric.disk}%
-      </span>
-      <span className={base}>
-        <span className="text-white/50">Load</span> {metric.loadAverage}
-      </span>
-    </div>
+    <section className="min-w-0 p-3 sm:p-4" aria-label="Resource usage">
+      <SectionLabel>Resources</SectionLabel>
+      <div className="mt-2 grid gap-1.5">
+        <p className={base}><span className="text-white/50">CPU</span><span>{metric.cpu}%</span></p>
+        <p className={base}><span className="text-white/50">RAM</span><span>{metric.memory}%</span></p>
+        <p className={base}><span className="text-white/50">Disk</span><span>{metric.disk}%</span></p>
+        <p className={base}><span className="text-white/50">Load</span><span>{metric.loadAverage}</span></p>
+      </div>
+    </section>
   );
 }
 
