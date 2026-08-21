@@ -185,16 +185,15 @@ describe("React dashboard", () => {
     // Root redirects to /vps, header shows "Servers"
     expect(
       await screen.findByText(
-        "No VPS servers yet. Add your first server with the form beside this list.",
+        "No VPS servers yet. Add your first server to get started.",
       ),
     ).toBeInTheDocument();
-    // There are multiple "Servers" elements (header + nav + card title)
+    // There are multiple "Servers" elements (header + page title)
     expect(screen.getAllByText("Servers").length).toBeGreaterThan(0);
+    // Empty state shows a CTA/link to create a new VPS (no inline create form)
     expect(
-      screen.getByText(
-        "Passwords are sent only for one-time key provisioning and are not stored in browser storage.",
-      ),
-    ).toBeInTheDocument();
+      screen.getAllByRole("link", { name: "New VPS" }).length,
+    ).toBeGreaterThan(0);
     expect(fetchMock).toHaveBeenCalledWith("/api/vps", expect.any(Object));
   });
 
@@ -231,7 +230,7 @@ describe("React dashboard", () => {
 
     expect(
       await screen.findByText(
-        "No VPS servers yet. Add your first server with the form beside this list.",
+        "No VPS servers yet. Add your first server to get started.",
       ),
     ).toBeInTheDocument();
   });
@@ -332,7 +331,12 @@ describe("React dashboard", () => {
     renderApp();
 
     await screen.findByText(
-      "No VPS servers yet. Add your first server with the form beside this list.",
+      "No VPS servers yet. Add your first server to get started.",
+    );
+
+    // The create form now lives on /vps/new; navigate there via the "New VPS" CTA
+    await userEvent.click(
+      screen.getAllByRole("link", { name: "New VPS" })[0],
     );
 
     await userEvent.type(screen.getByLabelText("Name"), "prod");
@@ -577,18 +581,13 @@ describe("React dashboard", () => {
     expect(
       screen.getByText((content) => content.includes("edge, public")),
     ).toBeInTheDocument();
-    // Sidebar navigation should be present
+    // Compact app bar breadcrumb navigation should be present (sidebar removed)
     expect(
-      screen.getByRole("navigation", { name: "Dashboard sidebar sections" }),
+      screen.getByRole("navigation", { name: "Dashboard context" }),
     ).toBeInTheDocument();
+    // CTA/link to create a new VPS is present in the list header
     expect(
-      screen.getByRole("button", { name: "VPS List" }),
-    ).toBeInTheDocument();
-    // Password security note
-    expect(
-      screen.getByText(
-        "Passwords are sent only for one-time key provisioning and are not stored in browser storage.",
-      ),
+      screen.getByRole("link", { name: "New VPS" }),
     ).toBeInTheDocument();
     expect(localStorage.length).toBe(0);
     expect(sessionStorage.length).toBe(0);
@@ -1423,7 +1422,8 @@ describe("React dashboard", () => {
 
       // Wait for dashboard to load and VPS workspace to render
       expect(await screen.findByText("web-01")).toBeInTheDocument();
-      expect(screen.getByText("10.0.0.1")).toBeInTheDocument();
+      // Workspace header shows the endpoint as username@host:port
+      expect(screen.getByText("root@10.0.0.1:22")).toBeInTheDocument();
       // Overview tab should be active by default
       expect(screen.getByText("Overview")).toBeInTheDocument();
     });

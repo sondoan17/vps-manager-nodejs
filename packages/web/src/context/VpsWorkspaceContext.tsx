@@ -1,5 +1,6 @@
 import { createContext, useContext, useEffect, useRef, useState } from "react";
-import { NavLink, Outlet, useParams } from "react-router-dom";
+import { ArrowLeft, Server } from "lucide-react";
+import { Link, NavLink, Outlet, useParams } from "react-router-dom";
 import {
   AuditPanel,
   JobsPanel,
@@ -197,35 +198,64 @@ export function VpsWorkspaceLayout() {
 
   return (
     <VpsWorkspaceContext.Provider value={workspaceValue}>
-      <div className="space-y-5">
-        <div className="flex items-center gap-3">
-          <h2 className="text-xl font-normal text-white">{vps.name}</h2>
-          <span className="text-sm text-white/50">{vps.host}</span>
-        </div>
+      <div className="min-w-0 space-y-5">
+        <header className="min-w-0 border-b border-white/10">
+          <Link
+            to="/vps"
+            className="inline-flex min-h-10 items-center gap-2 text-sm text-white/50 transition hover:text-white"
+          >
+            <ArrowLeft size={16} aria-hidden="true" />
+            Back to servers
+          </Link>
 
-        <nav
-          aria-label="VPS workspace sections"
-          className="flex flex-wrap gap-0.5"
-        >
-          {workspaceSubPages.map((page) => (
-            <NavLink
-              key={page.to || "overview"}
-              end={page.end}
-              to={page.to || ""}
-              className={({ isActive }) =>
-                `inline-flex items-center px-4 py-2.5 text-xs font-normal uppercase tracking-[0.08em] transition ${
-                  isActive
-                    ? "border border-white/20 bg-white/[0.03] text-white shadow-none"
-                    : "border border-transparent text-white/50 hover:border-white/10 hover:bg-white/[0.03] hover:text-white"
-                }`
-              }
+          <div className="flex min-w-0 items-start gap-3 pb-4 pt-2 sm:items-center sm:pb-5">
+            <span className="mt-0.5 grid h-10 w-10 shrink-0 place-items-center border border-white/10 bg-white/[0.03] text-white sm:mt-0 sm:h-11 sm:w-11">
+              <Server size={19} aria-hidden="true" />
+            </span>
+            <div className="min-w-0">
+              <div className="flex min-w-0 flex-wrap items-center gap-x-3 gap-y-1">
+                <h1 className="min-w-0 truncate font-display text-xl font-normal text-white sm:text-2xl">
+                  {vps.name}
+                </h1>
+                <span className="inline-flex shrink-0 items-center gap-1.5 text-xs uppercase tracking-[0.08em] text-white/60">
+                  <span className="h-1.5 w-1.5 bg-white/70" />
+                  {vps.status || "Unknown"}
+                </span>
+              </div>
+              <p className="mt-1 truncate font-mono text-xs text-white/50 sm:text-sm">
+                {vps.username}@{vps.host}:{vps.port}
+              </p>
+            </div>
+          </div>
+
+          <div className="-mx-3 overflow-x-auto px-3 [scrollbar-width:thin] sm:-mx-5 sm:px-5 xl:-mx-8 xl:px-8">
+            <nav
+              aria-label="VPS workspace sections"
+              className="flex w-max min-w-full items-center gap-1"
             >
-              {page.label}
-            </NavLink>
-          ))}
-        </nav>
+              {workspaceSubPages.map((page) => (
+                <NavLink
+                  key={page.to || "overview"}
+                  end={page.end}
+                  to={page.to || ""}
+                  className={({ isActive }) =>
+                    `inline-flex min-h-11 shrink-0 items-center border-b-2 px-3 text-xs font-normal uppercase tracking-[0.08em] transition sm:px-4 ${
+                      isActive
+                        ? "border-white text-white"
+                        : "border-transparent text-white/50 hover:border-white/20 hover:text-white"
+                    }`
+                  }
+                >
+                  {page.label}
+                </NavLink>
+              ))}
+            </nav>
+          </div>
+        </header>
 
-        <Outlet />
+        <div className="min-w-0">
+          <Outlet />
+        </div>
       </div>
     </VpsWorkspaceContext.Provider>
   );
