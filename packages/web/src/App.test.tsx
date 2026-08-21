@@ -1279,6 +1279,41 @@ describe("React dashboard", () => {
       },
       servers: [],
       metrics: [],
+      dockerMetrics: [
+        {
+          vpsId: "vps-1",
+          collectedAt: "2026-01-01T00:00:00.000Z",
+          receivedAt: "2026-01-01T00:00:01.000Z",
+          agentVersion: "1.2.3",
+          schemaVersion: 1,
+          available: true,
+          containerTotal: 2,
+          containerRunning: 1,
+          cpuPercent: 12.5,
+          memoryUsageBytes: 268435456,
+          networkRxBytes: 1024,
+          networkTxBytes: 2048,
+          blockReadBytes: 4096,
+          blockWriteBytes: 8192,
+          pids: 9,
+          containers: [
+            {
+              id: "workspace-api",
+              name: "workspace-api",
+              image: "app:latest",
+              state: "running",
+              status: "Up 2 minutes",
+              cpuPercent: 10,
+              memoryUsageBytes: 134217728,
+              networkRxBytes: 100,
+              networkTxBytes: 200,
+              blockReadBytes: 300,
+              blockWriteBytes: 400,
+              pids: 4,
+            },
+          ],
+        },
+      ],
       jobs: [],
       auditEvents: [],
       terminal: {
@@ -1409,6 +1444,12 @@ describe("React dashboard", () => {
       renderApp(["/vps/vps-1/metrics"]);
 
       expect(await screen.findByText("Metrics for web-01")).toBeInTheDocument();
+      expect(screen.getByText("Docker workloads")).toBeInTheDocument();
+      expect(screen.getByText("workspace-api")).toBeInTheDocument();
+      expect(screen.getByText("app:latest")).toBeInTheDocument();
+      expect(
+        screen.getByRole("region", { name: "Docker metrics summary" }),
+      ).toHaveTextContent("1/2");
     });
 
     it("shows 404 for unknown workspace sub-route /vps/:id/unknown", async () => {

@@ -13,18 +13,30 @@ import type { DashboardOverview } from "../../../lib/api";
 import { formatBytes } from "../shared/formatBytes";
 import { formatUptime } from "../shared/formatUptime";
 import { EmptyState } from "../shared/EmptyState";
+import {
+  formatBytes as formatDockerBytes,
+  formatDockerError,
+} from "../servers/helpers";
 
 export function MetricsPanel({
   metrics,
+  dockerMetrics,
 }: {
   metrics: DashboardOverview["metrics"];
+  dockerMetrics: DashboardOverview["dockerMetrics"];
 }) {
   const [serverFilter, setServerFilter] = useState("all");
   const [metricFilter, setMetricFilter] = useState("all");
   const serverIds = Array.from(
-    new Set(metrics.map((metric) => metric.vpsId)),
+    new Set([
+      ...metrics.map((metric) => metric.vpsId),
+      ...dockerMetrics.map((metric) => metric.vpsId),
+    ]),
   ).sort();
   const visibleMetrics = metrics.filter(
+    (metric) => serverFilter === "all" || metric.vpsId === serverFilter,
+  );
+  const visibleDockerMetrics = dockerMetrics.filter(
     (metric) => serverFilter === "all" || metric.vpsId === serverFilter,
   );
   const fresh = metrics.filter((metric) => metric.freshness === "fresh").length;
@@ -127,6 +139,10 @@ export function MetricsPanel({
         ) : (
           <EmptyState>No metrics match these filters.</EmptyState>
         )}
+        <DockerMetricsSection
+          dockerMetrics={visibleDockerMetrics}
+          totalDockerMetrics={dockerMetrics}
+        />
         <section
           className="grid gap-3 rounded-none border-0 bg-white/[0.03] shadow-none p-3 md:grid-cols-2 xl:grid-cols-4"
           aria-label="Metric trends"
@@ -212,6 +228,197 @@ export function MetricsPanel({
         </section>
       </CardContent>
     </Card>
+  );
+}
+
+function DockerMetricsSection({
+  dockerMetrics,
+  totalDockerMetrics,
+}: {
+  dockerMetrics: DashboardOverview["dockerMetrics"];
+  totalDockerMetrics: DashboardOverview["dockerMetrics"];
+}) {
+  const available = totalDockerMetrics.filter((metric) => metric.available);
+  const totals = available.reduce(
+    (summary, metric) => ({
+      containers: summary.containers + metric.containerTotal,
+      running: summary.running + metric.containerRunning,
+      cpu: summary.cpu + metric.cpuPercent,
+      memory: summary.memory + metric.memoryUsageBytes,
+      network:
+        summary.network + metric.networkRxBytes + metric.networkTxBytes,
+    }),
+    { containers: 0, running: 0, cpu: 0, memory: 0, network: 0 },
+  );
+
+  return (
+    <section className="grid gap-3" aria-label="Docker metrics">
+      <div className="flex flex-wrap items-end justify-between gap-3">
+        <div>
+          <h3 className="font-normal text-[#ffffff]">Docker workloads</h3>
+          <p className="mt-1 text-sm font-normal text-white/50">
+            Agent-reported container usage by server.
+          </p>
+        </div>
+        <Badge variant={available.length ? "ready" : "secondary"}>
+          {available.length}/{totalDockerMetrics.length} available
+        </Badge>
+      </div>
+
+      {totalDockerMetrics.length ? (
+        <section
+          className="grid grid-cols-2 gap-3 sm:grid-cols-3 xl:grid-cols-5"
+          aria-label="Docker metrics summary"
+        >
+          <MetricSummaryCard
+            label="Containers"
+            server={`${totals.running} running`}
+            value={`${totals.running}/${totals.containers}`}
+          />
+          <MetricSummaryCard
+            label="Docker hosts"
+            server="Reporting agents"
+            value={`${available.length}/${totalDockerMetrics.length}`}
+          />
+          <MetricSummaryCard
+            label="Container CPU"
+            server="Across hosts"
+            value={`${totals.cpu.toFixed(1)}%`}
+          />
+          <MetricSummaryCard
+            label="Container RAM"
+            server="Current usage"
+            value={formatDockerBytes(totals.memory)}
+          />
+          <MetricSummaryCard
+            label="Container network"
+            server="RX + TX"
+            value={formatDockerBytes(totals.network)}
+          />
+        </section>
+      ) : null}
+
+      {dockerMetrics.length ? (
+        <div className="grid gap-3">
+          {dockerMetrics.map((metric) => (
+            <DockerServerMetrics key={metric.vpsId} metric={metric} />
+          ))}
+        </div>
+      ) : (
+        <EmptyState>
+          {totalDockerMetrics.length
+            ? "No Docker metrics match this server filter."
+            : "No Docker metrics have been reported yet."}
+        </EmptyState>
+      )}
+    </section>
+  );
+}
+
+function DockerServerMetrics({
+  metric,
+}: {
+  metric: DashboardOverview["dockerMetrics"][number];
+}) {
+  return (
+    <article className="min-w-0 rounded-none border border-white/10 bg-white/[0.03] p-4 shadow-none">
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div className="min-w-0">
+          <div className="flex flex-wrap items-center gap-2">
+            <strong className="truncate text-lg font-normal text-[#ffffff]">
+              {metric.vpsId}
+            </strong>
+            <Badge variant={metric.available ? "ready" : "pending"}>
+              {metric.available ? "Docker available" : "Unavailable"}
+            </Badge>
+          </div>
+          <p className="mt-1 text-sm font-normal text-white/50">
+            Collected {freshnessLabel(metric.collectedAt)}
+            {metric.agentVersion ? ` · Agent ${metric.agentVersion}` : ""}
+          </p>
+        </div>
+        {metric.available ? (
+          <div className="flex flex-wrap gap-1.5 text-[11px] font-normal text-white/70">
+            <DockerStat
+              label="Running"
+              value={`${metric.containerRunning}/${metric.containerTotal}`}
+            />
+            <DockerStat label="CPU" value={`${metric.cpuPercent.toFixed(1)}%`} />
+            <DockerStat
+              label="RAM"
+              value={formatDockerBytes(metric.memoryUsageBytes)}
+            />
+            <DockerStat
+              label="Net"
+              value={formatDockerBytes(
+                metric.networkRxBytes + metric.networkTxBytes,
+              )}
+            />
+            <DockerStat
+              label="IO"
+              value={formatDockerBytes(
+                metric.blockReadBytes + metric.blockWriteBytes,
+              )}
+            />
+            <DockerStat label="PIDs" value={String(metric.pids)} />
+          </div>
+        ) : null}
+      </div>
+
+      {!metric.available ? (
+        <div className="mt-3 border-l-2 border-white/20 pl-3">
+          <p className="text-sm font-normal text-white/70">
+            {formatDockerError(metric.errorCode)}
+          </p>
+          <p className="mt-1 text-xs font-normal text-white/50">
+            Check Docker socket access for the agent.
+          </p>
+        </div>
+      ) : metric.containers.length ? (
+        <div className="mt-4 overflow-hidden border border-white/10">
+          <div className="hidden grid-cols-[minmax(140px,1fr)_minmax(160px,1.25fr)_0.7fr_0.7fr_0.8fr_0.6fr] gap-3 bg-white/[0.03] px-3 py-2 text-[10px] font-normal uppercase tracking-[0.1em] text-white/40 md:grid">
+            <span>Container</span>
+            <span>Image</span>
+            <span>State</span>
+            <span>CPU</span>
+            <span>Memory</span>
+            <span>PIDs</span>
+          </div>
+          <div className="divide-y divide-white/10">
+            {metric.containers.map((container) => (
+              <div
+                key={container.id}
+                className="grid gap-2 px-3 py-3 text-sm font-normal text-white/60 md:grid-cols-[minmax(140px,1fr)_minmax(160px,1.25fr)_0.7fr_0.7fr_0.8fr_0.6fr] md:items-center"
+                title={container.status}
+              >
+                <span className="min-w-0 truncate text-white">
+                  {container.name}
+                </span>
+                <span className="min-w-0 truncate" title={container.image}>
+                  {container.image}
+                </span>
+                <span className="capitalize">{container.state}</span>
+                <span>{container.cpuPercent.toFixed(1)}%</span>
+                <span>{formatDockerBytes(container.memoryUsageBytes)}</span>
+                <span>{container.pids}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+      ) : (
+        <p className="mt-3 text-sm font-normal text-white/50">
+          No containers reported by this agent.
+        </p>
+      )}
+    </article>
+  );
+}
+
+function DockerStat({ label, value }: { label: string; value: string }) {
+  return (
+    <span className="bg-white/[0.03] px-2 py-1">
+      <span className="text-white/40">{label}</span> {value}
+    </span>
   );
 }
 

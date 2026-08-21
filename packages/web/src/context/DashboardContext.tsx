@@ -34,7 +34,6 @@ import {
   trustSshHostKey,
   updateVps,
   verifyKey,
-  type DashboardMetric,
   type DashboardOverview,
   type VpsRecord,
 } from "../lib/api";
@@ -111,10 +110,10 @@ export function useDashboard(): DashboardCtx {
 
 // ── Helpers ──────────────────────────────────────────────────────────
 
-function mergeMetrics(
-  existing: DashboardMetric[],
-  updated: DashboardMetric[],
-): DashboardMetric[] {
+function mergeMetrics<T extends { vpsId: string }>(
+  existing: T[],
+  updated: T[],
+): T[] {
   const updatedMap = new Map(updated.map((m) => [m.vpsId, m]));
   const seen = new Set<string>();
   const merged = existing.map((m) => {
@@ -299,7 +298,7 @@ export function DashboardProvider({
           const updatedMetrics = mergeMetrics(prev.metrics, payload.metrics);
           const dockerMetrics =
             payload.dockerMetrics !== undefined
-              ? payload.dockerMetrics
+              ? mergeMetrics(prev.dockerMetrics ?? [], payload.dockerMetrics)
               : (prev.dockerMetrics ?? []);
           return {
             ...prev,

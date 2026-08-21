@@ -243,7 +243,10 @@ export function VpsWorkspaceMetricsPage() {
   return (
     <div className="space-y-2">
       <h2 className="text-lg font-normal text-white">Metrics for {vps.name}</h2>
-      <MetricsPanel metrics={overview.metrics} />
+      <MetricsPanel
+        metrics={overview.metrics}
+        dockerMetrics={overview.dockerMetrics}
+      />
     </div>
   );
 }
