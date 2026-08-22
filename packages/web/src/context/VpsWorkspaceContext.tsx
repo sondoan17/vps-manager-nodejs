@@ -20,6 +20,7 @@ import {
   type VpsRecord,
 } from "../lib/api";
 import { useDashboard } from "./DashboardContext";
+import { vpsDisplayName } from "../lib/dashboard-formatters";
 
 // ── Context type ────────────────────────────────────────────────────
 
@@ -147,6 +148,7 @@ export function VpsWorkspaceLayout() {
   if (!vps || !vpsId) {
     return <div className="p-6 text-white/50">VPS not found.</div>;
   }
+  const displayName = vpsDisplayName(vps);
 
   // ── Compute scoped view model ─────────────────────────────────────
   const globalMetrics = ctx.metrics.filter((metric) => metric.vpsId === vpsId);
@@ -166,7 +168,7 @@ export function VpsWorkspaceLayout() {
       event.resourceId === vpsId ||
       (event.jobId != null && vpsJobIds.has(event.jobId)) ||
       (event.resourceId != null && vpsJobIds.has(event.resourceId)) ||
-      event.serverLabel === vps.name,
+      event.serverLabel === displayName || event.serverLabel === vps.name,
   );
   const auditEvents = prefill?.audit
     ? mergeById(globalAudit, prefill.audit)
@@ -215,7 +217,7 @@ export function VpsWorkspaceLayout() {
             <div className="min-w-0">
               <div className="flex min-w-0 flex-wrap items-center gap-x-3 gap-y-1">
                 <h1 className="min-w-0 truncate font-display text-xl font-normal text-white sm:text-2xl">
-                  {vps.name}
+                  {displayName}
                 </h1>
                 <span className="inline-flex shrink-0 items-center gap-1.5 text-xs uppercase tracking-[0.08em] text-white/60">
                   <span className="h-1.5 w-1.5 bg-white/70" />
@@ -230,7 +232,7 @@ export function VpsWorkspaceLayout() {
 
           <div className="-mx-3 overflow-x-auto px-3 [scrollbar-width:thin] sm:-mx-5 sm:px-5 xl:-mx-8 xl:px-8">
             <nav
-              aria-label="VPS workspace sections"
+              aria-label={`${displayName} workspace sections`}
               className="flex w-max min-w-full items-center gap-1"
             >
               {workspaceSubPages.map((page) => (
@@ -272,7 +274,9 @@ export function VpsWorkspaceMetricsPage() {
   const { vps, overview } = useVpsWorkspace();
   return (
     <div className="space-y-2">
-      <h2 className="text-lg font-normal text-white">Metrics for {vps.name}</h2>
+      <h2 className="text-lg font-normal text-white">
+        Metrics for {vpsDisplayName(vps)}
+      </h2>
       <MetricsPanel
         metrics={overview.metrics}
         dockerMetrics={overview.dockerMetrics}
@@ -285,7 +289,9 @@ export function VpsWorkspaceJobsPage() {
   const { vps, overview } = useVpsWorkspace();
   return (
     <div className="space-y-2">
-      <h2 className="text-lg font-normal text-white">Jobs for {vps.name}</h2>
+      <h2 className="text-lg font-normal text-white">
+        Jobs for {vpsDisplayName(vps)}
+      </h2>
       <JobsPanel jobs={overview.jobs} />
     </div>
   );
@@ -295,7 +301,9 @@ export function VpsWorkspaceAuditPage() {
   const { vps, overview } = useVpsWorkspace();
   return (
     <div className="space-y-2">
-      <h2 className="text-lg font-normal text-white">Audit for {vps.name}</h2>
+      <h2 className="text-lg font-normal text-white">
+        Audit for {vpsDisplayName(vps)}
+      </h2>
       <AuditPanel events={overview.auditEvents} />
     </div>
   );
@@ -306,7 +314,7 @@ export function VpsWorkspaceTerminalPage() {
   return (
     <div className="space-y-2">
       <h2 className="text-lg font-normal text-white">
-        Terminal for {vps.name}
+        Terminal for {vpsDisplayName(vps)}
       </h2>
       <p className="text-sm text-white/50">
         Terminal configuration is still provided by the global dashboard until
@@ -322,7 +330,7 @@ export function VpsWorkspaceSettingsPage() {
   return (
     <div className="space-y-2">
       <h2 className="text-lg font-normal text-white">
-        Settings for {vps.name}
+        Settings for {vpsDisplayName(vps)}
       </h2>
       <p className="text-sm text-white/50">
         Runtime settings are still global until scoped settings/actions are

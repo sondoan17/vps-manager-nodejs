@@ -10,6 +10,7 @@ CREATE TABLE IF NOT EXISTS vps (
   status text NOT NULL DEFAULT 'unknown' CHECK (status IN ('unknown', 'healthy', 'warning', 'unreachable')),
   last_seen_at timestamptz,
   notes text,
+  display_name text,
   key_provisioned_at timestamptz,
   created_at timestamptz NOT NULL,
   updated_at timestamptz NOT NULL

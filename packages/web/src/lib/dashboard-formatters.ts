@@ -2,6 +2,17 @@ import type { VpsRecord } from "./api";
 
 export type ChipVariant = "ready" | "pending" | "destructive" | "outline";
 
+/** User-facing VPS label, with fallbacks for older records. */
+export function vpsDisplayName(vps: VpsRecord): string {
+  return (
+    vps.displayName?.trim() ||
+    vps.name?.trim() ||
+    vps.id?.trim() ||
+    vps.host?.trim() ||
+    "VPS"
+  );
+}
+
 export function serverStatusLabel(status?: VpsRecord["status"]) {
   if (status === "healthy") return "Healthy";
   if (status === "warning") return "Warning";

@@ -270,6 +270,7 @@ describe("React dashboard", () => {
           data: {
             id: "vps_1",
             name: "prod",
+            displayName: "Production Singapore",
             host: "203.0.113.20",
             port: 22,
             username: "root",
@@ -339,6 +340,13 @@ describe("React dashboard", () => {
       screen.getAllByRole("link", { name: "New VPS" })[0],
     );
 
+    const displayNameInput = screen.getByLabelText("Display name");
+    expect(displayNameInput).toHaveAttribute("required");
+    expect(displayNameInput).toHaveAttribute("maxlength", "80");
+    expect(displayNameInput).toHaveAccessibleDescription(
+      "A friendly label shown throughout the dashboard (1–80 characters).",
+    );
+    await userEvent.type(displayNameInput, "Production Singapore");
     await userEvent.type(screen.getByLabelText("Name"), "prod");
     await userEvent.type(screen.getByLabelText(/Host/i), "203.0.113.20");
     await userEvent.type(screen.getByLabelText(/Username/i), "root");
@@ -347,6 +355,20 @@ describe("React dashboard", () => {
       "secret-once",
     );
     await userEvent.click(screen.getByRole("button", { name: /Create VPS/i }));
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      "/api/vps",
+      expect.objectContaining({
+        method: "POST",
+        body: JSON.stringify({
+          name: "prod",
+          displayName: "Production Singapore",
+          host: "203.0.113.20",
+          port: 22,
+          username: "root",
+        }),
+      }),
+    );
 
     await waitFor(() =>
       expect(fetchMock).toHaveBeenCalledWith(
@@ -614,6 +636,7 @@ describe("React dashboard", () => {
             {
               id: "vps_1",
               name: "prod-sgp-01",
+              displayName: "Primary production",
               host: "203.0.113.20",
               port: 22,
               username: "root",
@@ -661,7 +684,9 @@ describe("React dashboard", () => {
 
     renderApp();
 
-    expect(await screen.findByText("Primary node")).toBeInTheDocument();
+    expect(await screen.findByText("Primary production")).toBeInTheDocument();
+    expect(screen.queryByText("prod-sgp-01")).not.toBeInTheDocument();
+    expect(screen.getByText("Primary node")).toBeInTheDocument();
     await userEvent.type(screen.getByLabelText("Search servers"), "ovh");
     expect(screen.queryByText("prod-sgp-01")).not.toBeInTheDocument();
     expect(screen.getByText("dev-fra-01")).toBeInTheDocument();

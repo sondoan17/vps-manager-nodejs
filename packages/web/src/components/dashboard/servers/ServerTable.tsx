@@ -17,6 +17,7 @@ import {
   chipVariant,
   formatDate,
   serverStatusLabel,
+  vpsDisplayName,
 } from "../../../lib/dashboard-formatters";
 import type { VpsRecord } from "../../../lib/api";
 
@@ -59,12 +60,14 @@ export function ServerTable({
           </thead>
           <tbody>
             {vpsList.map((vps) => {
+              const displayName = vpsDisplayName(vps);
               const isLocal =
                 vps.kind === "local" || vps.managedBy === "system";
               const isReady = isLocal || Boolean(vps.keyProvisionedAt);
               return (
                 <tr
                   key={vps.id}
+                  aria-label={`Server ${displayName}`}
                   className="border-b border-white/5 transition-colors hover:bg-white/[0.02]"
                 >
                   <td className="px-3 py-3">
@@ -72,7 +75,7 @@ export function ServerTable({
                       to={`/vps/${encodeURIComponent(vps.id)}`}
                       className="font-normal text-[#ffffff] hover:text-white/80"
                     >
-                      {vps.name}
+                      {displayName}
                     </Link>
                   </td>
                   <td className="px-3 py-3 text-white/70">
@@ -105,6 +108,7 @@ export function ServerTable({
                       <Link to={`/vps/${encodeURIComponent(vps.id)}`}>
                         <Button
                           type="button"
+                          aria-label={`Manage ${displayName}`}
                           size="sm"
                           variant="outline"
                           className="text-[11px]"
@@ -114,6 +118,7 @@ export function ServerTable({
                       </Link>
                       <Button
                         type="button"
+                        aria-label={`Verify access for ${displayName}`}
                         size="sm"
                         variant="outline"
                         className="text-[11px]"
@@ -125,6 +130,7 @@ export function ServerTable({
                       </Button>
                       <Button
                         type="button"
+                        aria-label={`Install agent for ${displayName}`}
                         size="sm"
                         variant="secondary"
                         className="text-[11px]"
@@ -136,6 +142,7 @@ export function ServerTable({
                       </Button>
                       <Button
                         type="button"
+                        aria-label={`Delete ${displayName}`}
                         size="sm"
                         variant="outline"
                         className="text-[11px] text-destructive hover:text-destructive"
@@ -161,7 +168,9 @@ export function ServerTable({
       >
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>Delete {deleteTarget?.name}?</AlertDialogTitle>
+            <AlertDialogTitle>
+              Delete {deleteTarget ? vpsDisplayName(deleteTarget) : "server"}?
+            </AlertDialogTitle>
             <AlertDialogDescription>
               {deleteTarget
                 ? `This permanently removes the server record for ${deleteTarget.username}@${deleteTarget.host}:${deleteTarget.port}. This cannot be undone.`

@@ -1,6 +1,7 @@
 export type VpsRecord = {
   id: string;
   name: string;
+  displayName?: string;
   host: string;
   port: number;
   username: string;
@@ -184,6 +185,7 @@ export type AuditEvent = DashboardOverview["auditEvents"][number];
 
 export type CreateVpsPayload = {
   name: string;
+  displayName: string;
   host: string;
   port: number;
   username: string;

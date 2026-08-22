@@ -37,6 +37,7 @@ export function createVpsStore(filePath = "data/vps.json") {
       const record: VpsRecord = {
         id,
         name: input.name,
+        displayName: input.displayName,
         host: input.host,
         port: input.port,
         username: input.username,
@@ -120,6 +121,7 @@ export function createVpsStore(filePath = "data/vps.json") {
             data.vps[idx] = {
               ...existing,
               name: input.name,
+              displayName: input.displayName,
               host: input.host,
               port: input.port,
               username: input.username,
@@ -138,6 +140,7 @@ export function createVpsStore(filePath = "data/vps.json") {
             data.vps.push({
               id: input.id,
               name: input.name,
+              displayName: input.displayName,
               host: input.host,
               port: input.port,
               username: input.username,

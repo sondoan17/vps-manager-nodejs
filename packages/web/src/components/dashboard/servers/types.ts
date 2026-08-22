@@ -5,6 +5,7 @@ export type ViewMode = "card" | "table";
 
 export type CreateFormType = {
   name: string;
+  displayName: string;
   host: string;
   port: string;
   username: string;

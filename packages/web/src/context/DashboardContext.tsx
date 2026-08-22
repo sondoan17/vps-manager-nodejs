@@ -38,6 +38,7 @@ import {
   type VpsRecord,
 } from "../lib/api";
 import { subscribeMonitoring, type LiveConnectionState } from "../lib/live-api";
+import { vpsDisplayName } from "../lib/dashboard-formatters";
 
 // ── Types ────────────────────────────────────────────────────────────
 
@@ -57,6 +58,7 @@ type PendingHostKeyTrust = {
 
 const initialCreateForm = {
   name: "",
+  displayName: "",
   host: "",
   port: "22",
   username: "",
@@ -348,6 +350,7 @@ export function DashboardProvider({
     const password = createForm.password;
     const payload = {
       name: createForm.name.trim(),
+      displayName: createForm.displayName.trim(),
       host: createForm.host.trim(),
       port: Number(createForm.port || 22),
       username: createForm.username.trim(),
@@ -355,9 +358,10 @@ export function DashboardProvider({
 
     const created = await runAction("Creating VPS...", async () => {
       const result = await createVps(payload);
+      const resultLabel = vpsDisplayName(result);
       if (password) {
         setStatus({
-          message: `Created ${result.name}. Installing SSH key...`,
+          message: `Created ${resultLabel}. Installing SSH key...`,
           kind: "default",
         });
         try {
@@ -367,7 +371,7 @@ export function DashboardProvider({
           if (trust) {
             setPendingHostKeyTrust({
               vpsId: result.id,
-              vpsName: result.name,
+              vpsName: resultLabel,
               host: trust.host,
               port: trust.port,
               fingerprint: trust.fingerprint,
@@ -376,7 +380,7 @@ export function DashboardProvider({
               afterTrustPath: `/vps/${encodeURIComponent(result.id)}`,
             });
             setStatus({
-              message: `Created ${result.name}. Trust the SSH host key to continue provisioning.`,
+              message: `Created ${resultLabel}. Trust the SSH host key to continue provisioning.`,
               kind: "default",
             });
             return result;
@@ -384,12 +388,12 @@ export function DashboardProvider({
           throw error;
         }
         setStatus({
-          message: `Created VPS and installed key for ${result.name}. Password was not stored.`,
+          message: `Created VPS and installed key for ${resultLabel}. Password was not stored.`,
           kind: "success",
         });
       } else {
         setStatus({
-          message: `Created VPS ${result.name}. You can install the key from the list.`,
+          message: `Created VPS ${resultLabel}. You can install the key from the list.`,
           kind: "success",
         });
       }
@@ -404,6 +408,7 @@ export function DashboardProvider({
 
   async function handleProvision(vps: VpsRecord) {
     const password = provisionPasswords[vps.id] || "";
+    const label = vpsDisplayName(vps);
     if (!password) {
       setStatus({
         message: "Enter the one-time password to install the SSH key.",
@@ -412,7 +417,7 @@ export function DashboardProvider({
       return;
     }
 
-    await runAction(`Installing key for ${vps.name}...`, async () => {
+    await runAction(`Installing key for ${label}...`, async () => {
       try {
         await provisionKey(vps.id, password);
       } catch (error) {
@@ -420,7 +425,7 @@ export function DashboardProvider({
         if (trust) {
           setPendingHostKeyTrust({
             vpsId: vps.id,
-            vpsName: vps.name,
+            vpsName: label,
             host: trust.host,
             port: trust.port,
             fingerprint: trust.fingerprint,
@@ -428,7 +433,7 @@ export function DashboardProvider({
             password,
           });
           setStatus({
-            message: `Trust the SSH host key for ${vps.name} to continue provisioning.`,
+            message: `Trust the SSH host key for ${label} to continue provisioning.`,
             kind: "default",
           });
           return;
@@ -437,7 +442,7 @@ export function DashboardProvider({
       }
       setProvisionPasswords((current) => ({ ...current, [vps.id]: "" }));
       setStatus({
-        message: `Installed SSH key for ${vps.name}. Password was not stored.`,
+        message: `Installed SSH key for ${label}. Password was not stored.`,
         kind: "success",
       });
     });
@@ -473,21 +478,23 @@ export function DashboardProvider({
   }
 
   async function handleVerify(vps: VpsRecord) {
-    await runAction(`Verifying key for ${vps.name}...`, async () => {
+    const label = vpsDisplayName(vps);
+    await runAction(`Verifying key for ${label}...`, async () => {
       await verifyKey(vps.id);
-      setStatus({ message: `Key verified for ${vps.name}.`, kind: "success" });
+      setStatus({ message: `Key verified for ${label}.`, kind: "success" });
     });
   }
 
   async function handleInstallAgent(vps: VpsRecord) {
     const password = provisionPasswords[vps.id] || "";
-    await runAction(`Starting agent install for ${vps.name}...`, async () => {
+    const label = vpsDisplayName(vps);
+    await runAction(`Starting agent install for ${label}...`, async () => {
       const result = await installAgent(vps.id, password || undefined);
       if (password) {
         setProvisionPasswords((current) => ({ ...current, [vps.id]: "" }));
       }
       setStatus({
-        message: `Agent install queued for ${vps.name}. Job ${result.jobId} is running in the background.`,
+        message: `Agent install queued for ${label}. Job ${result.jobId} is running in the background.`,
         kind: "success",
       });
     });
@@ -495,6 +502,7 @@ export function DashboardProvider({
 
   async function handleToggleDockerMetrics(vps: VpsRecord) {
     const nextEnabled = !vps.dockerMetricsEnabled;
+    const label = vpsDisplayName(vps);
     if (nextEnabled) {
       const confirmed = window.confirm(
         "Enable Docker metrics for this server? The agent will collect container names, images, status, and resource usage. It will not collect env vars, labels, mounts, logs, or commands.",
@@ -503,11 +511,11 @@ export function DashboardProvider({
     }
 
     await runAction(
-      `${nextEnabled ? "Enabling" : "Disabling"} Docker metrics for ${vps.name}...`,
+      `${nextEnabled ? "Enabling" : "Disabling"} Docker metrics for ${label}...`,
       async () => {
         await updateVps(vps.id, { dockerMetricsEnabled: nextEnabled });
         setStatus({
-          message: `Docker metrics ${nextEnabled ? "enabled" : "disabled"} for ${vps.name}.`,
+          message: `Docker metrics ${nextEnabled ? "enabled" : "disabled"} for ${label}.`,
           kind: "success",
         });
       },
@@ -515,9 +523,10 @@ export function DashboardProvider({
   }
 
   async function handleDelete(vps: VpsRecord) {
-    await runAction(`Deleting ${vps.name}...`, async () => {
+    const label = vpsDisplayName(vps);
+    await runAction(`Deleting ${label}...`, async () => {
       await deleteVps(vps.id);
-      setStatus({ message: `Deleted ${vps.name}.`, kind: "success" });
+      setStatus({ message: `Deleted ${label}.`, kind: "success" });
     });
   }
 
@@ -525,6 +534,7 @@ export function DashboardProvider({
 
   const visibleRecords = records.filter((vps) => {
     const haystack = [
+      vps.displayName,
       vps.name,
       vps.host,
       vps.username,

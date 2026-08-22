@@ -23,6 +23,7 @@ export const demoServers: readonly VpsRecord[] = [
   {
     id: "demo-edge-sgp-01",
     name: "edge-sgp-01",
+    displayName: "Edge Singapore 01",
     host: "demo-edge.internal",
     port: 22,
     username: "deploy",
@@ -39,6 +40,7 @@ export const demoServers: readonly VpsRecord[] = [
   {
     id: "demo-api-fra-02",
     name: "api-fra-02",
+    displayName: "API Frankfurt 02",
     host: "demo-api.internal",
     port: 22,
     username: "deploy",
@@ -55,6 +57,7 @@ export const demoServers: readonly VpsRecord[] = [
   {
     id: "demo-worker-sfo-01",
     name: "worker-sfo-01",
+    displayName: "Worker San Francisco 01",
     host: "demo-worker.internal",
     port: 22,
     username: "deploy",

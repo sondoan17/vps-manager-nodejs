@@ -1,6 +1,7 @@
 import { type ReactNode } from "react";
 import { Button } from "../../ui/button";
 import type { DashboardOverview, VpsRecord } from "../../../lib/api";
+import { vpsDisplayName } from "../../../lib/dashboard-formatters";
 import { formatBytes, formatDockerError } from "./helpers";
 
 export function DockerMetricsPanel({
@@ -101,7 +102,7 @@ export function DockerMetricsPanel({
           className="h-7 rounded-none px-2 text-[11px]"
           disabled={busy}
           aria-pressed={enabled}
-          aria-label={`${enabled ? "Disable" : "Enable"} Docker metrics for ${vps.name}`}
+          aria-label={`${enabled ? "Disable" : "Enable"} Docker metrics for ${vpsDisplayName(vps)}`}
           onClick={() => onToggle(vps)}
         >
           {enabled ? "On" : "Off"}

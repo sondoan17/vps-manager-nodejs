@@ -43,6 +43,7 @@ import {
   formatDate,
   freshnessLabel,
   serverStatusLabel,
+  vpsDisplayName,
 } from "../../../lib/dashboard-formatters";
 import type { DashboardOverview, VpsRecord } from "../../../lib/api";
 import { formatUptime } from "../shared/formatUptime";
@@ -87,6 +88,7 @@ export function ServerCard({
   const [confirmOpen, setConfirmOpen] = useState(false);
   const [passwordError, setPasswordError] = useState("");
   const [deleteTarget, setDeleteTarget] = useState<VpsRecord | null>(null);
+  const displayName = vpsDisplayName(vps);
 
   const handlePasswordKeyDown = (e: React.KeyboardEvent) => {
     if (e.key === "Enter") {
@@ -103,6 +105,7 @@ export function ServerCard({
 
   return (
     <article
+      aria-label={`Server ${displayName}`}
       className={`min-w-0 overflow-hidden rounded-none border bg-white/[0.03] shadow-none transition duration-300 ${isDown ? "border-white/20 ring-1 ring-white/10" : "border-white/10 hover:border-white/20"}`}
     >
       <header
@@ -111,7 +114,7 @@ export function ServerCard({
         <div className="min-w-0">
           <div className="flex min-w-0 flex-wrap items-center gap-1.5">
             <h3 className="min-w-0 truncate text-base font-normal text-white sm:text-[17px]">
-              {vps.name}
+              {displayName}
             </h3>
             {isDown ? (
               <span className="inline-flex shrink-0 items-center gap-1 border border-white/20 bg-white/[0.06] px-2 py-1 text-[11px] font-normal uppercase tracking-[0.08em] text-white">
@@ -170,6 +173,7 @@ export function ServerCard({
           <div className="flex min-w-0 flex-wrap items-center gap-2 xl:justify-end">
           <Link
             to={`/vps/${encodeURIComponent(vps.id)}`}
+            aria-label={`Manage ${displayName}`}
             className="inline-flex h-9 min-w-0 items-center justify-center border border-white/10 bg-white/[0.03] px-3 text-sm font-normal text-white transition-colors hover:bg-white/[0.08]"
           >
             <Server size={16} />
@@ -258,7 +262,7 @@ export function ServerCard({
       >
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>Delete {vps.name}?</AlertDialogTitle>
+            <AlertDialogTitle>Delete {displayName}?</AlertDialogTitle>
             <AlertDialogDescription>
               This permanently removes the server record for {vps.username}@
               {vps.host}:{vps.port}. This cannot be undone.
@@ -321,7 +325,7 @@ export function ServerCard({
                   {isReady ? "Rotate SSH key?" : "Install SSH key?"}
                 </AlertDialogTitle>
                 <AlertDialogDescription>
-                  This will connect to {vps.name} and update authorized SSH
+                  This will connect to {displayName} and update authorized SSH
                   access using the one-time password. The password will not be
                   stored.
                 </AlertDialogDescription>
@@ -558,6 +562,7 @@ function ServerOverflow({
   onRotate: () => void;
   onRequestDelete: () => void;
 }) {
+  const displayName = vpsDisplayName(vps);
   return (
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
@@ -565,7 +570,7 @@ function ServerOverflow({
           type="button"
           size="sm"
           variant="outline"
-          aria-label={`More actions for ${vps.name}`}
+          aria-label={`More actions for ${displayName}`}
         >
           <MoreHorizontal size={16} />
         </Button>

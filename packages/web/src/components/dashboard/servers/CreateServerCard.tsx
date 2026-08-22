@@ -39,9 +39,35 @@ export function CreateServerCard({
               Basic info
             </legend>
             <Label>
+              Display name
+              <Input
+                required
+                aria-label="Display name"
+                maxLength={80}
+                pattern=".*\S.*"
+                title="Enter a display name containing at least one non-space character."
+                aria-describedby="create-server-display-name-help"
+                placeholder="Production Singapore"
+                value={createForm.displayName}
+                onChange={(event) =>
+                  onCreateFormChange({
+                    ...createForm,
+                    displayName: event.target.value,
+                  })
+                }
+              />
+              <span
+                id="create-server-display-name-help"
+                className="block text-xs font-normal leading-5 text-white/45"
+              >
+                A friendly label shown throughout the dashboard (1–80 characters).
+              </span>
+            </Label>
+            <Label>
               Name
               <Input
                 required
+                aria-label="Name"
                 maxLength={120}
                 placeholder="prod-sgp-01"
                 value={createForm.name}
@@ -52,6 +78,9 @@ export function CreateServerCard({
                   })
                 }
               />
+              <span className="block text-xs font-normal leading-5 text-white/45">
+                Stable server name kept for API and older-record compatibility.
+              </span>
             </Label>
             <Label>
               Host / IP

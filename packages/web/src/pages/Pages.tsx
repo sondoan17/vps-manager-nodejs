@@ -89,9 +89,35 @@ function CreateVpsFormInline({ ctx }: { ctx: DashboardCtx }) {
             Basic info
           </legend>
           <Label className="text-white">
+            Display name
+            <Input
+              required
+              aria-label="Display name"
+              maxLength={80}
+              pattern=".*\S.*"
+              title="Enter a display name containing at least one non-space character."
+              aria-describedby="display-name-help"
+              placeholder="Production Singapore"
+              value={ctx.createForm.displayName}
+              onChange={(e) =>
+                ctx.onCreateFormChange({
+                  ...ctx.createForm,
+                  displayName: e.target.value,
+                })
+              }
+            />
+            <span
+              id="display-name-help"
+              className="block text-xs font-normal leading-5 text-white/45"
+            >
+              A friendly label shown throughout the dashboard (1–80 characters).
+            </span>
+          </Label>
+          <Label className="text-white">
             Name
             <Input
               required
+              aria-label="Name"
               maxLength={120}
               placeholder="prod-sgp-01"
               value={ctx.createForm.name}
@@ -102,6 +128,9 @@ function CreateVpsFormInline({ ctx }: { ctx: DashboardCtx }) {
                 })
               }
             />
+            <span className="block text-xs font-normal leading-5 text-white/45">
+              Stable server name kept for API and older-record compatibility.
+            </span>
           </Label>
           <Label className="text-white">
             Host / IP

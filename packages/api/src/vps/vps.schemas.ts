@@ -2,6 +2,7 @@ import { z } from "zod";
 
 export const createVpsSchema = z.object({
   name: z.string().trim().min(1).max(120),
+  displayName: z.string().trim().min(1).max(80).optional(),
   host: z.string().trim().min(1).max(255),
   port: z.coerce.number().int().min(1).max(65535).default(22),
   username: z.string().trim().min(1).max(64),

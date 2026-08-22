@@ -28,6 +28,7 @@ type VpsRow = {
   status: VpsRecord["status"] | null;
   last_seen_at: Date | string | null;
   notes: string | null;
+  display_name: string | null;
   key_provisioned_at: Date | string | null;
   kind: string | null;
   managed_by: string | null;
@@ -56,8 +57,8 @@ export function createPostgresVpsRepository(pool: DatabasePool): VpsRepository {
       const now = new Date();
       const id = `vps_${nanoid(12)}`;
       const result = await pool.query<VpsRow>(
-        `INSERT INTO vps (id, name, host, port, username, provider, region, tags, status, notes, kind, managed_by, docker_metrics_enabled, created_at, updated_at)
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $14)
+        `INSERT INTO vps (id, name, host, port, username, provider, region, tags, status, notes, display_name, kind, managed_by, docker_metrics_enabled, created_at, updated_at)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $15)
          RETURNING *`,
         [
           id,
@@ -70,6 +71,7 @@ export function createPostgresVpsRepository(pool: DatabasePool): VpsRepository {
           input.tags ?? [],
           input.status ?? "unknown",
           input.notes ?? null,
+          input.displayName ?? null,
           "remote",
           "user",
           false,
@@ -92,7 +94,8 @@ export function createPostgresVpsRepository(pool: DatabasePool): VpsRepository {
         const result = await client.query<VpsRow>(
           `UPDATE vps
            SET name = $2, host = $3, port = $4, username = $5, provider = $6, region = $7,
-               tags = $8, status = $9, notes = $10, kind = $12, managed_by = $13,
+               tags = $8, status = $9, notes = $10, display_name = $15,
+               kind = $12, managed_by = $13,
                docker_metrics_enabled = $14, updated_at = $11
            WHERE id = $1
            RETURNING *`,
@@ -111,6 +114,7 @@ export function createPostgresVpsRepository(pool: DatabasePool): VpsRepository {
             next.kind ?? null,
             next.managedBy ?? null,
             next.dockerMetricsEnabled ?? false,
+            next.displayName ?? null,
           ],
         );
         return result.rows[0] ? rowToVps(result.rows[0]) : undefined;
@@ -131,8 +135,8 @@ export function createPostgresVpsRepository(pool: DatabasePool): VpsRepository {
     async ensureLocalHost(input: EnsureLocalHostInput) {
       const now = new Date();
       const result = await pool.query<VpsRow>(
-        `INSERT INTO vps (id, name, host, port, username, provider, region, tags, status, notes, kind, managed_by, docker_metrics_enabled, created_at, updated_at)
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $14)
+        `INSERT INTO vps (id, name, host, port, username, provider, region, tags, status, notes, display_name, kind, managed_by, docker_metrics_enabled, created_at, updated_at)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $15)
          ON CONFLICT (id) DO UPDATE SET
            name = EXCLUDED.name,
            host = EXCLUDED.host,
@@ -142,6 +146,7 @@ export function createPostgresVpsRepository(pool: DatabasePool): VpsRepository {
            tags = EXCLUDED.tags,
            status = EXCLUDED.status,
            notes = EXCLUDED.notes,
+           display_name = EXCLUDED.display_name,
            kind = EXCLUDED.kind,
            managed_by = EXCLUDED.managed_by,
            docker_metrics_enabled = COALESCE(vps.docker_metrics_enabled, EXCLUDED.docker_metrics_enabled),
@@ -158,6 +163,7 @@ export function createPostgresVpsRepository(pool: DatabasePool): VpsRepository {
           input.tags ?? ["local", "local-agent", "system"],
           input.status ?? "unknown",
           input.notes ?? null,
+          input.displayName ?? null,
           input.kind ?? "local",
           input.managedBy ?? "system",
           false,
@@ -189,6 +195,7 @@ function rowToVps(row: VpsRow): VpsRecord {
     status: row.status ?? "unknown",
     lastSeenAt: optionalIsoString(row.last_seen_at),
     notes: row.notes ?? undefined,
+    displayName: row.display_name ?? undefined,
     keyProvisionedAt: optionalIsoString(row.key_provisioned_at),
     kind: (row.kind as VpsRecord["kind"]) ?? undefined,
     managedBy: (row.managed_by as VpsRecord["managedBy"]) ?? undefined,
