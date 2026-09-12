@@ -1,7 +1,12 @@
 import { spawn } from "node:child_process";
+import { isIP } from "node:net";
 import { Inject, Injectable, Logger } from "@nestjs/common";
 import type { AppConfig } from "../config/app-config.js";
-import { VpsNotFoundError, SshHostBlockedError } from "../common/errors.js";
+import {
+  VpsNotFoundError,
+  SshHostBlockedError,
+  SshHostKeyScanFailedError,
+} from "../common/errors.js";
 import { assertSshHostAllowedAsync } from "./ssh-host-policy.js";
 import { computeFingerprint } from "./ssh-host-policy.js";
 import type { HostKeyPinRepository } from "./host-key-pin.repository.js";
@@ -73,6 +78,25 @@ export class HostKeyPinService {
     });
   }
 
+  /**
+   * Resolve the trusted host key *type* for a VPS, if any.
+   *
+   * Key type is persisted alongside the fingerprint at trust time; env pins
+   * (SSH_HOST_KEY_PINS) carry no type, so env-only trust cannot constrain the
+   * ssh2 key exchange algorithm set (the fingerprint verifier still applies).
+   */
+  async resolveKeyType(
+    vpsId: string,
+    host: string,
+    port: number,
+  ): Promise<string | undefined> {
+    const dbPin = await this.repo.findByVpsId(vpsId);
+    if (dbPin?.keyType) return dbPin.keyType;
+    const dbHostPort = await this.repo.findByHostPort(host, port);
+    if (dbHostPort?.keyType) return dbHostPort.keyType;
+    return undefined;
+  }
+
   // ── ssh-keyscan ───────────────────────────────────────────────────
 
   /**
@@ -95,17 +119,30 @@ export class HostKeyPinService {
       };
     }
 
-    // Validate host policy before scanning
-    await assertSshHostAllowedAsync(host, this.config);
+    // Validate host policy before scanning and obtain the vetted literal
+    // connection address (DNS resolved + policy checked). We must scan the
+    // vetted address — never the raw hostname — to avoid a DNS-rebinding
+    // TOCTOU window between policy check and the actual key scan.
+    const vettedHost = await assertSshHostAllowedAsync(host, this.config);
 
-    const target = `${host}`;
+    // ssh-keyscan requires IPv6 literals in bracketed form.
+    const target = isIP(vettedHost) === 6 ? `[${vettedHost}]` : vettedHost;
     const args = ["-T", "10", "-p", String(port), target];
 
     this.logger.debug(`Running ssh-keyscan ${args.join(" ")}`);
 
-    const stdout = await this.runSshKeyScan(args);
-
-    return this.parseKeyScanOutput(vpsId, host, port, stdout);
+    try {
+      const stdout = await this.runSshKeyScan(args);
+      // Retain the original hostname for identity/pin lookup; the vetted
+      // address was only used to reach the server.
+      return this.parseKeyScanOutput(vpsId, host, port, stdout);
+    } catch (error) {
+      // Policy errors (SshHostBlockedError) were thrown before the scan and
+      // must propagate untouched. Anything that failed during/after the scan
+      // becomes the safe typed error.
+      if (error instanceof SshHostKeyScanFailedError) throw error;
+      throw new SshHostKeyScanFailedError();
+    }
   }
 
   private runSshKeyScan(args: string[]): Promise<string> {
@@ -186,6 +223,13 @@ export class HostKeyPinService {
       }
     }
 
+    // ssh-keyscan returned output but nothing parsed into a usable key.
+    // Fail closed with the safe, typed error rather than pretending an empty
+    // key list means "no host keys".
+    if (keys.length === 0) {
+      throw new SshHostKeyScanFailedError();
+    }
+
     return { vpsId, host, port, keys };
   }
 
@@ -203,7 +247,15 @@ export class HostKeyPinService {
     if (!matchingKey) {
       throw new Error("Submitted SSH host key fingerprint does not match the current host key scan");
     }
-    return this.repo.upsert({ vpsId, host, port, fingerprint, keyType });
+    // Persist the key type reported by the scan itself (deterministic, matches
+    // what ssh2 will negotiate) rather than trusting an unverified client hint.
+    return this.repo.upsert({
+      vpsId,
+      host,
+      port,
+      fingerprint,
+      keyType: matchingKey.type ?? keyType,
+    });
   }
 
   async revokeTrust(vpsId: string): Promise<boolean> {

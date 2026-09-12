@@ -6,6 +6,7 @@ import type { VpsRecord } from "../vps/vps.models.js";
 import {
   assertSshHostAllowedAsync,
   createHostVerifier,
+  sshAlgorithmNamesForKeyType,
 } from "./ssh-host-policy.js";
 import type { SshSecurityOptions } from "./sshService.js";
 import {
@@ -15,26 +16,67 @@ import {
   uploadFile,
   verifyPrivateKey,
 } from "./sshService.js";
+import { HostKeyPinService } from "./host-key-pin.service.js";
 
 @Injectable()
 export class SshService {
   constructor(
     private readonly config: AppConfig,
     private readonly audit: AuditService,
+    private readonly hostKeyPin: HostKeyPinService,
   ) {}
+
+  /**
+   * Resolve the trusted host key fingerprints for a VPS.
+   *
+   * Uses the consolidated resolver (persisted repository pins with env pin
+   * fallback) — never a permissive "accept anything" mode.
+   */
+  private async resolveVerifiedPins(
+    vps: VpsRecord,
+  ): Promise<Record<string, string | string[]>> {
+    const trustedFingerprints = await this.hostKeyPin.getTrustedFingerprints(
+      vps.id,
+      vps.host,
+      vps.port,
+    );
+    if (trustedFingerprints.length === 0) return {};
+
+    const pinEntry: string | string[] =
+      trustedFingerprints.length === 1
+        ? trustedFingerprints[0]
+        : trustedFingerprints;
+    return {
+      [vps.id]: pinEntry,
+      [`${vps.host}:${vps.port}`]: pinEntry,
+    };
+  }
 
   private async buildSecurityOptions(
     vps: VpsRecord,
   ): Promise<SshSecurityOptions> {
     const vettedHost = await assertSshHostAllowedAsync(vps.host, this.config);
+    const pins = await this.resolveVerifiedPins(vps);
     const hostVerifier = createHostVerifier({
       vpsId: vps.id,
       host: vps.host,
       port: vps.port,
-      pins: this.config.sshHostKeyPins,
+      pins,
       policy: this.config.sshHostKeyPolicy,
     });
-    return { vettedHost, hostVerifier };
+
+    // Constrain ssh2's server host key algorithms to the trusted key type so
+    // negotiation can never fall back to an unpinned key type.
+    const trustedKeyType = await this.hostKeyPin.resolveKeyType(
+      vps.id,
+      vps.host,
+      vps.port,
+    );
+    const serverHostKeyAlgorithms = trustedKeyType
+      ? sshAlgorithmNamesForKeyType(trustedKeyType)
+      : undefined;
+
+    return { vettedHost, hostVerifier, serverHostKeyAlgorithms };
   }
 
   private async assertRealSshAllowed(

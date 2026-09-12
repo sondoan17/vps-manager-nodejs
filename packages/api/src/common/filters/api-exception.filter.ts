@@ -12,6 +12,7 @@ import {
   DemoSshDisabledError,
   DuplicateAgentInstallError,
   SshHostBlockedError,
+  SshHostKeyScanFailedError,
   SshHostKeyTrustRequiredError,
   SshOperationError,
   VpsNotFoundError,
@@ -47,6 +48,12 @@ export class ApiExceptionFilter implements ExceptionFilter {
     }
 
     if (error instanceof SshOperationError) {
+      return response
+        .status(502)
+        .json(errorBody(safeErrorMessage(error), requestId));
+    }
+
+    if (error instanceof SshHostKeyScanFailedError) {
       return response
         .status(502)
         .json(errorBody(safeErrorMessage(error), requestId));

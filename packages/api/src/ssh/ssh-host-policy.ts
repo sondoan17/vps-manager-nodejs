@@ -5,6 +5,75 @@ import type { AppConfig } from "../config/app-config.js";
 import { SshHostBlockedError } from "../common/errors.js";
 
 // ---------------------------------------------------------------------------
+// Host key type preference
+// ---------------------------------------------------------------------------
+
+/**
+ * Deterministic host key type preference, most preferred first.
+ *
+ * ed25519 is preferred (small, fast, modern), then ecdsa variants, then rsa.
+ * `rsa-sha2-*` are signature algorithms used by implementations that negotiate
+ * RSA host keys via the SSH2 "hostkey-algorithms" extension; ssh-keyscan may
+ * report RSA host keys as `ssh-rsa`. Including the rsa-sha2 aliases lets a
+ * scanner output of either form be selected deterministically.
+ */
+export const HOST_KEY_TYPE_PREFERENCE: readonly string[] = [
+  "ssh-ed25519",
+  "ecdsa-sha2-nistp256",
+  "ecdsa-sha2-nistp384",
+  "ecdsa-sha2-nistp521",
+  "ssh-rsa",
+  "rsa-sha2-256",
+  "rsa-sha2-512",
+  "ssh-dss",
+];
+
+/**
+ * Select the trusted host key from a scan result deterministically,
+ * regardless of the order keys appear in the ssh-keyscan output.
+ *
+ * Returns the first key whose type appears in {@link HOST_KEY_TYPE_PREFERENCE},
+ * otherwise falls back to the first scanned key.
+ */
+export function selectPreferredHostKey<
+  T extends { type: string },
+>(keys: readonly T[]): T | undefined {
+  if (keys.length === 0) return undefined;
+  for (const preferred of HOST_KEY_TYPE_PREFERENCE) {
+    const match = keys.find((key) => key.type === preferred);
+    if (match) return match;
+  }
+  return keys[0];
+}
+
+/**
+ * Map a scanned/trusted host key type to the ssh2 `algorithms.serverHostKey`
+ * values that may negotiate it.
+ *
+ * This is deliberately conservative — we only offer algorithm(s) compatible
+ * with the exact key the operator trusted, so ssh2 will never negotiate a
+ * host key type that was not pinned.
+ */
+export function sshAlgorithmNamesForKeyType(keyType: string): string[] {
+  switch (keyType) {
+    case "ssh-ed25519":
+      return ["ssh-ed25519"];
+    case "ecdsa-sha2-nistp256":
+    case "ecdsa-sha2-nistp384":
+    case "ecdsa-sha2-nistp521":
+      return [keyType];
+    case "ssh-rsa":
+    case "rsa-sha2-256":
+    case "rsa-sha2-512":
+      return ["rsa-sha2-512", "rsa-sha2-256", "ssh-rsa"];
+    case "ssh-dss":
+      return ["ssh-dss"];
+    default:
+      return [keyType];
+  }
+}
+
+// ---------------------------------------------------------------------------
 // IPv4 helpers
 // ---------------------------------------------------------------------------
 

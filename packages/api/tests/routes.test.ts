@@ -103,7 +103,7 @@ describe("routes", () => {
     const server = app();
 
     const page = await request(server).get("/").expect(200);
-    expect(page.text).toContain("VPS Manager");
+    expect(page.text).toContain("FlexServer");
 
     // CSP header should be present
     const csp = page.headers["content-security-policy"] as string | undefined;

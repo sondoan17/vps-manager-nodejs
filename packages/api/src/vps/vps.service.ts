@@ -4,11 +4,14 @@ import type { AppConfig } from "../config/app-config.js";
 import { demoServers } from "../demo/demo-fixtures.js";
 import {
   DemoMutationBlockedError,
+  SshHostBlockedError,
+  SshHostKeyScanFailedError,
   SshHostKeyTrustRequiredError,
   VpsNotFoundError,
 } from "../common/errors.js";
 import type { KeyService } from "../ssh/keyService.js";
 import { SshService } from "../ssh/ssh.service.js";
+import { selectPreferredHostKey } from "../ssh/ssh-host-policy.js";
 import type { VpsRepository } from "../persistence/repositories/vps.repository.js";
 import {
   createVpsSchema,
@@ -214,17 +217,26 @@ export class VpsService {
             vps.host,
             vps.port,
           );
-          const firstKey = scanResult.keys[0];
+          // Deterministically select the preferred host key (ed25519 → ecdsa
+          // → rsa), regardless of ssh-keyscan output order.
+          const preferredKey = selectPreferredHostKey(scanResult.keys);
           throw new SshHostKeyTrustRequiredError({
             vpsId: vps.id,
             host: vps.host,
             port: vps.port,
-            fingerprint: firstKey?.fingerprint,
-            keyType: firstKey?.type,
+            fingerprint: preferredKey?.fingerprint,
+            keyType: preferredKey?.type,
           });
         } catch (error) {
           if (error instanceof SshHostKeyTrustRequiredError) throw error;
-          // If scan fails (e.g. host unreachable), fall through to existing SSH behavior
+          // Preserve policy/host-block errors (403) and typed scan errors
+          // rather than collapsing them into a generic 502.
+          if (error instanceof SshHostBlockedError) throw error;
+          if (error instanceof SshHostKeyScanFailedError) throw error;
+          // Any other unexpected scan failure surface as an explicit safe
+          // error — do NOT fall through to a generic SSH connection attempt
+          // (which would report a misleading generic host verification failure).
+          throw new SshHostKeyScanFailedError();
         }
       }
     }

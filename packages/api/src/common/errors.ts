@@ -58,6 +58,21 @@ export class DemoMutationBlockedError extends Error {
   }
 }
 
+/**
+ * Raised when an SSH host key scan (ssh-keyscan) fails in strict mode and no
+ * trusted pin exists for the target. This is a distinct, safe error: it never
+ * leaks raw scan output and never falls through to a generic SSH connection
+ * attempt.
+ */
+export class SshHostKeyScanFailedError extends Error {
+  constructor() {
+    super(
+      "SSH host key scan failed. Check the VPS host, SSH port, and network reachability, then retry trust setup.",
+    );
+    this.name = "SshHostKeyScanFailedError";
+  }
+}
+
 export class SshHostKeyTrustRequiredError extends Error {
   /** Structured payload returned to the caller. */
   public readonly info: {

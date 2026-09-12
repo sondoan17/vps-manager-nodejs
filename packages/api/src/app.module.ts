@@ -195,9 +195,12 @@ export function createAppModule(deps: AppDependencies = {}): DynamicModule {
       MonitoringService,
       {
         provide: SshService,
-        inject: [APP_CONFIG, AuditService],
-        useFactory: (appConfig: AppConfig, audit: AuditService) =>
-          new SshService(appConfig, audit),
+        inject: [APP_CONFIG, AuditService, HostKeyPinService],
+        useFactory: (
+          appConfig: AppConfig,
+          audit: AuditService,
+          hostKeyPin: HostKeyPinService,
+        ) => new SshService(appConfig, audit, hostKeyPin),
       },
       {
         provide: HOST_KEY_PIN_REPOSITORY,

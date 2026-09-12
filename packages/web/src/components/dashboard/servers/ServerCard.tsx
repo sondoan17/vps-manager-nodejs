@@ -16,7 +16,6 @@ import {
   TerminalSquare,
   Trash2,
 } from "lucide-react";
-import { Badge } from "../../ui/badge";
 import { Button } from "../../ui/button";
 import {
   AlertDialog,
@@ -39,7 +38,6 @@ import {
 import { Input } from "../../ui/input";
 import { Label } from "../../ui/label";
 import {
-  chipVariant,
   formatDate,
   freshnessLabel,
   serverStatusLabel,
@@ -89,6 +87,18 @@ export function ServerCard({
   const [passwordError, setPasswordError] = useState("");
   const [deleteTarget, setDeleteTarget] = useState<VpsRecord | null>(null);
   const displayName = vpsDisplayName(vps);
+  const osLabel =
+    systemInfo?.os?.prettyName ||
+    systemInfo?.os?.name ||
+    systemInfo?.os?.family ||
+    "OS not reported";
+  const agentStateLabel = isLocalHost
+    ? "Local Agent"
+    : systemInfo?.agentVersion
+      ? `Agent ${systemInfo.agentVersion}`
+      : isReady
+        ? "Agent not reported · key ready"
+        : "Agent pending · needs password";
 
   const handlePasswordKeyDown = (e: React.KeyboardEvent) => {
     if (e.key === "Enter") {
@@ -108,44 +118,31 @@ export function ServerCard({
       aria-label={`Server ${displayName}`}
       className={`min-w-0 overflow-hidden rounded-none border bg-white/[0.03] shadow-none transition duration-300 ${isDown ? "border-white/20 ring-1 ring-white/10" : "border-white/10 hover:border-white/20"}`}
     >
-      <header
-        className={`flex min-w-0 flex-col gap-3 border-b border-white/10 px-3 py-3 sm:flex-row sm:items-start sm:justify-between sm:px-4 ${isDown ? "border-l-4 border-l-white" : ""}`}
-      >
-        <div className="min-w-0">
-          <div className="flex min-w-0 flex-wrap items-center gap-1.5">
-            <h3 className="min-w-0 truncate text-base font-normal text-white sm:text-[17px]">
-              {displayName}
-            </h3>
-            {isDown ? (
-              <span className="inline-flex shrink-0 items-center gap-1 border border-white/20 bg-white/[0.06] px-2 py-1 text-[11px] font-normal uppercase tracking-[0.08em] text-white">
-                <AlertTriangle size={13} />
-                Down
-              </span>
-            ) : (
-              <Badge variant={chipVariant(vps.status)}>
-                {serverStatusLabel(vps.status)}
-              </Badge>
-            )}
-            <Badge variant={isReady ? "ready" : "pending"}>
-              {isLocalHost
-                ? "Local agent"
-                : isReady
-                  ? "Key ready"
-                  : "Needs password"}
-            </Badge>
-          </div>
-          <p className="mt-1.5 break-all font-mono text-xs text-white/60 sm:text-[13px]">
-            {vps.username}@{vps.host}:{vps.port}
-          </p>
-          <p
-            className="mt-1 truncate font-mono text-[11px] text-white/40"
-            title={`Server ID: ${vps.id}`}
-          >
-            ID {vps.id}
-          </p>
+      <header className="min-w-0 border-b border-white/10 bg-gradient-to-r from-white/[0.035] to-transparent px-3 py-4 sm:px-4 sm:py-5">
+        <div className="flex min-w-0 items-start justify-between gap-3 sm:gap-5">
+          <h3 className="min-w-0 break-words text-xl font-semibold leading-tight tracking-[-0.02em] text-white sm:text-2xl">
+            {displayName}
+          </h3>
+          <ServerHealthStatus status={vps.status} />
         </div>
-        <div className="flex shrink-0 items-center gap-1.5 text-xs text-white/50 sm:pt-0.5">
-          <Clock3 size={14} aria-hidden="true" />
+        <p
+          className="mt-2 flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1 text-xs leading-5 text-white/60 sm:text-sm"
+          title={`${vps.host}:${vps.port} · ${osLabel} · ${agentStateLabel}`}
+        >
+          <span className="min-w-0 break-all font-mono text-white/75">
+            {vps.host}:{vps.port}
+          </span>
+          <span className="text-white/25" aria-hidden="true">
+            ·
+          </span>
+          <span className="min-w-0 truncate">{osLabel}</span>
+          <span className="text-white/25" aria-hidden="true">
+            ·
+          </span>
+          <span className="min-w-0">{agentStateLabel}</span>
+        </p>
+        <div className="mt-2 flex items-center gap-1.5 text-[11px] text-white/40 sm:text-xs">
+          <Clock3 size={13} aria-hidden="true" />
           <span>Seen {formatDate(vps.lastSeenAt)}</span>
         </div>
       </header>
@@ -166,6 +163,7 @@ export function ServerCard({
       <footer className="border-t border-white/10 px-3 py-3 sm:px-4">
         <div className="flex min-w-0 flex-col gap-3 xl:flex-row xl:items-center xl:justify-between">
           <ServerRuntimeMeta
+            vps={vps}
             metric={metric}
             systemInfo={systemInfo}
             jobs={jobs}
@@ -348,13 +346,42 @@ export function ServerCard({
   );
 }
 
+function ServerHealthStatus({ status }: { status?: VpsRecord["status"] }) {
+  const isDown = status === "unreachable";
+  const dotColor =
+    status === "healthy"
+      ? "bg-emerald-400"
+      : status === "warning"
+        ? "bg-amber-400"
+        : status === "unreachable"
+          ? "bg-red-400"
+          : "bg-white/40";
+  const textColor = isDown ? "text-red-200" : "text-white/70";
+
+  return (
+    <span
+      className={`inline-flex shrink-0 items-center gap-1.5 pt-1 text-xs font-medium sm:text-sm ${textColor}`}
+      aria-label={`Health status: ${serverStatusLabel(status)}`}
+    >
+      {isDown ? (
+        <AlertTriangle size={14} aria-hidden="true" />
+      ) : (
+        <span className={`h-2 w-2 rounded-full ${dotColor}`} aria-hidden="true" />
+      )}
+      {serverStatusLabel(status)}
+    </span>
+  );
+}
+
 // ── ServerRuntimeMeta ────────────────────────────────────────────────
 
 function ServerRuntimeMeta({
+  vps,
   metric,
   systemInfo,
   jobs,
 }: {
+  vps: VpsRecord;
   metric?: DashboardOverview["metrics"][number];
   systemInfo?: DashboardOverview["systemInfo"][number];
   jobs: DashboardOverview["jobs"];
@@ -370,6 +397,12 @@ function ServerRuntimeMeta({
     <div className="min-w-0 text-xs font-normal leading-5 text-white/50">
       <p className="whitespace-normal" title={parts.join(" / ")}>
         {parts.join(" · ")}
+      </p>
+      <p
+        className="mt-0.5 break-all font-mono text-[10px] leading-4 text-white/30"
+        title={`Server ID: ${vps.id} · SSH user: ${vps.username}`}
+      >
+        ID {vps.id} · SSH {vps.username}
       </p>
     </div>
   );

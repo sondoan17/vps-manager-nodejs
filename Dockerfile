@@ -20,6 +20,8 @@ FROM node:24-alpine AS api-runtime
 ENV NODE_ENV=production \
     AGENT_BINARY_PATH=/app/agent/vps-agent-linux-amd64
 WORKDIR /app
+# openssh-client provides ssh-keyscan used for SSH host key provisioning
+RUN apk add --no-cache openssh-client
 RUN addgroup -S app && adduser -S app -G app
 COPY --from=deps --chown=app:app /app/node_modules ./node_modules
 COPY --from=build --chown=app:app /app/package.json ./package.json

@@ -1,4 +1,8 @@
-import { Client, type SFTPWrapper } from "ssh2";
+import {
+  Client,
+  type ServerHostKeyAlgorithm,
+  type SFTPWrapper,
+} from "ssh2";
 import { SshOperationError } from "../common/errors.js";
 import type { VpsRecord } from "../vps/vps.models.js";
 
@@ -15,6 +19,12 @@ export interface SshSecurityOptions {
   vettedHost?: string;
   /** ssh2 hostVerifier callback for host key pinning. */
   hostVerifier?: (key: Buffer, verify: (permitted: boolean) => void) => void;
+  /**
+   * ssh2 `algorithms.serverHostKey` list constrained to the algorithm(s)
+   * matching the trusted host key type, so ssh2 can never negotiate a host
+   * key type that was not pinned at trust time.
+   */
+  serverHostKeyAlgorithms?: string[];
 }
 
 function connect(
@@ -63,6 +73,12 @@ function connect(
         privateKey: config.privateKey,
         readyTimeout: SSH_READY_TIMEOUT_MS,
         hostVerifier: security?.hostVerifier,
+        algorithms: security?.serverHostKeyAlgorithms
+          ? {
+              serverHostKey:
+                security.serverHostKeyAlgorithms as ServerHostKeyAlgorithm[],
+            }
+          : undefined,
       });
     } catch (error: unknown) {
       if (settled) return;

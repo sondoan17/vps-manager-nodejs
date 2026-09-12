@@ -934,6 +934,14 @@ describe("TOCTOU protection — high-level SshService", () => {
     };
   }
 
+  /** Build a minimal HostKeyPinService stub (no persisted pins). */
+  function fakeHostKeyPinService() {
+    return {
+      getTrustedFingerprints: vi.fn(async () => []),
+      resolveKeyType: vi.fn(async () => undefined),
+    } as never;
+  }
+
   it("SshService.verifyPrivateKey passes vetted IP and hostVerifier to ssh2 Client.connect", async () => {
     const lookup = await mockDns();
     lookup.mockResolvedValue([{ address: "203.0.113.42", family: 4 }]);
@@ -941,7 +949,11 @@ describe("TOCTOU protection — high-level SshService", () => {
     // Dynamic import so the ssh2 mock is in effect
     const { SshService } = await import("../src/ssh/ssh.service.js");
     const audit = mockAuditService();
-    const service = new SshService(localConfig, audit as never);
+    const service = new SshService(
+      localConfig,
+      audit as never,
+      fakeHostKeyPinService(),
+    );
 
     const vps: VpsRecord = {
       id: "vps-toctou-svc",
@@ -983,7 +995,11 @@ describe("TOCTOU protection — high-level SshService", () => {
 
     const { SshService } = await import("../src/ssh/ssh.service.js");
     const audit = mockAuditService();
-    const service = new SshService(blockedConfig, audit as never);
+    const service = new SshService(
+      blockedConfig,
+      audit as never,
+      fakeHostKeyPinService(),
+    );
 
     const vps: VpsRecord = {
       id: "vps-blocked-svc",
