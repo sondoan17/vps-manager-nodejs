@@ -1218,7 +1218,7 @@ describe("React dashboard", () => {
       await userEvent.click(logoutButton);
 
       // After logout, should see the login gate (not the dashboard)
-      expect(await screen.findByText("Unlock VPS Ops")).toBeInTheDocument();
+      expect(await screen.findByText("Unlock FlexServer")).toBeInTheDocument();
       expect(
         screen.getByText(
           "Enter the dashboard password. The password is verified server-side against the stored credential and is never stored in browser storage.",
@@ -1547,7 +1547,7 @@ describe("React dashboard", () => {
       const logoutButton = await screen.findByText("Log out");
       await userEvent.click(logoutButton);
 
-      expect(await screen.findByText("Unlock VPS Ops")).toBeInTheDocument();
+      expect(await screen.findByText("Unlock FlexServer")).toBeInTheDocument();
       expect(fetchMock).toHaveBeenCalledWith(
         "/api/auth/logout",
         expect.objectContaining({ method: "POST" }),

@@ -73,14 +73,14 @@ export function DashboardShell({
           <div className="flex min-w-0 items-center gap-2 sm:gap-3">
             <Link
               to="/vps"
-              aria-label="VPS Ops — go to servers"
+              aria-label="FlexServer — go to servers"
               className="inline-flex shrink-0 items-center gap-2 text-white transition hover:text-white/80"
             >
               <span className="grid h-9 w-9 place-items-center border border-white/10 bg-white/[0.03] sm:h-10 sm:w-10">
                 <Server size={18} />
               </span>
               <span className="hidden font-display text-sm font-normal sm:inline">
-                VPS Ops
+                FlexServer
               </span>
             </Link>
 
