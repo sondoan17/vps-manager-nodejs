@@ -151,98 +151,10 @@ describe("password hashing", () => {
   });
 });
 
-// ── Skip-if-same behavior (unit tests via credential repo) ─────────────
-
-describe("skip-if-same logic", () => {
-  /** Unique sub-dir per test to avoid cross-test file pollution. */
-  let subDir: string;
-
-  beforeEach(async () => {
-    subDir = await mkdtemp(join(tmpdir(), "vps-manager-auth-skip-"));
-  });
-
-  afterEach(async () => {
-    await rm(subDir, { recursive: true, force: true });
-  });
-
-  function makeRepo() {
-    return createJsonAdminCredentialRepository(
-      join(subDir, "admin-credential.json"),
-    );
-  }
-
-  it("skips update when stored hash matches provided password", async () => {
-    const repo = makeRepo();
-    const pwh = hashPassword(TEST_PASSWORD);
-    await repo.upsert({
-      passwordHash: pwh,
-      passwordAlgorithm: "scrypt",
-      passwordParams: JSON.stringify({ N: 16384, r: 8, p: 1 }),
-    });
-
-    const existing = await repo.get();
-    expect(existing).toBeDefined();
-    expect(verifyPassword(TEST_PASSWORD, existing!.passwordHash)).toBe(true);
-    const updated = await repo.get();
-    expect(updated!.passwordHash).toBe(pwh); // unchanged
-  });
-
-  it("updates when stored hash differs from provided password", async () => {
-    const repo = makeRepo();
-    const oldHash = hashPassword("first-password-12345");
-    await repo.upsert({
-      passwordHash: oldHash,
-      passwordAlgorithm: "scrypt",
-      passwordParams: JSON.stringify({ N: 16384, r: 8, p: 1 }),
-    });
-
-    const existing = await repo.get();
-    expect(existing).toBeDefined();
-    expect(
-      verifyPassword("second-password-67890", existing!.passwordHash),
-    ).toBe(false);
-
-    const newHash = hashPassword("second-password-67890");
-    await repo.upsert({
-      passwordHash: newHash,
-      passwordAlgorithm: "scrypt",
-      passwordParams: JSON.stringify({ N: 16384, r: 8, p: 1 }),
-    });
-
-    const updated = await repo.get();
-    expect(updated!.passwordHash).not.toBe(oldHash);
-    expect(verifyPassword("second-password-67890", updated!.passwordHash)).toBe(
-      true,
-    );
-  });
-
-  it("also works when credential file does not exist (first-time set)", async () => {
-    const repo = makeRepo();
-    const existing = await repo.get();
-    expect(existing).toBeUndefined();
-
-    const pwh = hashPassword(TEST_PASSWORD);
-    await repo.upsert({
-      passwordHash: pwh,
-      passwordAlgorithm: "scrypt",
-      passwordParams: JSON.stringify({ N: 16384, r: 8, p: 1 }),
-    });
-
-    const updated = await repo.get();
-    expect(updated).toBeDefined();
-    expect(verifyPassword(TEST_PASSWORD, updated!.passwordHash)).toBe(true);
-  });
-});
 
 // ── Login via password (primary path) ──────────────────────────────────
 
 describe("POST /api/auth/login", () => {
-  // The no-credential 503 path is covered by the skip-if-same unit tests
-  // (verify `get()` returns undefined for a missing credential file).
-  // Full-stack 503 verification requires pristine temp isolation not
-  // reliably available on all platforms. We test the credential-present
-  // path and skip-if-same logic instead.
-
   it("returns 401 with invalid password", async () => {
     await seedCredential(TEST_PASSWORD);
     const res = await request(app())

@@ -2,8 +2,9 @@ import type { VpsRecord } from "./api";
 
 export type ChipVariant = "ready" | "pending" | "destructive" | "outline";
 
-/** User-facing VPS label, with fallbacks for older records. */
-export function vpsDisplayName(vps: VpsRecord): string {
+const dockerHostnamePattern = /^[0-9a-f]{12}$/;
+
+export function vpsRawDisplayName(vps: VpsRecord): string {
   return (
     vps.displayName?.trim() ||
     vps.name?.trim() ||
@@ -11,6 +12,18 @@ export function vpsDisplayName(vps: VpsRecord): string {
     vps.host?.trim() ||
     "VPS"
   );
+}
+
+/** User-facing VPS label, with presentation-only cleanup for generated local hostnames. */
+export function vpsDisplayName(vps: VpsRecord): string {
+  const name = vpsRawDisplayName(vps);
+  const isLocal = vps.kind === "local" || vps.managedBy === "system";
+  return isLocal && dockerHostnamePattern.test(name) ? "Local Server" : name;
+}
+
+export function vpsHostId(vps: VpsRecord): string | undefined {
+  const name = vpsRawDisplayName(vps);
+  return vpsDisplayName(vps) !== name ? name : undefined;
 }
 
 export function serverStatusLabel(status?: VpsRecord["status"]) {

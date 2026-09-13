@@ -221,7 +221,6 @@ describe("POST /api/vps/:id/install-agent", () => {
     expect(res.status).toBe(201);
     expect(res.body.data.jobId).toMatch(/^job_/);
     expect(res.body.data.state.status).toBe("installing");
-    expect(JSON.stringify(res.body)).not.toContain("vma_");
 
     const agentRepo = createJsonAgentRepository(
       join(tempDir, "data", "agents.json"),
@@ -229,24 +228,6 @@ describe("POST /api/vps/:id/install-agent", () => {
     const state = await agentRepo.getState(vpsId);
     expect(state).toBeDefined();
     expect(state!.status).toBe("installing");
-  });
-
-  it("no raw token in responses", async () => {
-    const binaryPath = await createMockBinary();
-    const vpsId = await createVps();
-    const server = app({
-      agentBinaryPath: binaryPath,
-      agentPublicBaseUrl: "http://example.com:3000",
-      allowInsecureAgentHttp: true,
-    });
-
-    const res = await withCookie(
-      request(server)
-        .post(`/api/vps/${vpsId}/install-agent`)
-        .send({ password: "test-pass" }),
-    );
-    expect(res.status).toBe(201);
-    expect(JSON.stringify(res.body)).not.toContain("vma_");
 
     const auditRes = await request(server)
       .get("/api/audit")

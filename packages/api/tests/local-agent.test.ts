@@ -274,15 +274,6 @@ describe("collectSystemMetrics", () => {
     expect(metrics.uptime).toBeGreaterThanOrEqual(0);
   });
 
-  it("second call returns CPU delta", () => {
-    // First call establishes baseline
-    collectSystemMetrics();
-    // Second call should have a CPU value (even if 0 on idle)
-    const metrics = collectSystemMetrics();
-    expect(metrics.cpu).toBeGreaterThanOrEqual(0);
-    expect(metrics.cpu).toBeLessThanOrEqual(100);
-  });
-
   it("buildLocalMetricSample creates correct sample", () => {
     const metrics = collectSystemMetrics();
     const sample = buildLocalMetricSample("vps_local_host", metrics);

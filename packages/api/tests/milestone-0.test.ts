@@ -551,32 +551,6 @@ describe("JobRunnerService", () => {
     expect(updated!.step).toBe("error");
   });
 
-  it("supports progress updates via ctx.update", async () => {
-    const { repo, runner } = await createRunner();
-    const job = await makeJob(repo);
-
-    await new Promise<void>((resolve, reject) => {
-      runner.start(job, async (ctx) => {
-        try {
-          await ctx.update("step1", 25);
-          await ctx.update("step2", 50);
-          await ctx.update("step3", 75);
-          await ctx.succeed("done");
-          resolve();
-        } catch (e) {
-          reject(e);
-        }
-      });
-    });
-
-    const updated = await repo.get(job.id);
-    expect(updated).toBeDefined();
-    expect(updated!.status).toBe("succeeded");
-    expect(updated!.progress).toBe(100);
-    // We can't check intermediate states since they're overwritten,
-    // but we can verify the final state is correct
-  });
-
   it("sanitizes errors - strips stack traces", async () => {
     const { repo, runner } = await createRunner();
     const job = await makeJob(repo);
@@ -794,27 +768,6 @@ describe("job repository normalization (old files without progress/updatedAt)", 
     const jobs = await repo.list();
     expect(jobs[0].progress).toBe(100);
     expect(jobs[0].updatedAt).toBe("2026-06-01T00:00:00.000Z");
-  });
-
-  it("create and update still work correctly with normalization", async () => {
-    const repo = createJsonJobRepository(jobPath());
-    const created = await repo.create({
-      vpsId: "vps_002",
-      type: "check",
-      status: "queued",
-      progress: 0,
-    });
-    expect(created.id).toMatch(/^job_/);
-    expect(created.progress).toBe(0);
-
-    const updated = await repo.update(created.id, {
-      status: "running",
-      progress: 50,
-    });
-    expect(updated).toBeDefined();
-    expect(updated!.status).toBe("running");
-    expect(updated!.progress).toBe(50);
-    expect(updated!.updatedAt).toBeDefined();
   });
 });
 

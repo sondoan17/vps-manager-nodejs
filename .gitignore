@@ -10,3 +10,4 @@ data/vps.json
 dashboard-*.png
 .slim/deepwork/
 .opencode
+prompt-images/

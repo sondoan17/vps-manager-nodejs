@@ -18,6 +18,7 @@ import {
   formatDate,
   serverStatusLabel,
   vpsDisplayName,
+  vpsHostId,
 } from "../../../lib/dashboard-formatters";
 import type { VpsRecord } from "../../../lib/api";
 import type { DashboardJob } from "../../../lib/api";
@@ -66,8 +67,9 @@ export function ServerTable({
             <tr className="border-b border-white/10 text-left text-xs uppercase tracking-wider text-white/50">
               <th className="px-3 py-2.5 font-normal">Name</th>
               <th className="px-3 py-2.5 font-normal">Host</th>
-              <th className="px-3 py-2.5 font-normal">Status</th>
-              <th className="px-3 py-2.5 font-normal">Key / Agent</th>
+              <th className="px-3 py-2.5 font-normal">Host status</th>
+              <th className="px-3 py-2.5 font-normal">Agent</th>
+              <th className="px-3 py-2.5 font-normal">Access</th>
               <th className="px-3 py-2.5 font-normal">Last seen</th>
               <th className="px-3 py-2.5 font-normal">Actions</th>
             </tr>
@@ -75,6 +77,7 @@ export function ServerTable({
           <tbody>
             {vpsList.map((vps) => {
               const displayName = vpsDisplayName(vps);
+              const hostId = vpsHostId(vps);
               const isLocal =
                 vps.kind === "local" || vps.managedBy === "system";
               const isReady = isLocal || Boolean(vps.keyProvisionedAt);
@@ -96,6 +99,7 @@ export function ServerTable({
                     >
                       {displayName}
                     </Link>
+                    {hostId ? <span className="mt-1 block font-mono text-[10px] text-white/35">Host ID: {hostId}</span> : null}
                   </td>
                   <td className="px-3 py-3 text-white/70">
                     <span
@@ -106,18 +110,17 @@ export function ServerTable({
                     </span>
                   </td>
                   <td className="px-3 py-3">
-                    <Badge variant={chipVariant(vps.status)}>
+                    <Badge variant={chipVariant(vps.status)} title={!vps.status || vps.status === "unknown" ? "Host health has not been checked yet." : undefined}>
                       {serverStatusLabel(vps.status)}
                     </Badge>
                   </td>
                   <td className="px-3 py-3">
-                    {isLocal ? <Badge variant="ready">
-                      {isLocal
-                        ? "Local agent"
-                        : isReady
-                          ? "Key ready"
-                          : "Needs password"}
-                    </Badge> : <AgentLifecycleStatus vps={vps} jobs={serverJobs} compact />}
+                    <AgentLifecycleStatus vps={vps} jobs={serverJobs} compact />
+                  </td>
+                  <td className="px-3 py-3">
+                    <Badge variant={isReady ? "ready" : "pending"}>
+                      {isLocal ? "Local" : isReady ? "Key ready" : "Needs password"}
+                    </Badge>
                   </td>
                   <td className="px-3 py-3 text-white/50">
                     {formatDate(vps.lastSeenAt)}

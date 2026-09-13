@@ -392,7 +392,7 @@ describe("POST /api/vps/:id/uninstall-agent — successful removal", () => {
       pids: 10,
       containers: [],
     });
-    const credential = await repo.createCredential({
+    await repo.createCredential({
       vpsId,
       secretHash: "sha256_test",
       status: "active",
@@ -439,6 +439,11 @@ describe("POST /api/vps/:id/uninstall-agent — successful removal", () => {
     expect(await repo.getSystemInfo(vpsId)).toBeUndefined();
     expect(await repo.getDockerMetrics(vpsId)).toBeUndefined();
 
+    // The response and persisted views do not disclose private credentials.
+    const responseBody = JSON.stringify(post.body);
+    expect(responseBody).not.toContain("PRIVATE KEY");
+    expect(responseBody.toLowerCase()).not.toContain("secret_hash");
+
     // Audit success recorded.
     const auditRes = await withCookie(request(server).get("/api/audit"));
     const actions = auditRes.body.data.map((e: { action: string }) => e.action);
@@ -446,23 +451,6 @@ describe("POST /api/vps/:id/uninstall-agent — successful removal", () => {
     expect(actions).toContain("agent.uninstall.success");
     expect(actions).not.toContain("agent.uninstall.failure");
 
-    void credential;
-  }, 10_000);
-
-  it("does not leak SSH private key material into responses", async () => {
-    const server = app();
-    const vpsId = await createVps();
-    await provisionKey(vpsId);
-    mockSuccessfulRemoval();
-
-    const post = await withCookie(
-      request(server).post(`/api/vps/${vpsId}/uninstall-agent`),
-    ).expect(201);
-    const jobId: string = post.body.data.jobId;
-    const body = JSON.stringify(post.body);
-    expect(body).not.toContain("PRIVATE KEY");
-    expect(body.toLowerCase()).not.toContain("secret_hash");
-    await waitForTerminalJob(jobId);
   }, 10_000);
 });
 

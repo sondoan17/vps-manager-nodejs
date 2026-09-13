@@ -43,6 +43,7 @@ import {
   freshnessLabel,
   serverStatusLabel,
   vpsDisplayName,
+  vpsHostId,
 } from "../../../lib/dashboard-formatters";
 import type { DashboardOverview, VpsRecord } from "../../../lib/api";
 import { formatUptime } from "../shared/formatUptime";
@@ -92,26 +93,12 @@ export function ServerCard({
   const [deleteTarget, setDeleteTarget] = useState<VpsRecord | null>(null);
   const [uninstallTarget, setUninstallTarget] = useState<VpsRecord | null>(null);
   const displayName = vpsDisplayName(vps);
+  const hostId = vpsHostId(vps);
   const osLabel =
     systemInfo?.os?.prettyName ||
     systemInfo?.os?.name ||
     systemInfo?.os?.family ||
     "OS not reported";
-  const agentStateLabel = isLocalHost
-    ? "Local Agent"
-    : vps.agentStatus === "online"
-      ? "Agent online"
-      : vps.agentStatus === "offline"
-        ? "Agent offline"
-        : vps.agentStatus === "installing"
-          ? "Agent setup in progress"
-          : vps.agentStatus === "failed"
-            ? "Agent action failed"
-    : systemInfo?.agentVersion
-      ? `Agent ${systemInfo.agentVersion}`
-      : isReady
-        ? "Agent not reported · key ready"
-        : "Agent pending · needs password";
   const agentJob = agentJobFor(vps, jobs);
   const agentActionRunning = Boolean(
     agentJob && (agentJob.status === "queued" || agentJob.status === "running"),
@@ -148,7 +135,7 @@ export function ServerCard({
         </div>
         <p
           className="mt-2 flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1 text-xs leading-5 text-white/60 sm:text-sm"
-          title={`${vps.host}:${vps.port} · ${osLabel} · ${agentStateLabel}`}
+          title={`${vps.host}:${vps.port} · ${osLabel}`}
         >
           <span className="min-w-0 break-all font-mono text-white/75">
             {vps.host}:{vps.port}
@@ -157,11 +144,8 @@ export function ServerCard({
             ·
           </span>
           <span className="min-w-0 truncate">{osLabel}</span>
-          <span className="text-white/25" aria-hidden="true">
-            ·
-          </span>
-          <span className="min-w-0">{agentStateLabel}</span>
         </p>
+        {hostId ? <p className="mt-1 break-all font-mono text-[10px] text-white/35">Host ID: {hostId}</p> : null}
         <div className="mt-2 flex items-center gap-1.5 text-[11px] text-white/40 sm:text-xs">
           <Clock3 size={13} aria-hidden="true" />
           <span>Seen {formatDate(vps.lastSeenAt)}</span>
@@ -273,7 +257,10 @@ export function ServerCard({
             }}
           />
           </div>
-          {!isLocalHost ? <AgentLifecycleStatus vps={vps} jobs={jobs} /> : null}
+          <div className="grid min-w-0 grid-cols-2 gap-x-5 gap-y-1 text-xs xl:order-first xl:grid-cols-1">
+            <div className="flex items-center gap-2"><span className="text-white/40">Agent</span><AgentLifecycleStatus vps={vps} jobs={jobs} compact /></div>
+            <div className="flex items-center gap-2"><span className="text-white/40">Access</span><span className={isReady ? "text-emerald-300" : "text-amber-300"}>{isLocalHost ? "Local" : isReady ? "Key ready" : "Needs password"}</span></div>
+          </div>
         </div>
       </footer>
       {/* Delete confirmation – rendered outside DropdownMenu to avoid focus-trap nesting */}
@@ -400,6 +387,7 @@ export function ServerCard({
 }
 
 function ServerHealthStatus({ status }: { status?: VpsRecord["status"] }) {
+  const isUnknown = !status || status === "unknown";
   const isDown = status === "unreachable";
   const dotColor =
     status === "healthy"
@@ -414,14 +402,15 @@ function ServerHealthStatus({ status }: { status?: VpsRecord["status"] }) {
   return (
     <span
       className={`inline-flex shrink-0 items-center gap-1.5 pt-1 text-xs font-medium sm:text-sm ${textColor}`}
-      aria-label={`Health status: ${serverStatusLabel(status)}`}
+      aria-label={`Host status: ${serverStatusLabel(status)}`}
+      title={isUnknown ? "Host health has not been checked yet." : undefined}
     >
       {isDown ? (
         <AlertTriangle size={14} aria-hidden="true" />
       ) : (
         <span className={`h-2 w-2 rounded-full ${dotColor}`} aria-hidden="true" />
       )}
-      {serverStatusLabel(status)}
+      <span className="text-white/40">Host status</span> {serverStatusLabel(status)}
     </span>
   );
 }

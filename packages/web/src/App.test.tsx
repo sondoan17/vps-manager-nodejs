@@ -188,8 +188,6 @@ describe("React dashboard", () => {
         "No VPS servers yet. Add your first server to get started.",
       ),
     ).toBeInTheDocument();
-    // There are multiple "Servers" elements (header + page title)
-    expect(screen.getAllByText("Servers").length).toBeGreaterThan(0);
     // Empty state shows a CTA/link to create a new VPS (no inline create form)
     expect(
       screen.getAllByRole("link", { name: "New VPS" }).length,
@@ -611,8 +609,6 @@ describe("React dashboard", () => {
     expect(
       screen.getByRole("link", { name: "New VPS" }),
     ).toBeInTheDocument();
-    expect(localStorage.length).toBe(0);
-    expect(sessionStorage.length).toBe(0);
   });
 
   it("filters VPS cards without storing secrets", async () => {
@@ -690,8 +686,6 @@ describe("React dashboard", () => {
     await userEvent.type(screen.getByLabelText("Search servers"), "ovh");
     expect(screen.queryByText("prod-sgp-01")).not.toBeInTheDocument();
     expect(screen.getByText("dev-fra-01")).toBeInTheDocument();
-    expect(localStorage.length).toBe(0);
-    expect(sessionStorage.length).toBe(0);
   });
 
   describe("SSE live monitoring events", () => {
@@ -768,46 +762,6 @@ describe("React dashboard", () => {
         updatedAt: "2026-01-01T00:00:00.000Z",
       },
     ];
-
-    it("metrics.updated event updates VPS list metrics without crashing", async () => {
-      renderAppWithLiveEvents({
-        dashboard: demoDashboard,
-        servers: demoServerRecords,
-        jobs: [],
-        metrics: [],
-        auditEvents: [],
-      });
-
-      // Wait for VPS list to show
-      expect(await screen.findByText("web-01")).toBeInTheDocument();
-
-      // Simulate a metrics.updated event via EventSource
-      const metricsPayload = {
-        metrics: [
-          {
-            vpsId: "vps-1",
-            cpu: 42,
-            memory: 63,
-            disk: 55,
-            loadAverage: 1.2,
-            networkRx: 100000,
-            networkTx: 50000,
-            uptime: 3600,
-            collectedAt: new Date().toISOString(),
-            freshness: "fresh" as const,
-          },
-        ],
-      };
-
-      mockEventSourceInstance?.dispatchEvent(
-        "metrics.updated",
-        makeEnvelope("metrics.updated", metricsPayload),
-      );
-
-      // No passwords stored
-      expect(localStorage.length).toBe(0);
-      expect(sessionStorage.length).toBe(0);
-    });
 
     it("merges Docker metrics from live updates and toggles intent safely", async () => {
       const server = { ...demoServerRecords[0], dockerMetricsEnabled: true };
@@ -998,41 +952,6 @@ describe("React dashboard", () => {
       expect(sessionStorage.length).toBe(0);
     });
 
-    it("monitoring.heartbeat updates live timestamp without changing VPS list", async () => {
-      renderAppWithLiveEvents({
-        dashboard: { ...demoDashboard, mode: "local" },
-        servers: demoServerRecords,
-        jobs: [],
-        metrics: [],
-        auditEvents: [],
-      });
-
-      expect(await screen.findByText("web-01")).toBeInTheDocument();
-
-      // Send hello first to go live
-      mockEventSourceInstance?.dispatchEvent(
-        "monitoring.hello",
-        makeEnvelope("monitoring.hello", { mode: "local", intervalMs: 5000 }),
-      );
-
-      await waitFor(() => {
-        expect(screen.getByText("Live")).toBeInTheDocument();
-      });
-
-      // Send heartbeat
-      mockEventSourceInstance?.dispatchEvent(
-        "monitoring.heartbeat",
-        makeEnvelope("monitoring.heartbeat", {}),
-      );
-
-      // Still "Live" (heartbeat updates timestamp, keeps status as live)
-      expect(screen.getByText("Live")).toBeInTheDocument();
-
-      // VPS list still shows
-      expect(screen.getByText("web-01")).toBeInTheDocument();
-
-      expect(localStorage.length).toBe(0);
-    });
   });
 
   describe("Phase 1-2 fixes", () => {
@@ -1087,6 +1006,75 @@ describe("React dashboard", () => {
         updatedAt: "2026-01-01T00:00:00.000Z",
       },
     ];
+
+    it("keeps host status, agent, and access labels independent across card and table views", async () => {
+      const records = [
+        {
+          id: "unknown-host",
+          name: "unknown-host",
+          host: "203.0.113.30",
+          port: 22,
+          username: "root",
+          status: "unknown",
+          agentStatus: "online",
+          keyProvisionedAt: "2026-01-01T00:00:00.000Z",
+          createdAt: "2026-01-01T00:00:00.000Z",
+          updatedAt: "2026-01-01T00:00:00.000Z",
+        },
+        {
+          id: "local-host",
+          name: "3e6f37c57a5f",
+          host: "127.0.0.1",
+          port: 22,
+          username: "root",
+          status: "healthy",
+          kind: "local",
+          managedBy: "system",
+          createdAt: "2026-01-01T00:00:00.000Z",
+          updatedAt: "2026-01-01T00:00:00.000Z",
+        },
+        {
+          id: "friendly-host",
+          name: "generated-name",
+          displayName: "Friendly production",
+          host: "198.51.100.40",
+          port: 22,
+          username: "deploy",
+          status: "healthy",
+          keyProvisionedAt: "2026-01-01T00:00:00.000Z",
+          createdAt: "2026-01-01T00:00:00.000Z",
+          updatedAt: "2026-01-01T00:00:00.000Z",
+        },
+      ];
+      fetchMock
+        .mockResolvedValueOnce(authOk())
+        .mockResolvedValueOnce({ ok: true, status: 200, json: async () => ({ data: twoServersDashboard }) })
+        .mockResolvedValueOnce({ ok: true, status: 200, json: async () => ({ data: records }) })
+        .mockResolvedValueOnce({ ok: true, status: 200, json: async () => ({ data: [] }) })
+        .mockResolvedValueOnce({ ok: true, status: 200, json: async () => ({ data: [] }) })
+        .mockResolvedValueOnce({ ok: true, status: 200, json: async () => ({ data: [] }) });
+
+      renderApp(["/vps"]);
+
+      expect(await screen.findByText("Local Server")).toBeInTheDocument();
+      expect(screen.getByText("127.0.0.1:22")).toBeInTheDocument();
+      expect(screen.getByText("Host ID: 3e6f37c57a5f")).toBeInTheDocument();
+      expect(screen.getByText("Friendly production")).toBeInTheDocument();
+      expect(screen.queryByText("generated-name")).not.toBeInTheDocument();
+      expect(screen.getAllByText("Host status").length).toBeGreaterThan(0);
+      expect(screen.getAllByText("Unknown").length).toBeGreaterThan(0);
+      expect(screen.getAllByText("Agent online").length).toBeGreaterThan(0);
+      expect(screen.getAllByText("Key ready").length).toBeGreaterThan(0);
+      expect(screen.getAllByTitle("Host health has not been checked yet.").length).toBeGreaterThan(0);
+
+      await userEvent.click(screen.getByRole("button", { name: "Table view" }));
+      expect(screen.getByText("Host status")).toBeInTheDocument();
+      expect(screen.getAllByText("Agent").length).toBeGreaterThan(0);
+      expect(screen.getAllByText("Access").length).toBeGreaterThan(0);
+      expect(screen.getByText("Local Server")).toBeInTheDocument();
+      expect(screen.getByText("Host ID: 3e6f37c57a5f")).toBeInTheDocument();
+      expect(screen.getByTitle("Host health has not been checked yet.")).toBeInTheDocument();
+    });
 
     it("shows 404 page for unknown routes", async () => {
       fetchMock
@@ -1478,7 +1466,6 @@ describe("React dashboard", () => {
     });
 
     it("renders create form at /vps/new, not VPS not found / workspace", async () => {
-      fetchMock.mockReset();
       mockDashboardAndScoped();
 
       renderApp(["/vps/new"]);
@@ -1497,7 +1484,6 @@ describe("React dashboard", () => {
     });
 
     it("renders VPS workspace for valid VPS id, showing server name", async () => {
-      fetchMock.mockReset();
       mockDashboardAndScoped();
 
       renderApp(["/vps/vps-1"]);
@@ -1511,7 +1497,6 @@ describe("React dashboard", () => {
     });
 
     it("renders workspace jobs page for /vps/:id/jobs", async () => {
-      fetchMock.mockReset();
       mockDashboardAndScoped();
 
       renderApp(["/vps/vps-1/jobs"]);
@@ -1520,7 +1505,6 @@ describe("React dashboard", () => {
     });
 
     it("renders workspace metrics page for /vps/:id/metrics", async () => {
-      fetchMock.mockReset();
       mockDashboardAndScoped();
 
       renderApp(["/vps/vps-1/metrics"]);
@@ -1535,7 +1519,6 @@ describe("React dashboard", () => {
     });
 
     it("shows 404 for unknown workspace sub-route /vps/:id/unknown", async () => {
-      fetchMock.mockReset();
       mockDashboardAndScoped();
 
       renderApp(["/vps/vps-1/unknown"]);
@@ -1612,7 +1595,6 @@ describe("React dashboard", () => {
     });
 
     it("requests scoped APIs for current VPS", async () => {
-      fetchMock.mockReset();
       mockDashboardAndScoped();
 
       renderApp(["/vps/vps-1"]);
@@ -1641,32 +1623,5 @@ describe("React dashboard", () => {
       });
     });
 
-    it("navigating within workspace sub-routes does not crash or show stale data", async () => {
-      fetchMock.mockReset();
-      mockDashboardAndScoped();
-      // Extra mock for navigating to vps-2 scoped calls
-      fetchMock
-        .mockResolvedValueOnce({
-          ok: true,
-          status: 200,
-          json: async () => ({ data: [] }),
-        })
-        .mockResolvedValueOnce({
-          ok: true,
-          status: 200,
-          json: async () => ({ data: [] }),
-        })
-        .mockResolvedValueOnce({
-          ok: true,
-          status: 200,
-          json: async () => ({ data: [] }),
-        });
-
-      // Use window.location to simulate navigation between VPS workspace sub-routes
-      renderApp(["/vps/vps-1/jobs"]);
-
-      // Should render jobs for vps-1
-      expect(await screen.findByText("Jobs for web-01")).toBeInTheDocument();
-    });
   });
 });

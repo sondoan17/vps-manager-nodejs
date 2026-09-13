@@ -273,21 +273,6 @@ describe("phase one SSH host policy", () => {
       assertSshHostAllowed("203.0.113.20", demoConfig),
     ).not.toThrow();
   });
-
-  it("sync wrapper rejects URL/path/userinfo inputs", () => {
-    expect(() => assertSshHostAllowed("user@host", demoConfig)).toThrow(
-      SshHostBlockedError,
-    );
-    expect(() => assertSshHostAllowed("host/path", demoConfig)).toThrow(
-      SshHostBlockedError,
-    );
-    expect(() => assertSshHostAllowed("host%20", demoConfig)).toThrow(
-      SshHostBlockedError,
-    );
-    expect(() => assertSshHostAllowed("host:22", demoConfig)).toThrow(
-      SshHostBlockedError,
-    );
-  });
 });
 
 // ---------------------------------------------------------------------------

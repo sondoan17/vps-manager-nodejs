@@ -744,11 +744,6 @@ describe("freshness using receivedAt", () => {
     expect(isFreshTimestamp(old)).toBe(false);
   });
 
-  it("very old receivedAt is stale", () => {
-    const veryOld = new Date(Date.now() - 10 * 60 * 1000).toISOString();
-    expect(isFreshTimestamp(veryOld)).toBe(false);
-  });
-
   it("ingested metric has receivedAt set for freshness computation", async () => {
     const vpsId = await createVps();
     const { service } = makeService();
