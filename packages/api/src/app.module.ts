@@ -37,7 +37,10 @@ import { SshService } from "./ssh/ssh.service.js";
 import { HostKeyPinService } from "./ssh/host-key-pin.service.js";
 import type { HostKeyPinRepository } from "./ssh/host-key-pin.repository.js";
 import { AgentInstallerService } from "./agents/agent-installer.service.js";
+import { AgentUninstallerService } from "./agents/agent-uninstaller.service.js";
+import { AgentLifecycleCoordinator } from "./agents/agent-lifecycle-coordinator.js";
 import { AgentService } from "./agents/agent.service.js";
+import { JobActivityService } from "./jobs/job-activity.service.js";
 import { VpsService } from "./vps/vps.service.js";
 import type { VpsRepository } from "./persistence/repositories/vps.repository.js";
 import { LocalAgentSupervisorService } from "./agents/local-agent-supervisor.service.js";
@@ -170,22 +173,27 @@ export function createAppModule(deps: AppDependencies = {}): DynamicModule {
       },
       DashboardSessionGuard,
       OriginGuard,
+      AgentLifecycleCoordinator,
       AgentInstallerService,
+      AgentUninstallerService,
       LocalAgentSupervisorService,
+      JobActivityService,
       {
         provide: AgentService,
         inject: [
           AGENT_REPOSITORY,
           METRIC_REPOSITORY,
           VPS_REPOSITORY,
-          APP_CONFIG,
-        ],
+           APP_CONFIG,
+           AgentLifecycleCoordinator,
+         ],
         useFactory: (
           agentRepo: AgentRepository,
           metricRepo: MetricRepository,
           vpsRepo: VpsRepository,
-          appConfig: AppConfig,
-        ) => new AgentService(agentRepo, metricRepo, vpsRepo, appConfig),
+           appConfig: AppConfig,
+           lifecycle: AgentLifecycleCoordinator,
+         ) => new AgentService(agentRepo, metricRepo, vpsRepo, appConfig, lifecycle),
       },
       AuditService,
       DashboardService,
@@ -216,6 +224,7 @@ export function createAppModule(deps: AppDependencies = {}): DynamicModule {
           AuditService,
           APP_CONFIG,
           AgentInstallerService,
+          AgentUninstallerService,
           AGENT_REPOSITORY,
           HostKeyPinService,
         ],
@@ -226,6 +235,7 @@ export function createAppModule(deps: AppDependencies = {}): DynamicModule {
           audit: AuditService,
           appConfig: AppConfig,
           installer: AgentInstallerService,
+          uninstaller: AgentUninstallerService,
           agentRepo: AgentRepository,
           hostKeyPin: HostKeyPinService,
         ) =>
@@ -236,6 +246,7 @@ export function createAppModule(deps: AppDependencies = {}): DynamicModule {
             audit,
             appConfig,
             installer,
+            uninstaller,
             agentRepo,
             hostKeyPin,
           ),

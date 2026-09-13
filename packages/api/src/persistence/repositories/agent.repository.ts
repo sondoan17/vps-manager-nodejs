@@ -28,10 +28,13 @@ export type AgentRepository = {
 
   getState(vpsId: string): Promise<AgentState | undefined>;
   upsertState(state: AgentState): Promise<AgentState>;
+  listStates(): Promise<AgentState[]>;
 
   upsertSystemInfo(info: AgentSystemInfo): Promise<AgentSystemInfo>;
   getSystemInfo(vpsId: string): Promise<AgentSystemInfo | undefined>;
   listSystemInfo(): Promise<AgentSystemInfo[]>;
+  /** Delete persisted system info for a VPS. Returns true if anything was removed. */
+  deleteSystemInfo(vpsId: string): Promise<boolean>;
 
   upsertDockerMetrics(metrics: AgentDockerMetrics): Promise<AgentDockerMetrics>;
   getDockerMetrics(vpsId: string): Promise<AgentDockerMetrics | undefined>;
@@ -131,6 +134,14 @@ export function createJsonAgentRepository(
       ).then(() => state);
     },
 
+    async listStates() {
+      const data = await readJsonFile<AgentFile>(filePath, {
+        credentials: [],
+        states: {},
+      });
+      return Object.values(data.states ?? {});
+    },
+
     async upsertSystemInfo(info) {
       let stored = info;
       return readModifyWriteJsonFile<AgentFile>(
@@ -168,6 +179,24 @@ export function createJsonAgentRepository(
         states: {},
       });
       return Object.values(data.systemInfo ?? {});
+    },
+
+    async deleteSystemInfo(vpsId) {
+      let deleted = false;
+      await readModifyWriteJsonFile<AgentFile>(
+        filePath,
+        { credentials: [], states: {} },
+        (data) => {
+          if (!data.systemInfo) return data;
+          if (data.systemInfo[vpsId]) {
+            // eslint-disable-next-line @typescript-eslint/no-dynamic-delete
+            delete data.systemInfo[vpsId];
+            deleted = true;
+          }
+          return data;
+        },
+      );
+      return deleted;
     },
 
     async upsertDockerMetrics(metrics) {

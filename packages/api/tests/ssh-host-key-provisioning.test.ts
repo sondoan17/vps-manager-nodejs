@@ -19,6 +19,7 @@ import type { KeyScanResult } from "../src/ssh/host-key-pin.models.js";
 import { createVpsStore } from "../src/persistence/store/vpsStore.js";
 import { createKeyService } from "../src/ssh/keyService.js";
 import { createJsonAuditRepository } from "../src/persistence/repositories/audit.repository.js";
+import { createJsonAgentRepository } from "../src/persistence/repositories/agent.repository.js";
 import type { VpsRepository } from "../src/persistence/repositories/vps.repository.js";
 import type { VpsRecord } from "../src/vps/vps.models.js";
 
@@ -226,6 +227,7 @@ describe("SSH host key provisioning — strict trust contract", () => {
       strictLocalConfig,
       {} as never,
       {} as never,
+      createJsonAgentRepository(join(tempDir, "data", "agents.json")),
       hostKeyPin,
     );
 
@@ -265,6 +267,7 @@ describe("SSH host key provisioning — strict trust contract", () => {
       strictLocalConfig,
       {} as never,
       {} as never,
+      createJsonAgentRepository(join(tempDir, "data", "agents.json")),
       hostKeyPin,
     );
 
@@ -351,6 +354,7 @@ describe("SSH host key provisioning — scan failure is explicit", () => {
       strictLocalConfig,
       {} as never,
       {} as never,
+      createJsonAgentRepository(join(tempDir, "data", "agents.json")),
       hostKeyPin,
     );
 
@@ -485,6 +489,7 @@ describe("SSH host key type determinism — scan/trust to ssh2 negotiation", () 
       strictLocalConfig,
       {} as never,
       {} as never,
+      createJsonAgentRepository(join(tempDir, "data", "agents.json")),
       hostKeyPin,
     );
 

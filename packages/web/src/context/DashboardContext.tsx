@@ -32,6 +32,7 @@ import {
   logoutDashboard,
   provisionKey,
   trustSshHostKey,
+  uninstallAgent,
   updateVps,
   verifyKey,
   type DashboardOverview,
@@ -95,6 +96,7 @@ export type DashboardCtx = {
   onProvision: (vps: VpsRecord) => void;
   onVerify: (vps: VpsRecord) => void;
   onInstallAgent: (vps: VpsRecord) => void;
+  onUninstallAgent: (vps: VpsRecord) => void;
   onToggleDockerMetrics: (vps: VpsRecord) => void;
   onDelete: (vps: VpsRecord) => void;
 };
@@ -133,6 +135,56 @@ function mergeMetrics<T extends { vpsId: string }>(
     }
   }
   return merged;
+}
+
+function mergeJobs(
+  existing: DashboardOverview["jobs"],
+  updated: DashboardOverview["jobs"],
+) {
+  const byId = new Map(existing.map((job) => [job.id, job]));
+  for (const job of updated) byId.set(job.id, job);
+  return [...byId.values()];
+}
+
+function applyAgentJobState(records: VpsRecord[], jobs: DashboardOverview["jobs"]) {
+  return records.map((vps) => {
+    const lifecycleJobs = jobs.filter(
+      (candidate) =>
+        candidate.vpsId === vps.id &&
+        (candidate.type === "install-agent" || candidate.type === "uninstall-agent"),
+    );
+    const job = lifecycleJobs.sort((a, b) => {
+      const aTime = Date.parse(a.finishedAt || a.startedAt || "") || 0;
+      const bTime = Date.parse(b.finishedAt || b.startedAt || "") || 0;
+      return bTime - aTime || b.id.localeCompare(a.id);
+    })[0];
+    if (!job) return vps;
+    const isUninstall = job.type === "uninstall-agent";
+    if (job.status === "queued" || job.status === "running") {
+      return {
+        ...vps,
+        agentStatus: "installing" as const,
+        lastAgentInstallJobId: job.id,
+      };
+    }
+    if (job.status === "succeeded") {
+      return {
+        ...vps,
+        agentStatus: (isUninstall ? "not_installed" : "online") as VpsRecord["agentStatus"],
+        lastAgentInstallJobId: job.id,
+        agentLastError: undefined,
+      };
+    }
+    if (job.status === "failed" || job.status === "cancelled") {
+      return {
+        ...vps,
+        agentStatus: "failed" as const,
+        lastAgentInstallJobId: job.id,
+        agentLastError: job.errorMessage || vps.agentLastError,
+      };
+    }
+    return vps;
+  });
 }
 
 function isLocalHost(vps: VpsRecord): boolean {
@@ -309,6 +361,13 @@ export function DashboardProvider({
             systemInfo: payload.systemInfo ?? prev.systemInfo,
           };
         });
+      },
+      onJobsUpdated: (payload) => {
+        setOverview((prev) => ({
+          ...prev,
+          jobs: mergeJobs(prev.jobs, payload.jobs),
+        }));
+        setRecords((prev) => applyAgentJobState(prev, payload.jobs));
       },
       onHeartbeat: (_payload) => {},
       onError: (_payload) => {
@@ -490,11 +549,58 @@ export function DashboardProvider({
     const label = vpsDisplayName(vps);
     await runAction(`Starting agent install for ${label}...`, async () => {
       const result = await installAgent(vps.id, password || undefined);
+      setOverview((current) => ({
+        ...current,
+        jobs: mergeJobs(current.jobs, [{
+          id: result.jobId,
+          vpsId: vps.id,
+          type: "install-agent",
+          status: "queued",
+          step: "queued",
+          progress: 0,
+        }]),
+      }));
+      setRecords((current) =>
+        current.map((record) =>
+          record.id === vps.id
+            ? { ...record, agentStatus: "installing", lastAgentInstallJobId: result.jobId }
+            : record,
+        ),
+      );
       if (password) {
         setProvisionPasswords((current) => ({ ...current, [vps.id]: "" }));
       }
       setStatus({
         message: `Agent install queued for ${label}. Job ${result.jobId} is running in the background.`,
+        kind: "success",
+      });
+    });
+  }
+
+  async function handleUninstallAgent(vps: VpsRecord) {
+    const label = vpsDisplayName(vps);
+    await runAction(`Starting agent removal for ${label}...`, async () => {
+      const result = await uninstallAgent(vps.id);
+      setOverview((current) => ({
+        ...current,
+        jobs: mergeJobs(current.jobs, [{
+          id: result.jobId,
+          vpsId: vps.id,
+          type: "uninstall-agent",
+          status: "queued",
+          step: "queued",
+          progress: 0,
+        }]),
+      }));
+      setRecords((current) =>
+        current.map((record) =>
+          record.id === vps.id
+            ? { ...record, agentStatus: "installing", lastAgentInstallJobId: result.jobId }
+            : record,
+        ),
+      );
+      setStatus({
+        message: `Agent removal queued for ${label}.`,
         kind: "success",
       });
     });
@@ -599,6 +705,7 @@ export function DashboardProvider({
     onProvision: handleProvision,
     onVerify: handleVerify,
     onInstallAgent: handleInstallAgent,
+    onUninstallAgent: handleUninstallAgent,
     onToggleDockerMetrics: handleToggleDockerMetrics,
     onDelete: handleDelete,
   };

@@ -14,12 +14,15 @@ import type {
   DashboardSummary,
 } from "../dashboard/dashboard.models.js";
 import type { VpsRecord } from "../vps/vps.models.js";
+import { applyAgentState } from "../vps/vps.models.js";
 import type { AgentRepository } from "../persistence/repositories/agent.repository.js";
 import type { VpsRepository } from "../persistence/repositories/vps.repository.js";
 import type { MetricRepository } from "../persistence/repositories/metric.repository.js";
+import type { JobRepository } from "../persistence/repositories/job.repository.js";
 import {
   AGENT_REPOSITORY,
   APP_CONFIG,
+  JOB_REPOSITORY,
   METRIC_REPOSITORY,
   VPS_REPOSITORY,
 } from "../tokens.js";
@@ -58,6 +61,7 @@ export class DashboardService {
     @Inject(METRIC_REPOSITORY)
     private readonly metricRepository: MetricRepository,
     @Inject(AGENT_REPOSITORY) private readonly agentRepository: AgentRepository,
+    @Inject(JOB_REPOSITORY) private readonly jobRepository: JobRepository,
   ) {}
 
   async overview(): Promise<DashboardOverview> {
@@ -88,6 +92,13 @@ export class DashboardService {
     }
 
     const servers = await this.vpsRepository.list();
+    // Attach persisted agent state so dashboard/snapshot data always exposes
+    // the real lifecycle status (not just systemInfo).
+    const states = await this.agentRepository.listStates();
+    const stateById = new Map(states.map((s) => [s.vpsId, s]));
+    const serversWithAgent = servers.map((server) =>
+      applyAgentState(server, stateById.get(server.id)),
+    );
     const rawMetrics = await this.metricRepository.listLatest();
     const metrics: DashboardMetricSample[] = rawMetrics.map((m) => ({
       ...m,
@@ -98,6 +109,7 @@ export class DashboardService {
     const serverIds = new Set(servers.map((s) => s.id));
     const allSystemInfo = await this.agentRepository.listSystemInfo();
     const systemInfo = allSystemInfo.filter((si) => serverIds.has(si.vpsId));
+    const jobs = await this.jobRepository.list();
 
     // Only return Docker metrics for servers with dockerMetricsEnabled === true
     const allDockerMetrics = await this.agentRepository.listDockerMetrics();
@@ -111,9 +123,9 @@ export class DashboardService {
     return {
       mode: "local",
       summary: summarize(servers, 0),
-      servers,
+      servers: serversWithAgent,
       metrics,
-      jobs: [],
+      jobs,
       auditEvents: [],
       terminal: {
         label: "Terminal",

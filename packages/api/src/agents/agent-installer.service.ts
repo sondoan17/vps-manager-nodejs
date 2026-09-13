@@ -16,6 +16,8 @@ import type { KeyService } from "../ssh/keyService.js";
 import { AuditService } from "../audit/audit.service.js";
 import { JobRunnerService } from "../jobs/job-runner.service.js";
 import { JobService } from "../jobs/job.service.js";
+import { AgentLifecycleCoordinator } from "./agent-lifecycle-coordinator.js";
+import { sanitiseError } from "../jobs/job-runner.service.js";
 import {
   APP_CONFIG,
   AGENT_REPOSITORY,
@@ -99,6 +101,7 @@ export class AgentInstallerService {
     @Inject(AuditService) private readonly audit: AuditService,
     @Inject(JobRunnerService) private readonly jobRunner: JobRunnerService,
     @Inject(JobService) private readonly jobs: JobService,
+    @Inject(AgentLifecycleCoordinator) private readonly lifecycle: AgentLifecycleCoordinator,
   ) {}
 
   /**
@@ -112,12 +115,20 @@ export class AgentInstallerService {
     password: string | undefined,
     _requestHost: string | undefined,
   ): Promise<{ jobId: string; state: AgentState }> {
+    const releaseLifecycle = await this.lifecycle.tryAcquire(vpsId, "install");
+    let handedOff = false;
+    let priorState: AgentState | undefined;
+    let credential: { id: string } | undefined;
+    let job: Awaited<ReturnType<JobService["create"]>> | undefined;
+    let state: AgentState | undefined;
+    try {
     // 1. VPS must exist
     const vps = await this.vpsRepository.get(vpsId);
     if (!vps) throw new VpsNotFoundError();
 
     // 2. Block duplicate install
     const existingState = await this.agentRepository.getState(vpsId);
+    priorState = existingState;
     if (existingState?.status === "installing") {
       throw new DuplicateAgentInstallError();
     }
@@ -137,14 +148,16 @@ export class AgentInstallerService {
     const sshAuth = await resolveSshAuth(vps, password, this.keys);
 
     // 6. Create pending credential (token never returned to caller)
-    const { credential, token } = await this.agentService.createCredential(
+    const created = await this.agentService.createCredential(
       vpsId,
       "pending",
     );
+    credential = created.credential;
+    const token = created.token;
 
     // 7. Create job
     const now = new Date().toISOString();
-    const job = await this.jobs.create({
+    job = await this.jobs.create({
       vpsId,
       type: "install-agent",
       status: "queued",
@@ -154,10 +167,10 @@ export class AgentInstallerService {
     });
 
     // 8. Mark state as installing
-    const state = await this.agentRepository.upsertState({
+    state = await this.agentRepository.upsertState({
       vpsId,
       status: "installing",
-      lastInstallJobId: job.id,
+      lastInstallJobId: job!.id,
     });
 
     // 9. Audit: install started
@@ -167,8 +180,8 @@ export class AgentInstallerService {
       resourceType: "vps",
       resourceId: vpsId,
       result: "success",
-      metadata: { jobId: job.id },
-    });
+      metadata: { jobId: job!.id },
+    }).catch(() => undefined);
 
     // 10. Start async install task
     this.jobRunner.start(job, async (ctx) => {
@@ -233,7 +246,8 @@ export class AgentInstallerService {
 
         // Start background loop via nohup
         await ctx.update("starting-background", 85);
-        const loopCmd = `pkill -f ${shellQuote(`${remoteBinary} -config ${remoteConfig}`)} || true; nohup ${shellQuote(remoteBinary)} -config ${shellQuote(remoteConfig)} > /dev/null 2>&1 &`;
+        const pidFile = `${remoteDir}/vps-agent.pid`;
+         const loopCmd = `umask 077; nohup ${shellQuote(remoteBinary)} -config ${shellQuote(remoteConfig)} > /dev/null 2>&1 & _pid=$!; printf '%s\\n' "$_pid" > ${shellQuote(`${pidFile}.tmp`)} && mv -f ${shellQuote(`${pidFile}.tmp`)} ${shellQuote(pidFile)}`;
         await this.ssh.execCommand(vps, loopCmd, sshAuth, 10_000);
 
         // Mark success
@@ -243,7 +257,7 @@ export class AgentInstallerService {
           version: "1.0.0",
           installedAt: new Date().toISOString(),
           lastSeenAt: new Date().toISOString(),
-          lastInstallJobId: job.id,
+          lastInstallJobId: job!.id,
         });
 
         await this.audit.record({
@@ -252,22 +266,20 @@ export class AgentInstallerService {
           resourceType: "vps",
           resourceId: vpsId,
           result: "success",
-          metadata: { jobId: job.id },
+          metadata: { jobId: job!.id },
         });
 
         await ctx.succeed("complete");
       } catch (error: unknown) {
-        await this.agentRepository
-          .revokeCredential(credential.id)
-          .catch(() => undefined);
+        await this.agentRepository.revokeCredential(credential!.id);
 
         // Mark state as failed
         await this.agentRepository.upsertState({
           vpsId,
           status: "failed",
-          lastError: error instanceof Error ? error.message : "Install failed",
-          lastSeenAt: new Date().toISOString(),
-          lastInstallJobId: job.id,
+          lastError: sanitiseError(error),
+          lastSeenAt: priorState?.lastSeenAt,
+          lastInstallJobId: job!.id,
         });
 
         await this.audit.record({
@@ -276,15 +288,23 @@ export class AgentInstallerService {
           resourceType: "vps",
           resourceId: vpsId,
           result: "failure",
-          metadata: { jobId: job.id },
+          metadata: { jobId: job!.id },
         });
 
         // Re-throw so JobRunnerService can also update job status
         throw error;
+      } finally {
+        releaseLifecycle();
       }
     });
 
-    return { jobId: job.id, state };
+    handedOff = true;
+    return { jobId: job!.id, state: state! };
+    } catch (error) {
+      if (credential) await this.agentRepository.revokeCredential(credential.id);
+      if (job) await this.jobs.update(job.id, { status: "failed", step: "setup", errorMessage: sanitiseError(error), finishedAt: new Date().toISOString() });
+      throw error;
+    } finally { if (!handedOff) releaseLifecycle(); }
   }
 
   private resolveBinaryPath(): string {

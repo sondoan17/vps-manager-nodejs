@@ -20,6 +20,7 @@ import {
 } from "../tokens.js";
 import { agentMetricPayloadSchema } from "./agent.schemas.js";
 import { VpsNotFoundError } from "../common/errors.js";
+import { AgentLifecycleCoordinator } from "./agent-lifecycle-coordinator.js";
 
 export type IngestMetricResult = {
   sample: MetricSample;
@@ -78,6 +79,7 @@ export class AgentService {
     private readonly metricRepository: MetricRepository,
     @Inject(VPS_REPOSITORY) private readonly vpsRepository: VpsRepository,
     @Inject(APP_CONFIG) private readonly config: AppConfig,
+    @Inject(AgentLifecycleCoordinator) private readonly lifecycle: AgentLifecycleCoordinator,
   ) {}
 
   /**
@@ -191,10 +193,16 @@ export class AgentService {
     payload: AgentMetricPayload,
     ip?: string,
   ): Promise<IngestMetricResult> {
+    const releaseIngest = await this.lifecycle.beginIngest(credential.vpsId);
+    try {
     // 1. Verify the VPS still exists and get its config before validating the
     // optional Docker branch. Docker payloads are ignored when disabled, so a
     // stale agent cycle cannot break core metric ingest with Docker-only schema
     // errors.
+    if (this.lifecycle.isUninstalling(credential.vpsId)) throw new UnauthorizedException({ error: { message: "Agent lifecycle operation in progress" } });
+    const currentCredential = await this.agentRepository.getCredential(credential.id);
+    if (!currentCredential || currentCredential.status === "revoked") throw new UnauthorizedException({ error: { message: "Token has been revoked" } });
+    credential = currentCredential;
     const vps = await this.vpsRepository.get(credential.vpsId);
     if (!vps) {
       throw new VpsNotFoundError();
@@ -246,7 +254,7 @@ export class AgentService {
       version: parsed.agentVersion,
       installedAt: existingState?.installedAt,
       lastSeenAt: now,
-      lastError: existingState?.lastError,
+      lastError: undefined,
       lastInstallJobId: existingState?.lastInstallJobId,
     });
 
@@ -305,5 +313,6 @@ export class AgentService {
 
     await this.metricRepository.append(sample, this.config.metricWindowLimit);
     return { sample, config: { dockerMetricsEnabled } };
+    } finally { releaseIngest(); }
   }
 }

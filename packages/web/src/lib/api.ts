@@ -17,6 +17,9 @@ export type VpsRecord = {
   kind?: "remote" | "local";
   managedBy?: "user" | "system";
   dockerMetricsEnabled?: boolean;
+  agentStatus?: "not_installed" | "installing" | "online" | "offline" | "failed";
+  lastAgentInstallJobId?: string;
+  agentLastError?: string;
 };
 
 export type DashboardDockerContainerMetric = {
@@ -134,6 +137,7 @@ export type DashboardOverview = {
     type: string;
     status: "queued" | "running" | "succeeded" | "failed" | "cancelled";
     progress: number;
+    step?: string;
     startedAt?: string;
     finishedAt?: string;
     outputPreview?: string;
@@ -367,6 +371,13 @@ export function installAgent(id: string, password?: string) {
     method: "POST",
     body: JSON.stringify(password ? { password } : {}),
   });
+}
+
+export function uninstallAgent(id: string) {
+  return request<{
+    jobId: string;
+    state: { status: string; lastInstallJobId?: string };
+  }>(`${vpsPath(id)}/uninstall-agent`, { method: "POST" });
 }
 
 export function deleteVps(id: string) {

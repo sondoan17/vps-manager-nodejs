@@ -2,6 +2,7 @@ import { Inject, Injectable } from "@nestjs/common";
 import type { CommandJob } from "../jobs/jobs.models.js";
 import type { JobRepository } from "../persistence/repositories/job.repository.js";
 import { JOB_REPOSITORY } from "../tokens.js";
+import { JobActivityService } from "./job-activity.service.js";
 
 /**
  * Context provided to each running task so it can report progress and outcome.
@@ -40,7 +41,7 @@ function redactSensitive(text: string): string {
   return result;
 }
 
-function sanitiseError(error: unknown): string {
+export function sanitiseError(error: unknown): string {
   let message: string;
 
   if (error instanceof Error) {
@@ -78,6 +79,7 @@ function sanitiseError(error: unknown): string {
 export class JobRunnerService {
   constructor(
     @Inject(JOB_REPOSITORY) private readonly jobRepository: JobRepository,
+    @Inject(JobActivityService) private readonly activity: JobActivityService,
   ) {}
 
   /**
@@ -106,42 +108,46 @@ export class JobRunnerService {
         progress: number,
         patch?: Partial<CommandJob>,
       ) => {
-        await this.jobRepository.update(job.id, {
+        const updated = await this.jobRepository.update(job.id, {
           status: "running",
           step,
           progress,
           ...patch,
         });
+        if (updated) this.activity.publish(updated);
       },
 
       fail: async (step: string, error: unknown) => {
         const message = sanitiseError(error);
-        await this.jobRepository.update(job.id, {
+        const updated = await this.jobRepository.update(job.id, {
           status: "failed",
           step,
           errorMessage: message,
           finishedAt: new Date().toISOString(),
         });
+        if (updated) this.activity.publish(updated);
       },
 
       succeed: async (step?: string, patch?: Partial<CommandJob>) => {
-        await this.jobRepository.update(job.id, {
+        const updated = await this.jobRepository.update(job.id, {
           status: "succeeded",
           step: step ?? "complete",
           progress: 100,
           finishedAt: new Date().toISOString(),
           ...patch,
         });
+        if (updated) this.activity.publish(updated);
       },
     };
 
     // Mark as running
-    await this.jobRepository.update(job.id, {
+    const started = await this.jobRepository.update(job.id, {
       status: "running",
       step: "started",
       startedAt: new Date().toISOString(),
       progress: 0,
     });
+    if (started) this.activity.publish(started);
 
     try {
       await task(ctx);

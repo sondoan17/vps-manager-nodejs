@@ -9,6 +9,7 @@ import type { MetricSample } from "../src/metrics/metrics.models.js";
 import { createJsonJobRepository } from "../src/persistence/repositories/job.repository.js";
 import { createJsonMetricRepository } from "../src/persistence/repositories/metric.repository.js";
 import { JobRunnerService } from "../src/jobs/job-runner.service.js";
+import { JobActivityService } from "../src/jobs/job-activity.service.js";
 
 // ── Helpers ────────────────────────────────────────────────────────────
 
@@ -486,7 +487,7 @@ describe("JobRunnerService", () => {
 
   async function createRunner() {
     const repo = await createJobRepo();
-    const runner = new JobRunnerService(repo);
+    const runner = new JobRunnerService(repo, new JobActivityService());
     return { repo, runner };
   }
 

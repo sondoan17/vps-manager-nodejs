@@ -1166,6 +1166,63 @@ describe("React dashboard", () => {
       expect(manageLinks[1]).toHaveAttribute("href", "/vps/vps-2");
     });
 
+    it("shows live agent progress from jobs.updated without a refresh", async () => {
+      const installingRecords = [
+        {
+          ...twoServerRecords[0],
+          agentStatus: "installing",
+          lastAgentInstallJobId: "agent-job-1",
+        },
+      ];
+      fetchMock
+        .mockResolvedValueOnce(authOk())
+        .mockResolvedValueOnce({ ok: true, status: 200, json: async () => ({ data: twoServersDashboard }) })
+        .mockResolvedValueOnce({ ok: true, status: 200, json: async () => ({ data: installingRecords }) })
+        .mockResolvedValueOnce({ ok: true, status: 200, json: async () => ({ data: [] }) })
+        .mockResolvedValueOnce({ ok: true, status: 200, json: async () => ({ data: [] }) })
+        .mockResolvedValueOnce({ ok: true, status: 200, json: async () => ({ data: [] }) });
+
+      renderApp(["/vps"]);
+      expect(await screen.findByText("web-01")).toBeInTheDocument();
+
+      mockEventSourceInstance?.dispatchEvent(
+        "jobs.updated",
+        makeEnvelope("jobs.updated", {
+          jobs: [{
+            id: "agent-job-1",
+            vpsId: "vps-1",
+            type: "install-agent",
+            status: "running",
+            step: "uploading-binary",
+            progress: 30,
+          }],
+        }),
+      );
+
+      expect(await screen.findByText("Uploading agent")).toBeInTheDocument();
+      expect(screen.getByRole("progressbar", { name: /Agent install: Uploading agent/i })).toHaveAttribute("aria-valuenow", "30");
+      expect(fetchMock).toHaveBeenCalledTimes(6);
+    });
+
+    it("hides install and offers uninstall when the agent is online", async () => {
+      const onlineRecords = [{ ...twoServerRecords[0], agentStatus: "online" }];
+      fetchMock
+        .mockResolvedValueOnce(authOk())
+        .mockResolvedValueOnce({ ok: true, status: 200, json: async () => ({ data: twoServersDashboard }) })
+        .mockResolvedValueOnce({ ok: true, status: 200, json: async () => ({ data: onlineRecords }) })
+        .mockResolvedValueOnce({ ok: true, status: 200, json: async () => ({ data: [] }) })
+        .mockResolvedValueOnce({ ok: true, status: 200, json: async () => ({ data: [] }) })
+        .mockResolvedValueOnce({ ok: true, status: 200, json: async () => ({ data: [] }) });
+
+      const user = userEvent.setup();
+      renderApp(["/vps"]);
+      expect((await screen.findAllByText("Agent online")).length).toBeGreaterThan(0);
+      expect(screen.queryByRole("button", { name: "Install agent" })).not.toBeInTheDocument();
+
+      await user.click(screen.getByRole("button", { name: "More actions for web-01" }));
+      expect(await screen.findByRole("menuitem", { name: "Uninstall agent" })).toBeInTheDocument();
+    });
+
     it("shows login gate after logout when auth is required", async () => {
       fetchMock
         .mockResolvedValueOnce(authOk("local", true))

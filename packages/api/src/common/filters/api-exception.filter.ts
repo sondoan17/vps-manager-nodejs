@@ -88,12 +88,34 @@ export class ApiExceptionFilter implements ExceptionFilter {
 
     if (error instanceof HttpException) {
       const payload = error.getResponse();
-      const message =
-        typeof payload === "object" && payload && "error" in payload
-          ? (payload as { error?: { message?: unknown } }).error?.message
-          : typeof payload === "object" && payload && "message" in payload
-            ? (payload as { message?: unknown }).message
-            : error.message;
+      const responseBody =
+        typeof payload === "object" && payload !== null
+          ? (payload as Record<string, unknown>)
+          : undefined;
+
+      // Standard NestJS HttpException responses are
+      // { statusCode, message, error } where `error` is the HTTP error name
+      // (a plain string). Nested payloads are { error: { message } }.
+      // Prefer the nested error.message when truly nested, otherwise use the
+      // top-level message string. Array messages (validation detail lists)
+      // and other non-string payloads intentionally fall through to the safe
+      // generic response.
+      let message: unknown;
+      if (responseBody) {
+        if (
+          typeof responseBody.error === "object" &&
+          responseBody.error !== null &&
+          typeof (responseBody.error as { message?: unknown }).message ===
+            "string"
+        ) {
+          message = (responseBody.error as { message: string }).message;
+        } else if (typeof responseBody.message === "string") {
+          message = responseBody.message;
+        }
+      } else {
+        message = error.message;
+      }
+
       return response
         .status(error.getStatus())
         .json(

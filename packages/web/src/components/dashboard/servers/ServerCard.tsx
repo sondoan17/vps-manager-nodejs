@@ -15,6 +15,7 @@ import {
   ShieldCheck,
   TerminalSquare,
   Trash2,
+  Unplug,
 } from "lucide-react";
 import { Button } from "../../ui/button";
 import {
@@ -47,6 +48,7 @@ import type { DashboardOverview, VpsRecord } from "../../../lib/api";
 import { formatUptime } from "../shared/formatUptime";
 import { formatBytes } from "./helpers";
 import { DockerMetricsPanel } from "./DockerMetricsPanel";
+import { AgentLifecycleStatus, agentJobFor } from "./AgentLifecycleStatus";
 
 // ── ServerCard ───────────────────────────────────────────────────────
 
@@ -62,6 +64,7 @@ export function ServerCard({
   onProvision,
   onVerify,
   onInstallAgent,
+  onUninstallAgent,
   onToggleDockerMetrics,
   onDelete,
 }: {
@@ -76,6 +79,7 @@ export function ServerCard({
   onProvision: (vps: VpsRecord) => void;
   onVerify: (vps: VpsRecord) => void;
   onInstallAgent: (vps: VpsRecord) => void;
+  onUninstallAgent: (vps: VpsRecord) => void;
   onToggleDockerMetrics: (vps: VpsRecord) => void;
   onDelete: (vps: VpsRecord) => void;
 }) {
@@ -86,6 +90,7 @@ export function ServerCard({
   const [confirmOpen, setConfirmOpen] = useState(false);
   const [passwordError, setPasswordError] = useState("");
   const [deleteTarget, setDeleteTarget] = useState<VpsRecord | null>(null);
+  const [uninstallTarget, setUninstallTarget] = useState<VpsRecord | null>(null);
   const displayName = vpsDisplayName(vps);
   const osLabel =
     systemInfo?.os?.prettyName ||
@@ -94,11 +99,27 @@ export function ServerCard({
     "OS not reported";
   const agentStateLabel = isLocalHost
     ? "Local Agent"
+    : vps.agentStatus === "online"
+      ? "Agent online"
+      : vps.agentStatus === "offline"
+        ? "Agent offline"
+        : vps.agentStatus === "installing"
+          ? "Agent setup in progress"
+          : vps.agentStatus === "failed"
+            ? "Agent action failed"
     : systemInfo?.agentVersion
       ? `Agent ${systemInfo.agentVersion}`
       : isReady
         ? "Agent not reported · key ready"
         : "Agent pending · needs password";
+  const agentJob = agentJobFor(vps, jobs);
+  const agentActionRunning = Boolean(
+    agentJob && (agentJob.status === "queued" || agentJob.status === "running"),
+  );
+  const showInstall =
+    !agentActionRunning &&
+    vps.agentStatus !== "online" &&
+    vps.agentStatus !== "offline";
 
   const handlePasswordKeyDown = (e: React.KeyboardEvent) => {
     if (e.key === "Enter") {
@@ -204,7 +225,7 @@ export function ServerCard({
                 <KeyRound size={16} />
                 Reinstall key
               </Button>
-              <Button
+              {showInstall ? <Button
                 type="button"
                 size="sm"
                 variant="default"
@@ -212,8 +233,8 @@ export function ServerCard({
                 onClick={() => onInstallAgent(vps)}
               >
                 <DownloadCloud size={16} />
-                Install agent
-              </Button>
+                {vps.agentStatus === "failed" ? "Retry install" : "Install agent"}
+              </Button> : null}
             </>
           ) : (
             <>
@@ -244,11 +265,15 @@ export function ServerCard({
             busy={busy}
             isLocalHost={isLocalHost}
             onRotate={() => setShowPassword(true)}
+            onRequestUninstall={() => {
+              window.setTimeout(() => setUninstallTarget(vps), 0);
+            }}
             onRequestDelete={() => {
               window.setTimeout(() => setDeleteTarget(vps), 0);
             }}
           />
           </div>
+          {!isLocalHost ? <AgentLifecycleStatus vps={vps} jobs={jobs} /> : null}
         </div>
       </footer>
       {/* Delete confirmation – rendered outside DropdownMenu to avoid focus-trap nesting */}
@@ -275,6 +300,34 @@ export function ServerCard({
               }}
             >
               Delete server
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+      {/* Uninstall confirmation – outside DropdownMenu so focus is restored cleanly */}
+      <AlertDialog
+        open={uninstallTarget?.id === vps.id}
+        onOpenChange={(open) => {
+          if (!open) setUninstallTarget(null);
+        }}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Uninstall agent from {displayName}?</AlertDialogTitle>
+            <AlertDialogDescription>
+              Monitoring from this agent will stop. The server record and SSH access stay in place.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+              onClick={() => {
+                onUninstallAgent(vps);
+                setUninstallTarget(null);
+              }}
+            >
+              Uninstall agent
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
@@ -587,12 +640,14 @@ function ServerOverflow({
   busy,
   isLocalHost,
   onRotate,
+  onRequestUninstall,
   onRequestDelete,
 }: {
   vps: VpsRecord;
   busy: boolean;
   isLocalHost: boolean;
   onRotate: () => void;
+  onRequestUninstall: () => void;
   onRequestDelete: () => void;
 }) {
   const displayName = vpsDisplayName(vps);
@@ -638,6 +693,16 @@ function ServerOverflow({
             {vps.keyProvisionedAt ? "Rotate key" : "Install key"}
           </DropdownMenuItem>
         )}
+        {vps.agentStatus === "online" || vps.agentStatus === "offline" ? (
+          <DropdownMenuItem
+            className="text-destructive focus:text-destructive"
+            disabled={busy}
+            onClick={onRequestUninstall}
+          >
+            <Unplug size={15} />
+            Uninstall agent
+          </DropdownMenuItem>
+        ) : null}
         <DropdownMenuItem disabled>
           <Edit3 size={15} />
           Edit server

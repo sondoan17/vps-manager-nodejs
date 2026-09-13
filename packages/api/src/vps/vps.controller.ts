@@ -98,6 +98,25 @@ export class VpsController {
     };
   }
 
+  /**
+   * Queue asynchronous agent removal for a VPS.
+   * Returns job metadata immediately; the job performs remote removal using
+   * the provisioned SSH key, then revokes credentials and clears agent state.
+   */
+  @Post(":id/uninstall-agent")
+  async uninstallAgent(@Param("id") id: string) {
+    const result = await this.vps.uninstallAgent(id);
+    return {
+      data: {
+        jobId: result.jobId,
+        state: {
+          status: result.state.status,
+          lastInstallJobId: result.state.lastInstallJobId,
+        },
+      },
+    };
+  }
+
   // ── Scoped VPS endpoints ───────────────────────────────────────────────
 
   /**

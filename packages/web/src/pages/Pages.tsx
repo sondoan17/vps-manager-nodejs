@@ -53,6 +53,7 @@ export function VpsListPage() {
       onProvision={ctx.onProvision}
       onVerify={ctx.onVerify}
       onInstallAgent={ctx.onInstallAgent}
+      onUninstallAgent={ctx.onUninstallAgent}
       onToggleDockerMetrics={ctx.onToggleDockerMetrics}
       onDelete={ctx.onDelete}
     />

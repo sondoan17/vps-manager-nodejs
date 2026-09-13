@@ -114,6 +114,12 @@ export function createPostgresAgentRepository(
       );
       return result.rows[0] ? rowToState(result.rows[0]) : undefined;
     },
+    async listStates() {
+      const result = await pool.query<AgentStateRow>(
+        "SELECT * FROM agent_states",
+      );
+      return result.rows.map(rowToState);
+    },
     async upsertState(state) {
       const result = await pool.query<AgentStateRow>(
         `INSERT INTO agent_states (vps_id, status, version, installed_at, last_seen_at, last_error, last_install_job_id)
@@ -226,6 +232,14 @@ export function createPostgresAgentRepository(
         "SELECT * FROM agent_system_info",
       );
       return result.rows.map(rowToSystemInfo);
+    },
+
+    async deleteSystemInfo(vpsId: string) {
+      const result = await pool.query(
+        "DELETE FROM agent_system_info WHERE vps_id = $1",
+        [vpsId],
+      );
+      return Boolean(result.rowCount);
     },
 
     async upsertDockerMetrics(metrics: AgentDockerMetrics) {

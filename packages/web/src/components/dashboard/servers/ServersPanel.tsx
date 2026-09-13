@@ -116,6 +116,8 @@ export function ServersPanel(props: ServersPanelProps) {
               provisionPasswords={props.provisionPasswords}
               onVerify={props.onVerify}
               onInstallAgent={props.onInstallAgent}
+              onUninstallAgent={props.onUninstallAgent}
+              jobs={props.jobs}
               onDelete={props.onDelete}
             />
           ) : (
@@ -134,6 +136,7 @@ export function ServersPanel(props: ServersPanelProps) {
                   onProvision={props.onProvision}
                   onVerify={props.onVerify}
                   onInstallAgent={props.onInstallAgent}
+                  onUninstallAgent={props.onUninstallAgent}
                   onToggleDockerMetrics={props.onToggleDockerMetrics}
                   onDelete={props.onDelete}
                 />

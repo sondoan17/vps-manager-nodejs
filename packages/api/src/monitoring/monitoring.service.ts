@@ -15,6 +15,11 @@ import type { MetricSample } from "../metrics/metrics.models.js";
 import type { VpsRecord } from "../vps/vps.models.js";
 import type { MetricRepository } from "../persistence/repositories/metric.repository.js";
 import { MetricService } from "../metrics/metric.service.js";
+import { JobService } from "../jobs/job.service.js";
+import {
+  JobActivityService,
+  type JobActivityListener,
+} from "../jobs/job-activity.service.js";
 import { APP_CONFIG, METRIC_REPOSITORY } from "../tokens.js";
 
 // ── Event envelope types ──────────────────────────────────────────────
@@ -39,6 +44,9 @@ type MetricsUpdatedPayload = {
   metrics: DashboardMetricSample[];
   systemInfo?: DashboardOverview["systemInfo"];
   dockerMetrics?: AgentDockerMetrics[];
+};
+type JobsUpdatedPayload = {
+  jobs: DashboardJob[];
 };
 type HeartbeatPayload = Record<string, never>;
 type ErrorPayload = { message: string };
@@ -183,6 +191,66 @@ export function isFreshTimestamp(
   return Date.now() - new Date(timestamp).getTime() < thresholdMs;
 }
 
+// ── Job change tracking per SSE stream ────────────────────────────────
+//
+// A stream keeps its own buffered view of changed jobs. Raw activity events
+// can arrive several times per second (every progress step), so we coalesce
+// them with a short trailing debounce and emit at most one `jobs.updated`
+// event per flush containing only the jobs that actually changed. Unchanged
+// jobs are never re-emitted (deduplication), and heartbeat/metrics cadence
+// is untouched.
+
+const JOB_EVENT_DEBOUNCE_MS = 150;
+
+type JobStreamTracker = { flush: () => void; teardown: () => void };
+
+function createJobStreamTracker(
+  res: Response,
+  activity: JobActivityService,
+  scope?: { vpsId: string },
+): JobStreamTracker {
+  const pending = new Map<string, DashboardJob>();
+  let timer: NodeJS.Timeout | null = null;
+  let closed = false;
+  let unsubscribed = false;
+  let removeSubscription: (() => void) | null = null;
+
+  const teardown = () => {
+    if (closed) return;
+    closed = true;
+    pending.clear();
+    if (timer) { clearTimeout(timer); timer = null; }
+    if (!unsubscribed) { unsubscribed = true; removeSubscription?.(); removeSubscription = null; }
+  };
+
+  const flush = () => {
+    timer = null;
+    if (closed || pending.size === 0) return;
+    const jobs = [...pending.values()];
+    pending.clear();
+    try {
+      sendEvent(res, "jobs.updated", { jobs });
+    } catch {
+      teardown();
+    }
+  };
+
+  const scheduleFlush = () => {
+    if (timer || closed) return;
+    timer = setTimeout(flush, JOB_EVENT_DEBOUNCE_MS);
+  };
+
+  const listener: JobActivityListener = (job) => {
+    if (closed) return;
+    if (scope && job.vpsId !== scope.vpsId) return;
+    pending.set(job.id, { ...job, progress: job.progress ?? 0 });
+    scheduleFlush();
+  };
+
+  removeSubscription = activity.subscribe(listener);
+  return { flush, teardown };
+}
+
 // ── Service ───────────────────────────────────────────────────────────
 
 @Injectable()
@@ -201,6 +269,8 @@ export class MonitoringService {
     @Inject(MetricService) private readonly metricService: MetricService,
     @Inject(METRIC_REPOSITORY)
     private readonly metricRepository: MetricRepository,
+    @Inject(JobService) private readonly jobs: JobService,
+    @Inject(JobActivityService) private readonly jobActivity: JobActivityService,
   ) {
     this.intervalMs = this.config.mode === "demo" ? 1_500 : 5_000;
   }
@@ -219,22 +289,32 @@ export class MonitoringService {
     // Flush headers
     res.flushHeaders();
 
-    // Hello
-    sendEvent(res, "monitoring.hello", {
-      mode: this.config.mode,
-      intervalMs: this.intervalMs,
-    });
+    // Subscribe to job activity so `jobs.updated` events stream live progress.
+    const jobTracker = createJobStreamTracker(res, this.jobActivity);
+    res.once("close", () => jobTracker.teardown());
+    res.once("finish", () => jobTracker.teardown());
+    res.once("error", () => jobTracker.teardown());
 
-    // Snapshot
-    const overview = await this.dashboardService.overview();
-    const snapshotPayload: SnapshotPayload = {
-      overview,
-      servers: overview.servers,
-      jobs: overview.jobs,
-      metrics: overview.metrics,
-      auditEvents: overview.auditEvents,
-    };
-    sendEvent(res, "monitoring.snapshot", snapshotPayload);
+    try {
+      // Hello + initial snapshot must either complete together or close cleanly.
+      sendEvent(res, "monitoring.hello", {
+        mode: this.config.mode,
+        intervalMs: this.intervalMs,
+      });
+      const overview = await this.dashboardService.overview();
+      const snapshotPayload: SnapshotPayload = {
+        overview,
+        servers: overview.servers,
+        jobs: overview.jobs,
+        metrics: overview.metrics,
+        auditEvents: overview.auditEvents,
+      };
+      sendEvent(res, "monitoring.snapshot", snapshotPayload);
+    } catch {
+      jobTracker.teardown();
+      if (!res.writableEnded) res.end();
+      return;
+    }
 
     // Periodic metrics + heartbeat
     if (this.config.mode === "demo") {
@@ -375,63 +455,78 @@ export class MonitoringService {
     });
     res.flushHeaders();
 
-    // Hello
-    sendEvent(res, "monitoring.hello", {
-      mode: this.config.mode,
-      intervalMs: this.intervalMs,
+    // Subscribe to job activity scoped to this VPS.
+    const jobTracker = createJobStreamTracker(res, this.jobActivity, {
+      vpsId,
     });
+    res.once("close", () => jobTracker.teardown());
+    res.once("finish", () => jobTracker.teardown());
+    res.once("error", () => jobTracker.teardown());
 
-    // Build and send filtered snapshot
-    const overview = await this.dashboardService.overview();
-    const vps = overview.servers.find((s) => s.id === vpsId);
-    if (!vps) {
-      sendEvent(res, "monitoring.error", { message: "VPS not found" });
-      res.end();
+    try {
+      // Hello + initial scoped snapshot must complete before loops are added.
+      sendEvent(res, "monitoring.hello", {
+        mode: this.config.mode,
+        intervalMs: this.intervalMs,
+      });
+
+      // Build and send filtered snapshot
+      const overview = await this.dashboardService.overview();
+      const vps = overview.servers.find((s) => s.id === vpsId);
+      if (!vps) {
+        sendEvent(res, "monitoring.error", { message: "VPS not found" });
+        jobTracker.teardown();
+        res.end();
+        return;
+      }
+
+      const filteredMetrics = overview.metrics.filter((m) => m.vpsId === vpsId);
+      const filteredJobs = overview.jobs.filter((j) => j.vpsId === vpsId);
+      const vpsJobIds = new Set(filteredJobs.map((j) => j.id));
+      const filteredAudit = overview.auditEvents.filter(
+        (e) =>
+          e.resourceId === vpsId ||
+          (e.jobId != null && vpsJobIds.has(e.jobId)) ||
+          (e.resourceId != null && vpsJobIds.has(e.resourceId)) ||
+          e.serverLabel === vps.name,
+      );
+      const filteredSystemInfo = (overview.systemInfo ?? []).filter(
+        (s) => s.vpsId === vpsId,
+      );
+      const filteredDockerMetrics = (overview.dockerMetrics ?? []).filter(
+        (d) => d.vpsId === vpsId,
+      );
+
+      const filteredOverview: DashboardOverview = {
+        ...overview,
+        summary: {
+          totalServers: 1,
+          healthyServers: vps.status === "healthy" ? 1 : 0,
+          warningServers: vps.status === "warning" ? 1 : 0,
+          unreachableServers: vps.status === "unreachable" ? 1 : 0,
+          runningJobs: filteredJobs.filter((j) => j.status === "running").length,
+        },
+        servers: [vps],
+        metrics: filteredMetrics,
+        jobs: filteredJobs,
+        auditEvents: filteredAudit,
+        systemInfo: filteredSystemInfo,
+        dockerMetrics: filteredDockerMetrics,
+      };
+
+      const snapshotPayload: SnapshotPayload = {
+        overview: filteredOverview,
+        servers: [vps],
+        jobs: filteredJobs,
+        metrics: filteredMetrics,
+        auditEvents: filteredAudit,
+      };
+      sendEvent(res, "monitoring.snapshot", snapshotPayload);
+    } catch {
+      jobTracker.teardown();
+      if (!res.writableEnded) res.end();
       return;
     }
-
-    const filteredMetrics = overview.metrics.filter((m) => m.vpsId === vpsId);
-    const filteredJobs = overview.jobs.filter((j) => j.vpsId === vpsId);
-    const vpsJobIds = new Set(filteredJobs.map((j) => j.id));
-    const filteredAudit = overview.auditEvents.filter(
-      (e) =>
-        e.resourceId === vpsId ||
-        (e.jobId != null && vpsJobIds.has(e.jobId)) ||
-        (e.resourceId != null && vpsJobIds.has(e.resourceId)) ||
-        e.serverLabel === vps.name,
-    );
-    const filteredSystemInfo = (overview.systemInfo ?? []).filter(
-      (s) => s.vpsId === vpsId,
-    );
-    const filteredDockerMetrics = (overview.dockerMetrics ?? []).filter(
-      (d) => d.vpsId === vpsId,
-    );
-
-    const filteredOverview: DashboardOverview = {
-      ...overview,
-      summary: {
-        totalServers: 1,
-        healthyServers: vps.status === "healthy" ? 1 : 0,
-        warningServers: vps.status === "warning" ? 1 : 0,
-        unreachableServers: vps.status === "unreachable" ? 1 : 0,
-        runningJobs: filteredJobs.filter((j) => j.status === "running").length,
-      },
-      servers: [vps],
-      metrics: filteredMetrics,
-      jobs: filteredJobs,
-      auditEvents: filteredAudit,
-      systemInfo: filteredSystemInfo,
-      dockerMetrics: filteredDockerMetrics,
-    };
-
-    const snapshotPayload: SnapshotPayload = {
-      overview: filteredOverview,
-      servers: [vps],
-      jobs: filteredJobs,
-      metrics: filteredMetrics,
-      auditEvents: filteredAudit,
-    };
-    sendEvent(res, "monitoring.snapshot", snapshotPayload);
 
     // Periodic filtered metrics
     if (this.config.mode === "demo") {

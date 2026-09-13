@@ -5,12 +5,14 @@ import type { CommandJob } from "../jobs/jobs.models.js";
 import type { JobRepository } from "../persistence/repositories/job.repository.js";
 import type { PaginationParams } from "../common/pagination.js";
 import { APP_CONFIG, JOB_REPOSITORY } from "../tokens.js";
+import { JobActivityService } from "./job-activity.service.js";
 
 @Injectable()
 export class JobService {
   constructor(
     @Inject(APP_CONFIG) private readonly config: AppConfig,
     @Inject(JOB_REPOSITORY) private readonly jobRepository: JobRepository,
+    @Inject(JobActivityService) private readonly activity: JobActivityService,
   ) {}
 
   async list(page?: PaginationParams): Promise<CommandJob[]> {
@@ -53,19 +55,25 @@ export class JobService {
   async create(
     input: Omit<CommandJob, "id"> & { id?: string },
   ): Promise<CommandJob> {
-    return this.jobRepository.create(input, this.config.jobHistoryLimit);
+    const job = await this.jobRepository.create(input, this.config.jobHistoryLimit);
+    this.activity.publish(job);
+    return job;
   }
 
   async update(
     id: string,
     patch: Partial<Omit<CommandJob, "id">>,
   ): Promise<CommandJob | undefined> {
-    return this.jobRepository.update(id, patch);
+    const job = await this.jobRepository.update(id, patch);
+    if (job) this.activity.publish(job);
+    return job;
   }
 
   async append(
     input: Omit<CommandJob, "id"> & { id?: string },
   ): Promise<CommandJob> {
-    return this.jobRepository.append(input, this.config.jobHistoryLimit);
+    const job = await this.jobRepository.append(input, this.config.jobHistoryLimit);
+    this.activity.publish(job);
+    return job;
   }
 }

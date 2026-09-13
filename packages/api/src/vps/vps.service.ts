@@ -21,9 +21,11 @@ import {
   updateVpsSchema,
 } from "./vps.schemas.js";
 import { AgentInstallerService } from "../agents/agent-installer.service.js";
+import { AgentUninstallerService } from "../agents/agent-uninstaller.service.js";
 import { AGENT_REPOSITORY } from "../tokens.js";
 import type { AgentRepository } from "../persistence/repositories/agent.repository.js";
 import { HostKeyPinService } from "../ssh/host-key-pin.service.js";
+import { applyAgentState, type VpsRecord } from "./vps.models.js";
 
 @Injectable()
 export class VpsService {
@@ -34,6 +36,7 @@ export class VpsService {
     private readonly audit: AuditService,
     private readonly config: AppConfig,
     private readonly agentInstaller: AgentInstallerService,
+    private readonly agentUninstaller: AgentUninstallerService,
     @Inject(AGENT_REPOSITORY) private readonly agentRepository: AgentRepository,
     private readonly hostKeyPin: HostKeyPinService,
   ) {}
@@ -42,7 +45,20 @@ export class VpsService {
     const records = await this.store.list();
     if (records.length === 0 && this.config.mode === "demo")
       return [...demoServers];
-    return records;
+    return this.withAgentStates(records);
+  }
+
+  /**
+   * Attach persisted agent state to VPS records (local mode only; demo
+   * fixtures already carry agent fields). Batch-fetches states in one read.
+   */
+  private async withAgentStates(records: VpsRecord[]): Promise<VpsRecord[]> {
+    if (this.config.mode === "demo") return records;
+    const states = await this.agentRepository.listStates();
+    const stateById = new Map(states.map((s) => [s.vpsId, s]));
+    return records.map((record) =>
+      applyAgentState(record, stateById.get(record.id)),
+    );
   }
 
   private assertNotDemo() {
@@ -85,7 +101,11 @@ export class VpsService {
 
   async get(id: string) {
     const record = await this.store.get(id);
-    if (record) return record;
+    if (record) {
+      if (this.config.mode === "demo") return record;
+      const state = await this.agentRepository.getState(id);
+      return applyAgentState(record, state);
+    }
     // In demo mode fall back to demo fixtures (matching list() semantics)
     if (this.config.mode === "demo") {
       const demo = demoServers.find((s) => s.id === id);
@@ -326,5 +346,12 @@ export class VpsService {
       });
       throw error;
     }
+  }
+
+  async uninstallAgent(id: string) {
+    this.assertNotDemo();
+    const vps = await this.get(id);
+    this.assertRemoteUserManaged(vps);
+    return this.agentUninstaller.uninstall(vps.id);
   }
 }

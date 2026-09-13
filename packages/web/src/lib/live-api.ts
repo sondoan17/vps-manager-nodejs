@@ -29,6 +29,10 @@ export type MetricsUpdatedPayload = {
   dockerMetrics?: DashboardOverview["dockerMetrics"];
 };
 
+export type JobsUpdatedPayload = {
+  jobs: DashboardOverview["jobs"];
+};
+
 export type MonitoringHeartbeatPayload = Record<string, never>;
 
 export type MonitoringErrorPayload = {
@@ -41,6 +45,7 @@ export type MonitoringEvent =
   | MonitoringEnvelope<"monitoring.hello", MonitoringHelloPayload>
   | MonitoringEnvelope<"monitoring.snapshot", MonitoringSnapshotPayload>
   | MonitoringEnvelope<"metrics.updated", MetricsUpdatedPayload>
+  | MonitoringEnvelope<"jobs.updated", JobsUpdatedPayload>
   | MonitoringEnvelope<"monitoring.heartbeat", MonitoringHeartbeatPayload>
   | MonitoringEnvelope<"monitoring.error", MonitoringErrorPayload>;
 
@@ -58,6 +63,7 @@ export type MonitoringCallbacks = {
   onHello?: (payload: MonitoringHelloPayload) => void;
   onSnapshot?: (payload: MonitoringSnapshotPayload) => void;
   onMetricsUpdated?: (payload: MetricsUpdatedPayload) => void;
+  onJobsUpdated?: (payload: JobsUpdatedPayload) => void;
   onHeartbeat?: (payload: MonitoringHeartbeatPayload) => void;
   onError?: (payload: MonitoringErrorPayload) => void;
   onConnectionChange?: (state: LiveConnectionState) => void;
@@ -124,6 +130,21 @@ export function subscribeMonitoring(
         reconnectAttempts = 0;
       } catch {
         // Ignore
+      }
+    });
+
+    es.addEventListener("jobs.updated", (event: MessageEvent) => {
+      try {
+        const envelope = JSON.parse(event.data) as MonitoringEvent;
+        if (envelope.schemaVersion !== 1) return;
+        callbacks.onJobsUpdated?.(envelope.payload as JobsUpdatedPayload);
+        callbacks.onConnectionChange?.({
+          status: "live",
+          latestEventAt: envelope.emittedAt,
+        });
+        reconnectAttempts = 0;
+      } catch {
+        // Ignore malformed events
       }
     });
 

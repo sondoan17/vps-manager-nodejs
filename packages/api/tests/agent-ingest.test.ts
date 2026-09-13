@@ -14,6 +14,7 @@ import { createJsonMetricRepository } from "../src/persistence/repositories/metr
 import { createKeyService } from "../src/ssh/keyService.js";
 import { createVpsStore } from "../src/persistence/store/vpsStore.js";
 import { AgentService } from "../src/agents/agent.service.js";
+import { AgentLifecycleCoordinator } from "../src/agents/agent-lifecycle-coordinator.js";
 import { isFreshTimestamp } from "../src/monitoring/monitoring.service.js";
 
 const demoConfig: AppConfig = {
@@ -73,7 +74,7 @@ function makeService() {
   const metricRepo = createJsonMetricRepository(
     join(tempDir, "data", "metrics.json"),
   );
-  const service = new AgentService(agentRepo, metricRepo, vpsRepo, demoConfig);
+  const service = new AgentService(agentRepo, metricRepo, vpsRepo, demoConfig, new AgentLifecycleCoordinator());
   return { agentRepo, metricRepo, service };
 }
 
