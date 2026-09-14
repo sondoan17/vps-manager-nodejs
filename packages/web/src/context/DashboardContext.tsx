@@ -36,6 +36,7 @@ import {
   updateVps,
   verifyKey,
   type DashboardOverview,
+  type UpdateVpsPayload,
   type VpsRecord,
 } from "../lib/api";
 import { subscribeMonitoring, type LiveConnectionState } from "../lib/live-api";
@@ -98,6 +99,7 @@ export type DashboardCtx = {
   onInstallAgent: (vps: VpsRecord) => void;
   onUninstallAgent: (vps: VpsRecord) => void;
   onToggleDockerMetrics: (vps: VpsRecord) => void;
+  onEdit: (vps: VpsRecord, payload: UpdateVpsPayload) => Promise<void>;
   onDelete: (vps: VpsRecord) => void;
 };
 
@@ -628,6 +630,22 @@ export function DashboardProvider({
     );
   }
 
+  async function handleEdit(vps: VpsRecord, payload: UpdateVpsPayload) {
+    if (busy) throw new Error("Another action is still running.");
+    if (overview.mode === "demo") throw new Error("Editing is unavailable in demo mode.");
+    setBusy(true);
+    try {
+      await updateVps(vps.id, payload);
+      await loadVps(`Updated ${payload.displayName || vpsDisplayName(vps)}.`);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Could not update server.";
+      setStatus({ message, kind: "destructive" });
+      throw new Error(message);
+    } finally {
+      setBusy(false);
+    }
+  }
+
   async function handleDelete(vps: VpsRecord) {
     const label = vpsDisplayName(vps);
     await runAction(`Deleting ${label}...`, async () => {
@@ -707,6 +725,7 @@ export function DashboardProvider({
     onInstallAgent: handleInstallAgent,
     onUninstallAgent: handleUninstallAgent,
     onToggleDockerMetrics: handleToggleDockerMetrics,
+    onEdit: handleEdit,
     onDelete: handleDelete,
   };
 

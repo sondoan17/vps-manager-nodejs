@@ -1,4 +1,4 @@
-import { cleanup, render, screen, waitFor } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { MemoryRouter } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -1623,5 +1623,226 @@ describe("React dashboard", () => {
       });
     });
 
+  });
+
+  describe("Edit server regressions", () => {
+    const editableServer = {
+      id: "vps-edit-1",
+      name: "generated-edit-name",
+      displayName: "Production API",
+      host: "203.0.113.10",
+      port: 22,
+      username: "deploy",
+      provider: "Hetzner",
+      region: "Singapore",
+      notes: "Original notes",
+      status: "healthy" as const,
+      createdAt: "2026-01-01T00:00:00.000Z",
+      updatedAt: "2026-01-01T00:00:00.000Z",
+    };
+
+    function dashboardFor(mode: "demo" | "local" = "local") {
+      return {
+        ...emptyDashboard,
+        mode,
+        settings: { ...emptyDashboard.settings, appMode: mode },
+      };
+    }
+
+    function queueInitialEditLoad(
+      server = editableServer,
+      mode: "demo" | "local" = "local",
+    ) {
+      fetchMock
+        .mockResolvedValueOnce(authOk(mode, mode === "local"))
+        .mockResolvedValueOnce({
+          ok: true,
+          status: 200,
+          json: async () => ({ data: dashboardFor(mode) }),
+        })
+        .mockResolvedValueOnce({
+          ok: true,
+          status: 200,
+          json: async () => ({ data: [server] }),
+        })
+        .mockResolvedValueOnce({ ok: true, status: 200, json: async () => ({ data: [] }) })
+        .mockResolvedValueOnce({ ok: true, status: 200, json: async () => ({ data: [] }) })
+        .mockResolvedValueOnce({ ok: true, status: 200, json: async () => ({ data: [] }) });
+    }
+
+    function queueRefresh(server = editableServer) {
+      fetchMock
+        .mockResolvedValueOnce({
+          ok: true,
+          status: 200,
+          json: async () => ({ data: dashboardFor() }),
+        })
+        .mockResolvedValueOnce({
+          ok: true,
+          status: 200,
+          json: async () => ({ data: [server] }),
+        })
+        .mockResolvedValueOnce({ ok: true, status: 200, json: async () => ({ data: [] }) })
+        .mockResolvedValueOnce({ ok: true, status: 200, json: async () => ({ data: [] }) })
+        .mockResolvedValueOnce({ ok: true, status: 200, json: async () => ({ data: [] }) });
+    }
+
+    async function openEditMenu(user: ReturnType<typeof userEvent.setup>) {
+      await user.click(
+        screen.getByRole("button", { name: "More actions for Production API" }),
+      );
+    }
+
+    it("saves trimmed editable fields, refreshes the fleet, and closes the dialog", async () => {
+      // Positive objective case: an allowed remote-server edit is sent once with the complete normalized payload and reflected after refresh.
+      const user = userEvent.setup();
+      const updatedServer = {
+        ...editableServer,
+        displayName: "Production API East",
+        host: "198.51.100.25",
+        port: 2222,
+        username: "admin",
+        provider: "OVH",
+        region: "Frankfurt",
+        notes: "Primary endpoint",
+      };
+      queueInitialEditLoad();
+      renderApp(["/vps"]);
+      expect(await screen.findByText("Production API")).toBeInTheDocument();
+
+      await openEditMenu(user);
+      await user.click(screen.getByRole("menuitem", { name: "Edit server" }));
+      expect(await screen.findByRole("heading", { name: "Edit server" })).toBeInTheDocument();
+      expect(screen.getByLabelText("Display name")).toHaveValue("Production API");
+      expect(screen.getByLabelText("Host / IP")).toHaveValue("203.0.113.10");
+      expect(screen.getByLabelText("SSH port")).toHaveValue(22);
+      expect(screen.getByLabelText("Username")).toHaveValue("deploy");
+
+      await user.clear(screen.getByLabelText("Display name"));
+      await user.type(screen.getByLabelText("Display name"), "  Production API East  ");
+      await user.clear(screen.getByLabelText("Host / IP"));
+      await user.type(screen.getByLabelText("Host / IP"), "  198.51.100.25  ");
+      await user.clear(screen.getByLabelText("SSH port"));
+      await user.type(screen.getByLabelText("SSH port"), "2222");
+      await user.clear(screen.getByLabelText("Username"));
+      await user.type(screen.getByLabelText("Username"), "  admin  ");
+      await user.clear(screen.getByLabelText("Provider"));
+      await user.type(screen.getByLabelText("Provider"), "  OVH  ");
+      await user.clear(screen.getByLabelText("Region"));
+      await user.type(screen.getByLabelText("Region"), "  Frankfurt  ");
+      await user.clear(screen.getByLabelText("Notes"));
+      await user.type(screen.getByLabelText("Notes"), "  Primary endpoint  ");
+
+      fetchMock.mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        json: async () => ({ data: updatedServer }),
+      });
+      queueRefresh(updatedServer);
+      await user.click(screen.getByRole("button", { name: "Save changes" }));
+
+      await waitFor(() =>
+        expect(fetchMock).toHaveBeenCalledWith(
+          "/api/vps/vps-edit-1",
+          expect.objectContaining({
+            method: "PATCH",
+            body: JSON.stringify({
+              displayName: "Production API East",
+              host: "198.51.100.25",
+              port: 2222,
+              username: "admin",
+              provider: "OVH",
+              region: "Frankfurt",
+              notes: "Primary endpoint",
+            }),
+          }),
+        ),
+      );
+      expect(await screen.findByText("Production API East")).toBeInTheDocument();
+      expect(screen.queryByRole("heading", { name: "Edit server" })).not.toBeInTheDocument();
+      expect(screen.getByText("Updated Production API East.")).toBeInTheDocument();
+    });
+
+    it("keeps the dialog open and exposes the API error when saving fails", async () => {
+      // Negative objective case: a rejected update is visible, does not refresh stale data, and remains retryable in the dialog.
+      const user = userEvent.setup();
+      queueInitialEditLoad();
+      renderApp(["/vps"]);
+      expect(await screen.findByText("Production API")).toBeInTheDocument();
+      await openEditMenu(user);
+      await user.click(screen.getByRole("menuitem", { name: "Edit server" }));
+
+      fetchMock.mockResolvedValueOnce({
+        ok: false,
+        status: 409,
+        json: async () => ({ error: { message: "That endpoint is already in use." } }),
+      });
+      await user.click(screen.getByRole("button", { name: "Save changes" }));
+
+      expect(await screen.findByRole("alert")).toHaveTextContent("That endpoint is already in use.");
+      expect(screen.getByRole("heading", { name: "Edit server" })).toBeInTheDocument();
+      expect(screen.getByRole("button", { name: "Save changes" })).toBeEnabled();
+      expect(fetchMock).toHaveBeenCalledTimes(7);
+    });
+
+    it("rejects missing required values and out-of-range or fractional SSH ports without PATCHing", async () => {
+      // Negative validation objective: required-field and integer/range policy failures are handled client-side without an API call.
+      const user = userEvent.setup();
+      queueInitialEditLoad();
+      renderApp(["/vps"]);
+      expect(await screen.findByText("Production API")).toBeInTheDocument();
+      await openEditMenu(user);
+      await user.click(screen.getByRole("menuitem", { name: "Edit server" }));
+
+      await user.clear(screen.getByLabelText("Display name"));
+      fireEvent.submit(screen.getByRole("button", { name: "Save changes" }).closest("form")!);
+      expect(await screen.findByRole("alert")).toHaveTextContent(
+        "Display name, host, and username are required.",
+      );
+
+      await user.type(screen.getByLabelText("Display name"), "Valid name");
+      for (const invalidPort of ["0", "65536", "22.5"]) {
+        await user.clear(screen.getByLabelText("SSH port"));
+        await user.type(screen.getByLabelText("SSH port"), invalidPort);
+        fireEvent.submit(screen.getByRole("button", { name: "Save changes" }).closest("form")!);
+        expect(await screen.findByRole("alert")).toHaveTextContent(
+          "SSH port must be a whole number from 1 to 65535.",
+        );
+      }
+      expect(fetchMock).toHaveBeenCalledTimes(6);
+    });
+
+    it("disables editing for demo and system-managed local servers in card and table views", async () => {
+      // Policy objective: both presentation modes consistently prevent demo and local/system-managed records from opening Edit server.
+      const user = userEvent.setup();
+      for (const policyCase of [
+        { mode: "demo" as const, server: editableServer, label: "Edit server: unavailable in demo mode" },
+        {
+          mode: "local" as const,
+          server: { ...editableServer, kind: "local" as const, managedBy: "system" as const },
+          label: "Edit server: local servers are system managed",
+        },
+      ]) {
+        cleanup();
+        fetchMock.mockReset();
+        queueInitialEditLoad(policyCase.server, policyCase.mode);
+        renderApp(["/vps"]);
+        expect(await screen.findByText("Production API")).toBeInTheDocument();
+
+        await openEditMenu(user);
+        expect(screen.getByRole("menuitem", { name: policyCase.label })).toHaveAttribute(
+          "data-disabled",
+        );
+        expect(screen.queryByRole("heading", { name: "Edit server" })).not.toBeInTheDocument();
+
+        await user.keyboard("{Escape}");
+        await user.click(screen.getByRole("button", { name: "Table view" }));
+        await openEditMenu(user);
+        expect(screen.getByRole("menuitem", { name: policyCase.label })).toHaveAttribute(
+          "data-disabled",
+        );
+        expect(screen.queryByRole("heading", { name: "Edit server" })).not.toBeInTheDocument();
+      }
+    });
   });
 });

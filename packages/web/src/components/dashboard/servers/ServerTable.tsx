@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { Link } from "react-router-dom";
-import { DownloadCloud, MoreHorizontal, ShieldCheck, Trash2, Unplug } from "lucide-react";
+import { DownloadCloud, Edit3, MoreHorizontal, ShieldCheck, Trash2, Unplug } from "lucide-react";
 import { Badge } from "../../ui/badge";
 import { Button } from "../../ui/button";
 import {
@@ -40,6 +40,8 @@ export function ServerTable({
   onUninstallAgent,
   jobs,
   onDelete,
+  mode,
+  onEdit,
 }: {
   vpsList: VpsRecord[];
   busy: boolean;
@@ -49,6 +51,8 @@ export function ServerTable({
   onUninstallAgent: (vps: VpsRecord) => void;
   jobs: DashboardJob[];
   onDelete: (vps: VpsRecord) => void;
+  mode: "demo" | "local";
+  onEdit: (vps: VpsRecord) => void;
 }) {
   const [deleteTarget, setDeleteTarget] = useState<VpsRecord | null>(null);
   const [uninstallTarget, setUninstallTarget] = useState<VpsRecord | null>(null);
@@ -169,6 +173,15 @@ export function ServerTable({
                           </Button>
                         </DropdownMenuTrigger>
                         <DropdownMenuContent align="end" className="w-48 rounded-none">
+                          <DropdownMenuItem
+                            disabled={busy || isLocal || mode === "demo"}
+                            onClick={() => window.setTimeout(() => onEdit(vps), 0)}
+                            title={mode === "demo" ? "Editing is unavailable in demo mode." : isLocal ? "Local servers are managed by the system." : undefined}
+                            aria-label={`Edit server${mode === "demo" ? ": unavailable in demo mode" : isLocal ? ": local servers are system managed" : ""}`}
+                          >
+                            <Edit3 size={14} /> Edit server
+                          </DropdownMenuItem>
+                          <DropdownMenuSeparator />
                           {canUninstall ? <DropdownMenuItem
                             className="text-destructive focus:text-destructive"
                             disabled={busy}

@@ -1,3 +1,4 @@
+import { useState } from "react";
 import { LayoutGrid, List, Plus } from "lucide-react";
 import { Link } from "react-router-dom";
 import { Button } from "../../ui/button";
@@ -8,10 +9,13 @@ import { ServerCard } from "./ServerCard";
 import { ServerTable } from "./ServerTable";
 import { ServerOpsSummary } from "./ServerOpsSummary";
 import type { ServersPanelProps, ViewMode } from "./types";
+import type { VpsRecord } from "../../../lib/api";
+import { EditServerDialog } from "./EditServerDialog";
 
 export { type ServersPanelProps, type ViewMode };
 
 export function ServersPanel(props: ServersPanelProps) {
+  const [editTarget, setEditTarget] = useState<VpsRecord | null>(null);
   const metricById = new Map(
     props.metrics.map((metric) => [metric.vpsId, metric]),
   );
@@ -119,6 +123,8 @@ export function ServersPanel(props: ServersPanelProps) {
               onUninstallAgent={props.onUninstallAgent}
               jobs={props.jobs}
               onDelete={props.onDelete}
+              mode={props.mode}
+              onEdit={setEditTarget}
             />
           ) : (
             <div className="grid min-w-0 gap-2">
@@ -139,6 +145,8 @@ export function ServersPanel(props: ServersPanelProps) {
                   onUninstallAgent={props.onUninstallAgent}
                   onToggleDockerMetrics={props.onToggleDockerMetrics}
                   onDelete={props.onDelete}
+                  mode={props.mode}
+                  onEdit={setEditTarget}
                 />
               ))}
             </div>
@@ -146,6 +154,12 @@ export function ServersPanel(props: ServersPanelProps) {
           <ServerOpsSummary records={props.records} metrics={props.metrics} />
         </CardContent>
       </Card>
+      <EditServerDialog
+        vps={editTarget}
+        open={editTarget !== null}
+        onOpenChange={(open) => { if (!open) setEditTarget(null); }}
+        onSave={props.onEdit}
+      />
     </div>
   );
 }

@@ -68,6 +68,8 @@ export function ServerCard({
   onUninstallAgent,
   onToggleDockerMetrics,
   onDelete,
+  mode,
+  onEdit,
 }: {
   vps: VpsRecord;
   metric?: DashboardOverview["metrics"][number];
@@ -83,6 +85,8 @@ export function ServerCard({
   onUninstallAgent: (vps: VpsRecord) => void;
   onToggleDockerMetrics: (vps: VpsRecord) => void;
   onDelete: (vps: VpsRecord) => void;
+  mode: "demo" | "local";
+  onEdit: (vps: VpsRecord) => void;
 }) {
   const isLocalHost = vps.kind === "local" || vps.managedBy === "system";
   const isReady = isLocalHost || Boolean(vps.keyProvisionedAt);
@@ -255,6 +259,8 @@ export function ServerCard({
             onRequestDelete={() => {
               window.setTimeout(() => setDeleteTarget(vps), 0);
             }}
+            mode={mode}
+            onEdit={() => window.setTimeout(() => onEdit(vps), 0)}
           />
           </div>
           <div className="grid min-w-0 grid-cols-2 gap-x-5 gap-y-1 text-xs xl:order-first xl:grid-cols-1">
@@ -631,6 +637,8 @@ function ServerOverflow({
   onRotate,
   onRequestUninstall,
   onRequestDelete,
+  mode,
+  onEdit,
 }: {
   vps: VpsRecord;
   busy: boolean;
@@ -638,6 +646,8 @@ function ServerOverflow({
   onRotate: () => void;
   onRequestUninstall: () => void;
   onRequestDelete: () => void;
+  mode: "demo" | "local";
+  onEdit: () => void;
 }) {
   const displayName = vpsDisplayName(vps);
   return (
@@ -692,7 +702,12 @@ function ServerOverflow({
             Uninstall agent
           </DropdownMenuItem>
         ) : null}
-        <DropdownMenuItem disabled>
+        <DropdownMenuItem
+          disabled={busy || isLocalHost || mode === "demo"}
+          onClick={onEdit}
+          title={mode === "demo" ? "Editing is unavailable in demo mode." : isLocalHost ? "Local servers are managed by the system." : undefined}
+          aria-label={`Edit server${mode === "demo" ? ": unavailable in demo mode" : isLocalHost ? ": local servers are system managed" : ""}`}
+        >
           <Edit3 size={15} />
           Edit server
         </DropdownMenuItem>

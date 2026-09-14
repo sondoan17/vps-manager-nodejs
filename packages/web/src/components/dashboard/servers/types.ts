@@ -1,5 +1,5 @@
 import { type FormEvent, type ReactNode } from "react";
-import type { DashboardOverview, VpsRecord } from "../../../lib/api";
+import type { DashboardOverview, UpdateVpsPayload, VpsRecord } from "../../../lib/api";
 
 export type ViewMode = "card" | "table";
 
@@ -19,6 +19,7 @@ export type ServersPanelProps = {
   serverSearch: string;
   statusFilter: string;
   busy: boolean;
+  mode: "demo" | "local";
   provisionPasswords: Record<string, string>;
   createForm: CreateFormType;
   metrics: DashboardOverview["metrics"];
@@ -37,5 +38,6 @@ export type ServersPanelProps = {
   onInstallAgent: (vps: VpsRecord) => void;
   onUninstallAgent: (vps: VpsRecord) => void;
   onToggleDockerMetrics: (vps: VpsRecord) => void;
+  onEdit: (vps: VpsRecord, payload: UpdateVpsPayload) => Promise<void>;
   onDelete: (vps: VpsRecord) => void;
 };

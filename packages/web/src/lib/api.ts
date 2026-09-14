@@ -321,13 +321,27 @@ function vpsPath(id: string): string {
 
 export function updateVps(
   id: string,
-  payload: Partial<Pick<VpsRecord, "dockerMetricsEnabled">>,
+  payload: UpdateVpsPayload,
 ) {
   return request<VpsRecord>(`${vpsPath(id)}`, {
     method: "PATCH",
     body: JSON.stringify(payload),
   });
 }
+
+export type UpdateVpsPayload = Partial<
+  Pick<
+    VpsRecord,
+    | "displayName"
+    | "host"
+    | "port"
+    | "username"
+    | "provider"
+    | "region"
+    | "notes"
+    | "dockerMetricsEnabled"
+  >
+>;
 
 export function provisionKey(id: string, password: string) {
   return request<VpsRecord>(`${vpsPath(id)}/provision-key`, {

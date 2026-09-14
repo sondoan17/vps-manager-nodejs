@@ -37,6 +37,7 @@ export function VpsListPage() {
       serverSearch={ctx.serverSearch}
       statusFilter={ctx.statusFilter}
       busy={ctx.busy}
+      mode={ctx.mode}
       provisionPasswords={ctx.provisionPasswords}
       createForm={ctx.createForm}
       metrics={ctx.metrics}
@@ -55,6 +56,7 @@ export function VpsListPage() {
       onInstallAgent={ctx.onInstallAgent}
       onUninstallAgent={ctx.onUninstallAgent}
       onToggleDockerMetrics={ctx.onToggleDockerMetrics}
+      onEdit={ctx.onEdit}
       onDelete={ctx.onDelete}
     />
   );
