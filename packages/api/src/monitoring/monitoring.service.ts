@@ -21,6 +21,7 @@ import {
   type JobActivityListener,
 } from "../jobs/job-activity.service.js";
 import { APP_CONFIG, METRIC_REPOSITORY } from "../tokens.js";
+import { HOST_FRESHNESS_THRESHOLD_MS } from "../common/host-health.js";
 
 // ── Event envelope types ──────────────────────────────────────────────
 
@@ -182,7 +183,7 @@ function sendEvent(res: Response, type: string, data: unknown): void {
 // since VPS clocks may be skewed.
 
 /** 2 minutes in ms — samples older than this are considered stale. */
-export const STALE_THRESHOLD_MS = 120_000;
+export const STALE_THRESHOLD_MS = HOST_FRESHNESS_THRESHOLD_MS;
 
 export function isFreshTimestamp(
   timestamp: string,
@@ -257,7 +258,7 @@ function createJobStreamTracker(
 export class MonitoringService {
   private readonly logger = new Logger(MonitoringService.name);
   private readonly intervalMs: number;
-  private readonly staleThresholdMs = 120_000; // 2 min stale
+  private readonly staleThresholdMs = HOST_FRESHNESS_THRESHOLD_MS;
 
   // Demo state
   private demoStates: Map<string, MetricState> | null = null;

@@ -195,13 +195,21 @@ export class AgentService {
   ): Promise<IngestMetricResult> {
     const releaseIngest = await this.lifecycle.beginIngest(credential.vpsId);
     try {
-    // 1. Verify the VPS still exists and get its config before validating the
+      // 1. Verify the VPS still exists and get its config before validating the
     // optional Docker branch. Docker payloads are ignored when disabled, so a
     // stale agent cycle cannot break core metric ingest with Docker-only schema
     // errors.
-    if (this.lifecycle.isUninstalling(credential.vpsId)) throw new UnauthorizedException({ error: { message: "Agent lifecycle operation in progress" } });
-    const currentCredential = await this.agentRepository.getCredential(credential.id);
-    if (!currentCredential || currentCredential.status === "revoked") throw new UnauthorizedException({ error: { message: "Token has been revoked" } });
+      if (this.lifecycle.isUninstalling(credential.vpsId))
+        throw new UnauthorizedException({
+          error: { message: "Agent lifecycle operation in progress" },
+        });
+      const currentCredential = await this.agentRepository.getCredential(
+        credential.id,
+      );
+      if (!currentCredential || currentCredential.status === "revoked")
+        throw new UnauthorizedException({
+          error: { message: "Token has been revoked" },
+        });
     credential = currentCredential;
     const vps = await this.vpsRepository.get(credential.vpsId);
     if (!vps) {
@@ -312,7 +320,12 @@ export class AgentService {
     };
 
     await this.metricRepository.append(sample, this.config.metricWindowLimit);
+
+    // Mark host health only after the accepted observation is durably appended.
+    await this.vpsRepository.markSeen(credential.vpsId, "healthy", now);
     return { sample, config: { dockerMetricsEnabled } };
-    } finally { releaseIngest(); }
+    } finally {
+      releaseIngest();
+    }
   }
 }

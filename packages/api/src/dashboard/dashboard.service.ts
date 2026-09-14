@@ -15,6 +15,10 @@ import type {
 } from "../dashboard/dashboard.models.js";
 import type { VpsRecord } from "../vps/vps.models.js";
 import { applyAgentState } from "../vps/vps.models.js";
+import {
+  deriveHostStatus,
+  HOST_FRESHNESS_THRESHOLD_MS,
+} from "../common/host-health.js";
 import type { AgentRepository } from "../persistence/repositories/agent.repository.js";
 import type { VpsRepository } from "../persistence/repositories/vps.repository.js";
 import type { MetricRepository } from "../persistence/repositories/metric.repository.js";
@@ -27,7 +31,7 @@ import {
   VPS_REPOSITORY,
 } from "../tokens.js";
 
-const STALE_THRESHOLD_MS = 120_000;
+const STALE_THRESHOLD_MS = HOST_FRESHNESS_THRESHOLD_MS;
 
 function summarize(
   servers: readonly VpsRecord[],
@@ -97,7 +101,13 @@ export class DashboardService {
     const states = await this.agentRepository.listStates();
     const stateById = new Map(states.map((s) => [s.vpsId, s]));
     const serversWithAgent = servers.map((server) =>
-      applyAgentState(server, stateById.get(server.id)),
+      applyAgentState(
+        {
+          ...server,
+          status: deriveHostStatus(server.status, server.lastSeenAt),
+        },
+        stateById.get(server.id),
+      ),
     );
     const rawMetrics = await this.metricRepository.listLatest();
     const metrics: DashboardMetricSample[] = rawMetrics.map((m) => ({
@@ -122,7 +132,7 @@ export class DashboardService {
 
     return {
       mode: "local",
-      summary: summarize(servers, 0),
+      summary: summarize(serversWithAgent, 0),
       servers: serversWithAgent,
       metrics,
       jobs,

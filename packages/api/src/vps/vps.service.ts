@@ -26,6 +26,7 @@ import { AGENT_REPOSITORY } from "../tokens.js";
 import type { AgentRepository } from "../persistence/repositories/agent.repository.js";
 import { HostKeyPinService } from "../ssh/host-key-pin.service.js";
 import { applyAgentState, type VpsRecord } from "./vps.models.js";
+import { deriveHostStatus } from "../common/host-health.js";
 
 @Injectable()
 export class VpsService {
@@ -45,7 +46,12 @@ export class VpsService {
     const records = await this.store.list();
     if (records.length === 0 && this.config.mode === "demo")
       return [...demoServers];
-    return this.withAgentStates(records);
+    return this.withAgentStates(
+      records.map((record) => ({
+        ...record,
+        status: deriveHostStatus(record.status, record.lastSeenAt),
+      })),
+    );
   }
 
   /**
@@ -104,7 +110,13 @@ export class VpsService {
     if (record) {
       if (this.config.mode === "demo") return record;
       const state = await this.agentRepository.getState(id);
-      return applyAgentState(record, state);
+      return applyAgentState(
+        {
+          ...record,
+          status: deriveHostStatus(record.status, record.lastSeenAt),
+        },
+        state,
+      );
     }
     // In demo mode fall back to demo fixtures (matching list() semantics)
     if (this.config.mode === "demo") {

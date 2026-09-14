@@ -5,8 +5,9 @@ import type { MetricSample } from "../metrics/metrics.models.js";
 import type { MetricRepository } from "../persistence/repositories/metric.repository.js";
 import type { PaginationParams } from "../common/pagination.js";
 import { APP_CONFIG, METRIC_REPOSITORY } from "../tokens.js";
+import { HOST_FRESHNESS_THRESHOLD_MS } from "../common/host-health.js";
 
-const STALE_THRESHOLD_MS = 120_000;
+const STALE_THRESHOLD_MS = HOST_FRESHNESS_THRESHOLD_MS;
 
 function withFreshness<T extends MetricSample>(
   sample: T,
