@@ -1,18 +1,14 @@
 import {
-  FlaskConical,
   LogOut,
   RefreshCw,
   Server,
   Settings,
   ShieldCheck,
-  ShieldCogCorner,
   UserCircle,
-  type LucideIcon,
 } from "lucide-react";
 import type { ButtonHTMLAttributes, ReactNode } from "react";
 import { Link, useLocation } from "react-router-dom";
 import { Avatar, AvatarFallback, AvatarImage } from "../ui/avatar";
-import { Badge } from "../ui/badge";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -114,10 +110,10 @@ export function DashboardShell({
           </div>
 
           <div className="flex shrink-0 items-center gap-1.5 sm:gap-2">
-            <div className="hidden md:block">
-              <ModeBadge mode={mode} />
+            <div className="flex items-center gap-2 border-r border-white/10 pr-2 sm:gap-3 sm:pr-3">
+              <ModeLabel mode={mode} />
+              <LiveStatus state={liveState} />
             </div>
-            <LiveBadge state={liveState} />
             <IconButton
               label={busy ? "Refreshing" : "Refresh dashboard"}
               disabled={busy}
@@ -156,27 +152,15 @@ export function DashboardShell({
   );
 }
 
-function ModeBadge({ mode }: { mode: "demo" | "local" }) {
-  const state = mode === "demo" ? "demo" : "ready";
-  const iconByState = {
-    demo: FlaskConical,
-    pending: ShieldCogCorner,
-    ready: ShieldCheck,
-  } satisfies Record<"demo" | "pending" | "ready", LucideIcon>;
-  const Icon = iconByState[state];
-
+function ModeLabel({ mode }: { mode: "demo" | "local" }) {
   return (
-    <Badge
-      variant={state === "ready" ? "ready" : "pending"}
-      className="gap-1.5 uppercase"
-    >
-      <Icon size={14} />
-      {mode}
-    </Badge>
+    <span className="hidden whitespace-nowrap text-xs font-normal text-white/60 md:inline">
+      {mode === "demo" ? "Demo environment" : "Local environment"}
+    </span>
   );
 }
 
-function LiveBadge({ state }: { state: LiveConnectionState }) {
+function LiveStatus({ state }: { state: LiveConnectionState }) {
   const label =
     state.status === "connecting"
       ? "Connecting"
@@ -184,42 +168,27 @@ function LiveBadge({ state }: { state: LiveConnectionState }) {
         ? "Live"
         : state.status === "reconnecting"
           ? "Reconnecting"
-          : "Stale";
-
-  const badgeVariant =
-    state.status === "live"
-      ? "ready"
-      : state.status === "connecting"
-        ? "pending"
-        : "destructive";
+          : "Connection stale";
 
   return (
-    <Badge
-      variant={badgeVariant}
-      className="gap-1.5 px-2 text-[10px] uppercase sm:px-2.5 sm:text-[11px]"
-      title={
-        state.status !== "connecting" &&
-        "latestEventAt" in state &&
-        state.latestEventAt
-          ? `Latest event ${new Date(state.latestEventAt).toLocaleTimeString()}`
-          : undefined
-      }
+    <span
+      role="status"
+      aria-label={`Monitoring connection: ${label}`}
+      className="inline-flex items-center gap-1.5 whitespace-nowrap text-[11px] font-medium text-white/75 sm:text-xs"
     >
       <span
         className={cn(
-          "h-1.5 w-1.5",
-          state.status === "live" ? "bg-white" : "bg-white/50",
+          "h-1.5 w-1.5 rounded-full",
+          state.status === "live"
+            ? "bg-emerald-400"
+            : state.status === "connecting"
+              ? "bg-amber-300"
+              : "bg-rose-400",
         )}
+        aria-hidden="true"
       />
       {label}
-      {state.status !== "connecting" &&
-      "latestEventAt" in state &&
-      state.latestEventAt ? (
-        <span className="ml-0.5 hidden font-normal opacity-70 lg:inline">
-          {new Date(state.latestEventAt).toLocaleTimeString()}
-        </span>
-      ) : null}
-    </Badge>
+    </span>
   );
 }
 
@@ -230,7 +199,8 @@ function UserMenu({ onLogout }: { onLogout?: () => void }) {
         <button
           type="button"
           className="inline-flex h-9 w-9 shrink-0 items-center text-sm font-normal text-primary transition hover:opacity-80 sm:h-10 sm:w-10"
-          aria-label="Open user menu"
+          aria-label="Open local admin account menu"
+          title="Local admin account"
         >
           <Avatar className="h-9 w-9 sm:h-10 sm:w-10">
             <AvatarImage

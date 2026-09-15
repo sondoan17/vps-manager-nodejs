@@ -2,10 +2,11 @@ import { useState } from "react";
 import { Link } from "react-router-dom";
 import {
   Activity,
-  AlertTriangle,
   Clock3,
   DownloadCloud,
   Edit3,
+  Eye,
+  EyeOff,
   KeyRound,
   MapPin,
   MoreHorizontal,
@@ -91,6 +92,7 @@ export function ServerCard({
   const isReady = isLocalHost || Boolean(vps.keyProvisionedAt);
   const isDown = vps.status === "unreachable";
   const [showPassword, setShowPassword] = useState(false);
+  const [addressHidden, setAddressHidden] = useState(false);
   const [confirmOpen, setConfirmOpen] = useState(false);
   const [passwordError, setPasswordError] = useState("");
   const [deleteTarget, setDeleteTarget] = useState<VpsRecord | null>(null);
@@ -139,18 +141,28 @@ export function ServerCard({
           </h3>
           <ServerHealthStatus status={vps.status} />
         </div>
-        <p
-          className="mt-2 flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1 text-xs leading-5 text-white/60 sm:text-sm"
-          title={`${vps.host}:${vps.port} · ${osLabel}`}
-        >
-          <span className="min-w-0 break-all font-mono text-white/75">
-            {vps.host}:{vps.port}
+        <div className="mt-2 flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1 text-xs leading-5 text-white/60 sm:text-sm">
+          <span
+            className="inline-block min-w-[12rem] font-mono text-white/75"
+            aria-label={addressHidden ? "Server address hidden" : `Server address ${vps.host}:${vps.port}`}
+          >
+            {addressHidden ? "••••••••••••:••••" : `${vps.host}:${vps.port}`}
           </span>
+          <button
+            type="button"
+            className="inline-grid h-8 w-8 shrink-0 place-items-center border border-white/10 bg-white/[0.025] text-white/55 transition hover:bg-white/[0.07] hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/50"
+            aria-label={addressHidden ? "Show server address" : "Hide server address"}
+            aria-pressed={addressHidden}
+            title={addressHidden ? "Show server address" : "Hide server address"}
+            onClick={() => setAddressHidden((hidden) => !hidden)}
+          >
+            {addressHidden ? <Eye size={14} aria-hidden="true" /> : <EyeOff size={14} aria-hidden="true" />}
+          </button>
           <span className="text-white/25" aria-hidden="true">
             ·
           </span>
           <span className="min-w-0 truncate">{osLabel}</span>
-        </p>
+        </div>
         {hostId ? <p className="mt-1 break-all font-mono text-[10px] text-white/35">Host ID: {hostId}</p> : null}
         <div className="mt-2 flex items-center gap-1.5 text-[11px] text-white/40 sm:text-xs">
           <Clock3 size={13} aria-hidden="true" />
@@ -399,8 +411,8 @@ export function ServerCard({
 }
 
 function ServerHealthStatus({ status }: { status?: VpsRecord["status"] }) {
-  const isUnknown = !status || status === "unknown";
   const isDown = status === "unreachable";
+  const label = serverStatusLabel(status);
   const dotColor =
     status === "healthy"
       ? "bg-emerald-400"
@@ -413,16 +425,12 @@ function ServerHealthStatus({ status }: { status?: VpsRecord["status"] }) {
 
   return (
     <span
-      className={`inline-flex shrink-0 items-center gap-1.5 pt-1 text-xs font-medium sm:text-sm ${textColor}`}
-      aria-label={`Host status: ${serverStatusLabel(status)}`}
-      title={isUnknown ? "Host health has not been checked yet." : undefined}
+      className={`inline-flex shrink-0 items-center gap-1.5 border border-white/10 bg-white/[0.035] px-2 py-1 text-xs font-medium sm:text-sm ${textColor}`}
+      aria-label={`Host status: ${label}`}
+      title={`Host status: ${label}`}
     >
-      {isDown ? (
-        <AlertTriangle size={14} aria-hidden="true" />
-      ) : (
-        <span className={`h-2 w-2 rounded-full ${dotColor}`} aria-hidden="true" />
-      )}
-      <span className="text-white/40">Host status</span> {serverStatusLabel(status)}
+      <span className={`h-2 w-2 rounded-full ${dotColor}`} aria-hidden="true" />
+      <span aria-hidden="true">{label}</span>
     </span>
   );
 }

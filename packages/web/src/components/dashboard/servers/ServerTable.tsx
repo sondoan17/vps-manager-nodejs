@@ -1,6 +1,6 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
-import { DownloadCloud, Edit3, MoreHorizontal, RotateCw, ShieldCheck, Trash2, Unplug } from "lucide-react";
+import { Edit3, KeyRound, MoreHorizontal, RotateCw, ShieldCheck, Trash2 } from "lucide-react";
 import { Badge } from "../../ui/badge";
 import { Button } from "../../ui/button";
 import {
@@ -14,8 +14,6 @@ import {
   AlertDialogTitle,
 } from "../../ui/alert-dialog";
 import {
-  chipVariant,
-  formatDate,
   serverStatusLabel,
   vpsDisplayName,
   vpsHostId,
@@ -27,7 +25,6 @@ import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
-  DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "../../ui/dropdown-menu";
 
@@ -35,6 +32,7 @@ export function ServerTable({
   vpsList,
   busy,
   provisionPasswords,
+  onProvision,
   onVerify,
   onInstallAgent,
   onUninstallAgent,
@@ -47,6 +45,7 @@ export function ServerTable({
   vpsList: VpsRecord[];
   busy: boolean;
   provisionPasswords: Record<string, string>;
+  onProvision: (vps: VpsRecord) => void;
   onVerify: (vps: VpsRecord) => void;
   onInstallAgent: (vps: VpsRecord) => void;
   onUninstallAgent: (vps: VpsRecord) => void;
@@ -59,6 +58,11 @@ export function ServerTable({
   const [deleteTarget, setDeleteTarget] = useState<VpsRecord | null>(null);
   const [uninstallTarget, setUninstallTarget] = useState<VpsRecord | null>(null);
   const [upgradeTarget, setUpgradeTarget] = useState<VpsRecord | null>(null);
+  const [now, setNow] = useState(() => Date.now());
+  useEffect(() => {
+    const timer = window.setInterval(() => setNow(Date.now()), 30_000);
+    return () => window.clearInterval(timer);
+  }, []);
 
   function handleDeleteClick(vps: VpsRecord) {
     const isLocalHost = vps.kind === "local" || vps.managedBy === "system";
@@ -92,9 +96,9 @@ export function ServerTable({
               const serverJobs = jobs.filter((job) => job.vpsId === vps.id);
               const agentJob = agentJobFor(vps, serverJobs);
               const agentActionRunning = Boolean(agentJob && (agentJob.status === "queued" || agentJob.status === "running"));
-              const showInstall = !agentActionRunning && vps.agentStatus !== "online" && vps.agentStatus !== "offline";
               const canUninstall = vps.agentStatus === "online" || vps.agentStatus === "offline" || vps.agentStatus === "failed";
               const canUpgrade = mode !== "demo" && !isLocal && !agentActionRunning && canUninstall;
+              const accessProblem = !isLocal && (!vps.keyProvisionedAt || vps.status === "unreachable");
               return (
                 <tr
                   key={vps.id}
@@ -105,18 +109,14 @@ export function ServerTable({
                     <Link
                       to={`/vps/${encodeURIComponent(vps.id)}`}
                       className="font-normal text-[#ffffff] hover:text-white/80"
+                      title={hostId ? `Host ID: ${hostId}` : undefined}
                     >
                       {displayName}
                     </Link>
-                    {hostId ? <span className="mt-1 block font-mono text-[10px] text-white/35">Host ID: {hostId}</span> : null}
                   </td>
                   <td className="px-3 py-3 text-white/70">
-                    <span
-                      className="truncate"
-                      title={`${vps.username}@${vps.host}:${vps.port}`}
-                    >
-                      {vps.username}@{vps.host}:{vps.port}
-                    </span>
+                    <span className="block max-w-52 truncate font-mono text-white/80" title={`${vps.host}:${vps.port}`}>{vps.host}:{vps.port}</span>
+                    <span className="mt-0.5 block text-xs text-white/40">{vps.username}</span>
                   </td>
                   <td className="px-3 py-3 text-white/60">
                     <span className="block max-w-40 truncate" title={[vps.city, vps.country].filter(Boolean).join(", ") || "Location not detected"}>
@@ -124,12 +124,10 @@ export function ServerTable({
                     </span>
                   </td>
                   <td className="px-3 py-3">
-                    <Badge variant={chipVariant(vps.status)} title={!vps.status || vps.status === "unknown" ? "Host health has not been checked yet." : undefined}>
-                      {serverStatusLabel(vps.status)}
-                    </Badge>
+                    <TableStatus kind="host" label={serverStatusLabel(vps.status)} tone={vps.status === "healthy" ? "green" : vps.status === "warning" ? "amber" : vps.status === "unreachable" ? "red" : "neutral"} />
                   </td>
                   <td className="px-3 py-3">
-                    <AgentLifecycleStatus vps={vps} jobs={serverJobs} compact />
+                    {agentActionRunning ? <AgentLifecycleStatus vps={vps} jobs={serverJobs} compact /> : <TableStatus kind="agent" label={isLocal ? "Local" : vps.agentStatus === "online" ? "Online" : vps.agentStatus === "offline" ? "Offline" : vps.agentStatus === "failed" ? "Failed" : "Not installed"} tone={isLocal || vps.agentStatus === "online" ? "green" : vps.agentStatus === "failed" ? "red" : vps.agentStatus === "offline" ? "amber" : "neutral"} />}
                   </td>
                   <td className="px-3 py-3">
                     <Badge variant={isReady ? "ready" : "pending"}>
@@ -137,7 +135,7 @@ export function ServerTable({
                     </Badge>
                   </td>
                   <td className="px-3 py-3 text-white/50">
-                    {formatDate(vps.lastSeenAt)}
+                    <span title={exactTimestamp(vps.lastSeenAt)}>{relativeTime(vps.lastSeenAt, now)}</span>
                   </td>
                   <td className="px-3 py-3">
                     <div className="flex flex-wrap items-center gap-1.5">
@@ -146,13 +144,13 @@ export function ServerTable({
                           type="button"
                           aria-label={`Manage ${displayName}`}
                           size="sm"
-                          variant="outline"
+                          variant="default"
                           className="text-[11px]"
                         >
                           Manage
                         </Button>
                       </Link>
-                      <Button
+                      {accessProblem ? <Button
                         type="button"
                         aria-label={`Verify access for ${displayName}`}
                         size="sm"
@@ -162,21 +160,8 @@ export function ServerTable({
                         onClick={() => onVerify(vps)}
                       >
                         <ShieldCheck size={13} />
-                        Verify
-                      </Button>
-                      {showInstall && !isLocal ? <Button
-                        type="button"
-                        aria-label={`Install agent for ${displayName}`}
-                        size="sm"
-                        variant="secondary"
-                        className="text-[11px]"
-                        disabled={busy || isLocal}
-                        onClick={() => onInstallAgent(vps)}
-                      >
-                        <DownloadCloud size={13} />
-                        {vps.agentStatus === "failed" ? "Retry agent" : "Agent"}
+                        Verify access
                       </Button> : null}
-                      {canUpgrade ? <Button type="button" aria-label={`Upgrade agent for ${displayName}`} size="sm" variant="secondary" className="text-[11px]" disabled={busy} onClick={() => setUpgradeTarget(vps)}><RotateCw size={13} /> Upgrade</Button> : null}
                       <DropdownMenu>
                         <DropdownMenuTrigger asChild>
                           <Button type="button" size="sm" variant="outline" aria-label={`More actions for ${displayName}`}>
@@ -184,29 +169,23 @@ export function ServerTable({
                           </Button>
                         </DropdownMenuTrigger>
                         <DropdownMenuContent align="end" className="w-48 rounded-none">
+                          {!accessProblem ? <DropdownMenuItem disabled={busy || isLocal} onClick={() => onVerify(vps)}><ShieldCheck size={14} /> Verify access</DropdownMenuItem> : null}
+                          <DropdownMenuItem disabled={busy || !canUpgrade} onClick={() => window.setTimeout(() => setUpgradeTarget(vps), 0)}><RotateCw size={14} /> Upgrade agent</DropdownMenuItem>
+                          <DropdownMenuItem disabled={busy || isLocal || !provisionPasswords[vps.id]?.trim()} onClick={() => onProvision(vps)}><KeyRound size={14} /> Reinstall SSH key</DropdownMenuItem>
                           <DropdownMenuItem
                             disabled={busy || isLocal || mode === "demo"}
                             onClick={() => window.setTimeout(() => onEdit(vps), 0)}
                             title={mode === "demo" ? "Editing is unavailable in demo mode." : isLocal ? "Local servers are managed by the system." : undefined}
                             aria-label={`Edit server${mode === "demo" ? ": unavailable in demo mode" : isLocal ? ": local servers are system managed" : ""}`}
                           >
-                            <Edit3 size={14} /> Edit server
+                            <Edit3 size={14} /> Edit
                           </DropdownMenuItem>
-                          <DropdownMenuSeparator />
-                          {canUninstall ? <DropdownMenuItem
-                            className="text-destructive focus:text-destructive"
-                            disabled={busy}
-                            onClick={() => window.setTimeout(() => setUninstallTarget(vps), 0)}
-                          >
-                            <Unplug size={14} /> Uninstall agent
-                          </DropdownMenuItem> : null}
-                          {canUninstall ? <DropdownMenuSeparator /> : null}
                           <DropdownMenuItem
                             className="text-destructive focus:text-destructive"
                             disabled={busy || isLocal}
                             onClick={() => window.setTimeout(() => handleDeleteClick(vps), 0)}
                           >
-                            <Trash2 size={14} /> Delete server
+                            <Trash2 size={14} /> Remove
                           </DropdownMenuItem>
                         </DropdownMenuContent>
                       </DropdownMenu>
@@ -278,4 +257,28 @@ export function ServerTable({
       </AlertDialog>
     </>
   );
+}
+
+function TableStatus({ kind, label, tone }: { kind: "host" | "agent"; label: string; tone: "green" | "amber" | "red" | "neutral" }) {
+  const color = tone === "green" ? "bg-emerald-400 text-emerald-200" : tone === "amber" ? "bg-amber-400 text-amber-200" : tone === "red" ? "bg-red-400 text-red-200" : "bg-white/40 text-white/55";
+  return <span className={`inline-flex items-center gap-1.5 text-xs ${color.split(" ").slice(1).join(" ")}`} aria-label={`${kind === "host" ? "Host" : "Agent"} status: ${label}`}><span aria-hidden="true" className={`h-1.5 w-1.5 rounded-full ${color.split(" ")[0]}`} /><span aria-hidden="true">{label}</span></span>;
+}
+
+export function relativeTime(value: string | undefined, now: number) {
+  if (!value) return "Never";
+  const timestamp = Date.parse(value);
+  if (!Number.isFinite(timestamp)) return "Unknown";
+  const seconds = Math.max(0, Math.floor((now - timestamp) / 1000));
+  if (seconds < 10) return "Just now";
+  if (seconds < 60) return `${seconds} sec ago`;
+  const minutes = Math.floor(seconds / 60);
+  if (minutes < 60) return `${minutes} min ago`;
+  const hours = Math.floor(minutes / 60);
+  if (hours < 24) return `${hours} hr ago`;
+  return `${Math.floor(hours / 24)} days ago`;
+}
+
+function exactTimestamp(value?: string) {
+  if (!value || !Number.isFinite(Date.parse(value))) return "No last seen timestamp";
+  return `Last seen: ${new Date(value).toLocaleString()}`;
 }

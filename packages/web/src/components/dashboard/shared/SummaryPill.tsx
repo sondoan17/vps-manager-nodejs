@@ -5,11 +5,11 @@ export function SummaryPill({
 }: {
   label: string;
   value: string;
-  tone?: "default" | "red";
+  tone?: "default" | "amber" | "red";
 }) {
   return (
     <div
-      className={`min-w-0 rounded-none border px-3.5 py-3 shadow-none ${tone === "red" ? "border-white/10 bg-white/[0.03] text-white/70" : "border-white/10 bg-white/[0.03] text-white/70"}`}
+      className={`min-w-0 rounded-none border px-3.5 py-3 shadow-none ${tone === "red" ? "border-red-400/25 bg-red-400/[0.06] text-red-100" : tone === "amber" ? "border-amber-400/25 bg-amber-400/[0.05] text-amber-100" : "border-white/10 bg-white/[0.03] text-white/70"}`}
     >
       <p className="text-[11px] font-normal uppercase tracking-[0.12em] opacity-75">
         {label}

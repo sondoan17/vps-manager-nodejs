@@ -789,6 +789,7 @@ export function DashboardProvider({
       {refreshToastVisible ? (
         <div
           role="status"
+          aria-label="VPS list refreshed"
           aria-live="polite"
           aria-atomic="true"
           className="fixed right-4 top-4 z-50 max-w-[calc(100vw-2rem)] border border-white/10 bg-[#111318] px-4 py-3 text-sm font-medium text-white shadow-2xl shadow-black/40 sm:right-6 sm:top-6"

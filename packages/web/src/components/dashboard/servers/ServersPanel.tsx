@@ -118,6 +118,7 @@ export function ServersPanel(props: ServersPanelProps) {
               vpsList={props.visibleRecords}
               busy={props.busy}
               provisionPasswords={props.provisionPasswords}
+              onProvision={props.onProvision}
               onVerify={props.onVerify}
               onInstallAgent={props.onInstallAgent}
               onUninstallAgent={props.onUninstallAgent}
@@ -153,7 +154,7 @@ export function ServersPanel(props: ServersPanelProps) {
               ))}
             </div>
           )}
-          <ServerOpsSummary records={props.records} metrics={props.metrics} />
+          <ServerOpsSummary records={props.records} metrics={props.metrics} dockerMetrics={props.dockerMetrics} />
         </CardContent>
       </Card>
       <EditServerDialog

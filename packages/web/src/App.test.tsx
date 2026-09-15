@@ -1,9 +1,10 @@
-import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { MemoryRouter } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import "./test/setup";
 import { App } from "./App";
+import { calculateServerOpsSummary } from "./components/dashboard/servers/ServerOpsSummary";
 
 const fetchMock = vi.fn();
 
@@ -151,6 +152,37 @@ afterEach(() => {
 });
 
 describe("React dashboard", () => {
+  it("calculates healthy and degraded fleet summaries from existing metrics", () => {
+    const healthyServer = {
+      id: "healthy", name: "healthy", displayName: "Healthy host", host: "host", port: 22, username: "root",
+      status: "healthy" as const, agentStatus: "online" as const, keyProvisionedAt: "2026-01-01", createdAt: "2026-01-01", updatedAt: "2026-01-01",
+    };
+    const degradedServer = {
+      ...healthyServer, id: "degraded", name: "degraded", displayName: "Database", status: "warning" as const, agentStatus: "offline" as const,
+    };
+    const metrics = [{
+      vpsId: "healthy", cpu: 22, memory: 91, disk: 48, loadAverage: 1, networkRx: 0, networkTx: 0, uptime: 1,
+      collectedAt: "2026-01-01", freshness: "fresh" as const,
+    }, {
+      vpsId: "degraded", cpu: 78, memory: 65, disk: 95, loadAverage: 1, networkRx: 0, networkTx: 0, uptime: 1,
+      collectedAt: "2026-01-01", freshness: "fresh" as const,
+    }];
+    const docker = [{
+      vpsId: "healthy", collectedAt: "2026-01-01", receivedAt: "2026-01-01", schemaVersion: 1 as const, available: true,
+      containerTotal: 4, containerRunning: 3, cpuPercent: 0, memoryUsageBytes: 0, networkRxBytes: 0, networkTxBytes: 0,
+      blockReadBytes: 0, blockWriteBytes: 0, pids: 0, containers: [],
+    }];
+
+    const healthy = calculateServerOpsSummary([healthyServer], metrics.slice(0, 1), []);
+    expect(healthy.attention).toBe(0);
+    expect(healthy.pressure).toMatchObject({ server: "Healthy host", resource: "Memory", percent: 91 });
+
+    const degraded = calculateServerOpsSummary([healthyServer, degradedServer], metrics, docker);
+    expect(degraded.attention).toBe(1);
+    expect(degraded.pressure).toMatchObject({ server: "Database", resource: "Disk", percent: 95 });
+    expect(degraded.containers).toMatchObject({ running: 3, problems: 1 });
+    expect(degraded).toMatchObject({ liveAgents: 1, agentGaps: 1 });
+  });
   it("loads VPS list after auth and shows empty state", async () => {
     fetchMock
       .mockResolvedValueOnce(authOk())
@@ -267,7 +299,7 @@ describe("React dashboard", () => {
       screen.getByRole("button", { name: "Refresh dashboard" }),
     );
 
-    const toast = await screen.findByRole("status");
+    const toast = await screen.findByRole("status", { name: /VPS list refreshed/i });
     expect(toast).toHaveTextContent("✓VPS list refreshed");
     expect(toast).toHaveClass("fixed", "right-4", "top-4");
     expect(screen.queryByRole("alert")).not.toBeInTheDocument();
@@ -994,6 +1026,9 @@ describe("React dashboard", () => {
       await waitFor(() => {
         expect(screen.getByText("Connecting")).toBeInTheDocument();
       });
+      expect(screen.getByText("Local environment")).toBeInTheDocument();
+      expect(screen.getByRole("status", { name: "Monitoring connection: Connecting" })).toBeInTheDocument();
+      expect(screen.getByRole("button", { name: "Open local admin account menu" })).toHaveAttribute("title", "Local admin account");
 
       // Simulate hello event which transitions to Live
       mockEventSourceInstance?.dispatchEvent(
@@ -1004,6 +1039,8 @@ describe("React dashboard", () => {
       await waitFor(() => {
         expect(screen.getByText("Live")).toBeInTheDocument();
       });
+      expect(screen.getByRole("status", { name: "Monitoring connection: Live" })).toBeInTheDocument();
+      expect(screen.queryByText(/\d{1,2}:\d{2}:\d{2}/)).not.toBeInTheDocument();
 
       expect(localStorage.length).toBe(0);
       expect(sessionStorage.length).toBe(0);
@@ -1118,19 +1155,35 @@ describe("React dashboard", () => {
       expect(screen.getByText("Host ID: 3e6f37c57a5f")).toBeInTheDocument();
       expect(screen.getByText("Friendly production")).toBeInTheDocument();
       expect(screen.queryByText("generated-name")).not.toBeInTheDocument();
-      expect(screen.getAllByText("Host status").length).toBeGreaterThan(0);
+      const localCard = screen.getByRole("article", { name: "Server Local Server" });
+      const remoteCard = screen.getByRole("article", { name: "Server Friendly production" });
+      const localPrivacy = within(localCard).getByRole("button", { name: "Hide server address" });
+      const remotePrivacy = within(remoteCard).getByRole("button", { name: "Hide server address" });
+      expect(localPrivacy).toHaveAttribute("aria-pressed", "false");
+      expect(remotePrivacy).toHaveAttribute("title", "Hide server address");
+      await userEvent.click(localPrivacy);
+      expect(within(localCard).queryByText("127.0.0.1:22")).not.toBeInTheDocument();
+      expect(within(localCard).getByLabelText("Server address hidden")).toHaveTextContent("••••••••••••:••••");
+      expect(within(localCard).getByRole("button", { name: "Show server address" })).toHaveAttribute("aria-pressed", "true");
+      expect(within(remoteCard).getByText("198.51.100.40:22")).toBeInTheDocument();
+      await userEvent.click(remotePrivacy);
+      expect(within(remoteCard).queryByText("198.51.100.40:22")).not.toBeInTheDocument();
+      await userEvent.click(within(remoteCard).getByRole("button", { name: "Show server address" }));
+      expect(within(remoteCard).getByText("198.51.100.40:22")).toBeInTheDocument();
+      expect(screen.getAllByLabelText("Host status: Healthy")[0]).toHaveTextContent("Healthy");
+      expect(screen.getByLabelText("Host status: Unknown")).toHaveAttribute("title", "Host status: Unknown");
       expect(screen.getAllByText("Unknown").length).toBeGreaterThan(0);
       expect(screen.getAllByText("Agent online").length).toBeGreaterThan(0);
       expect(screen.getAllByText("Key ready").length).toBeGreaterThan(0);
-      expect(screen.getAllByTitle("Host health has not been checked yet.").length).toBeGreaterThan(0);
 
       await userEvent.click(screen.getByRole("button", { name: "Table view" }));
       expect(screen.getByText("Host status")).toBeInTheDocument();
       expect(screen.getAllByText("Agent").length).toBeGreaterThan(0);
       expect(screen.getAllByText("Access").length).toBeGreaterThan(0);
       expect(screen.getByText("Local Server")).toBeInTheDocument();
-      expect(screen.getByText("Host ID: 3e6f37c57a5f")).toBeInTheDocument();
-      expect(screen.getByTitle("Host health has not been checked yet.")).toBeInTheDocument();
+      expect(screen.queryByText("Host ID: 3e6f37c57a5f")).not.toBeInTheDocument();
+      expect(screen.getByRole("link", { name: "Local Server" })).toHaveAttribute("title", "Host ID: 3e6f37c57a5f");
+      expect(screen.getByLabelText("Host status: Unknown")).toBeInTheDocument();
     });
 
     it("shows 404 page for unknown routes", async () => {
@@ -1342,7 +1395,7 @@ describe("React dashboard", () => {
 
       // Open user menu dropdown and click Log out
       await userEvent.click(
-        screen.getByRole("button", { name: "Open user menu" }),
+        screen.getByRole("button", { name: "Open local admin account menu" }),
       );
 
       // Wait for the logout option to be available
@@ -1671,7 +1724,7 @@ describe("React dashboard", () => {
       expect(await screen.findByText("web-01")).toBeInTheDocument();
 
       await userEvent.click(
-        screen.getByRole("button", { name: "Open user menu" }),
+        screen.getByRole("button", { name: "Open local admin account menu" }),
       );
       const logoutButton = await screen.findByText("Log out");
       await userEvent.click(logoutButton);
