@@ -596,7 +596,7 @@ describe("React dashboard", () => {
     // Wait for server cards to be visible after data loads
     expect(await screen.findByText("edge-sgp-01")).toBeInTheDocument();
     expect(screen.getByText("Hetzner")).toBeInTheDocument();
-    expect(screen.getByText("Singapore")).toBeInTheDocument();
+    expect(screen.getByText("Location not detected")).toBeInTheDocument();
     expect(screen.getByText("Handles public ingress.")).toBeInTheDocument();
     expect(
       screen.getByText((content) => content.includes("edge, public")),
@@ -1211,6 +1211,30 @@ describe("React dashboard", () => {
       expect(await screen.findByRole("menuitem", { name: "Uninstall agent" })).toBeInTheDocument();
     });
 
+    it("confirms and queues an upgrade for an eligible remote installed agent", async () => {
+      const onlineRecords = [{ ...twoServerRecords[0], agentStatus: "online" as const }];
+      fetchMock
+        .mockResolvedValueOnce(authOk())
+        .mockResolvedValueOnce({ ok: true, status: 200, json: async () => ({ data: twoServersDashboard }) })
+        .mockResolvedValueOnce({ ok: true, status: 200, json: async () => ({ data: onlineRecords }) })
+        .mockResolvedValueOnce({ ok: true, status: 200, json: async () => ({ data: [] }) })
+        .mockResolvedValueOnce({ ok: true, status: 200, json: async () => ({ data: [] }) })
+        .mockResolvedValueOnce({ ok: true, status: 200, json: async () => ({ data: [] }) })
+        .mockResolvedValueOnce({ ok: true, status: 200, json: async () => ({ data: { jobId: "upgrade-1", state: { status: "installing" } } }) });
+
+      const user = userEvent.setup();
+      renderApp(["/vps"]);
+      await user.click(await screen.findByRole("button", { name: "Upgrade agent" }));
+      expect(screen.getByText(/Monitoring will pause briefly/)).toBeInTheDocument();
+      expect(screen.getByText(/previous version is restored automatically/)).toBeInTheDocument();
+      expect(screen.getByText(/Existing credentials are preserved/)).toBeInTheDocument();
+      await user.click(screen.getByRole("button", { name: "Upgrade agent" }));
+
+      await waitFor(() => expect(fetchMock).toHaveBeenCalledWith("/api/vps/vps-1/upgrade-agent", expect.objectContaining({ method: "POST" })));
+      expect(await screen.findByText("Upgrading agent")).toBeInTheDocument();
+      expect(screen.queryByRole("button", { name: "Upgrade agent" })).not.toBeInTheDocument();
+    });
+
     it("shows login gate after logout when auth is required", async () => {
       fetchMock
         .mockResolvedValueOnce(authOk("local", true))
@@ -1635,6 +1659,8 @@ describe("React dashboard", () => {
       username: "deploy",
       provider: "Hetzner",
       region: "Singapore",
+      city: "Singapore",
+      country: "Singapore",
       notes: "Original notes",
       status: "healthy" as const,
       createdAt: "2026-01-01T00:00:00.000Z",
@@ -1650,7 +1676,7 @@ describe("React dashboard", () => {
     }
 
     function queueInitialEditLoad(
-      server = editableServer,
+      server: typeof editableServer | Array<Omit<typeof editableServer, "city" | "country"> & { city?: string; country?: string }> = editableServer,
       mode: "demo" | "local" = "local",
     ) {
       fetchMock
@@ -1663,7 +1689,7 @@ describe("React dashboard", () => {
         .mockResolvedValueOnce({
           ok: true,
           status: 200,
-          json: async () => ({ data: [server] }),
+          json: async () => ({ data: Array.isArray(server) ? server : [server] }),
         })
         .mockResolvedValueOnce({ ok: true, status: 200, json: async () => ({ data: [] }) })
         .mockResolvedValueOnce({ ok: true, status: 200, json: async () => ({ data: [] }) })
@@ -1703,7 +1729,8 @@ describe("React dashboard", () => {
         port: 2222,
         username: "admin",
         provider: "OVH",
-        region: "Frankfurt",
+        city: "Frankfurt",
+        country: "Germany",
         notes: "Primary endpoint",
       };
       queueInitialEditLoad();
@@ -1717,6 +1744,9 @@ describe("React dashboard", () => {
       expect(screen.getByLabelText("Host / IP")).toHaveValue("203.0.113.10");
       expect(screen.getByLabelText("SSH port")).toHaveValue(22);
       expect(screen.getByLabelText("Username")).toHaveValue("deploy");
+      expect(screen.getByLabelText("Username")).toHaveAttribute("maxlength", "64");
+      expect(screen.getByLabelText("Provider")).toHaveAttribute("maxlength", "80");
+      expect(screen.getByLabelText("Notes")).toHaveAttribute("maxlength", "1000");
 
       await user.clear(screen.getByLabelText("Display name"));
       await user.type(screen.getByLabelText("Display name"), "  Production API East  ");
@@ -1728,8 +1758,9 @@ describe("React dashboard", () => {
       await user.type(screen.getByLabelText("Username"), "  admin  ");
       await user.clear(screen.getByLabelText("Provider"));
       await user.type(screen.getByLabelText("Provider"), "  OVH  ");
-      await user.clear(screen.getByLabelText("Region"));
-      await user.type(screen.getByLabelText("Region"), "  Frankfurt  ");
+      expect(screen.queryByLabelText("Region")).not.toBeInTheDocument();
+      expect(screen.queryByLabelText("City")).not.toBeInTheDocument();
+      expect(screen.queryByLabelText("Country")).not.toBeInTheDocument();
       await user.clear(screen.getByLabelText("Notes"));
       await user.type(screen.getByLabelText("Notes"), "  Primary endpoint  ");
 
@@ -1752,7 +1783,6 @@ describe("React dashboard", () => {
               port: 2222,
               username: "admin",
               provider: "OVH",
-              region: "Frankfurt",
               notes: "Primary endpoint",
             }),
           }),
@@ -1761,6 +1791,51 @@ describe("React dashboard", () => {
       expect(await screen.findByText("Production API East")).toBeInTheDocument();
       expect(screen.queryByRole("heading", { name: "Edit server" })).not.toBeInTheDocument();
       expect(screen.getByText("Updated Production API East.")).toBeInTheDocument();
+    });
+
+    it("clears an existing provider using the API's unknown value", async () => {
+      const user = userEvent.setup();
+      const clearedServer = { ...editableServer, provider: "unknown" };
+      queueInitialEditLoad();
+      renderApp(["/vps"]);
+      expect(await screen.findByText("Production API")).toBeInTheDocument();
+      await openEditMenu(user);
+      await user.click(screen.getByRole("menuitem", { name: "Edit server" }));
+      await user.clear(screen.getByLabelText("Provider"));
+
+      fetchMock.mockResolvedValueOnce({ ok: true, status: 200, json: async () => ({ data: clearedServer }) });
+      queueRefresh(clearedServer);
+      await user.click(screen.getByRole("button", { name: "Save changes" }));
+
+      await waitFor(() => expect(fetchMock).toHaveBeenCalledWith(
+        "/api/vps/vps-edit-1",
+        expect.objectContaining({
+          method: "PATCH",
+          body: expect.stringContaining('"provider":"unknown"'),
+        }),
+      ));
+      expect(screen.queryByRole("heading", { name: "Edit server" })).not.toBeInTheDocument();
+    });
+
+    it("displays detected location in card and table, falls back gracefully, and searches city or country", async () => {
+      const user = userEvent.setup();
+      const undetected = { ...editableServer, id: "vps-edit-2", displayName: "Backup", city: undefined, country: undefined };
+      queueInitialEditLoad([editableServer, undetected]);
+      renderApp(["/vps"]);
+
+      expect(await screen.findByText("Singapore, Singapore")).toBeInTheDocument();
+      expect(screen.getByText("Location not detected")).toBeInTheDocument();
+      expect(screen.getByPlaceholderText("Search name, host, provider, city, country, tag...")).toBeInTheDocument();
+
+      await user.type(screen.getByLabelText("Search servers"), "singapore");
+      expect(screen.getByText("Production API")).toBeInTheDocument();
+      expect(screen.queryByText("Backup")).not.toBeInTheDocument();
+
+      await user.clear(screen.getByLabelText("Search servers"));
+      await user.click(screen.getByRole("button", { name: "Table view" }));
+      expect(screen.getByRole("columnheader", { name: "Location" })).toBeInTheDocument();
+      expect(screen.getByText("Singapore, Singapore")).toBeInTheDocument();
+      expect(screen.getByText("Location not detected")).toBeInTheDocument();
     });
 
     it("keeps the dialog open and exposes the API error when saving fails", async () => {

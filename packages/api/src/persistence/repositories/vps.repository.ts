@@ -5,6 +5,8 @@ import type {
 } from "../../vps/vps.models.js";
 
 export type EnsureLocalHostInput = CreateVpsInput & {
+  /** Legacy field used only by local compatibility fixtures. */
+  region?: string;
   id: string;
   kind?: "remote" | "local";
   managedBy?: "user" | "system";
@@ -16,6 +18,7 @@ export type VpsRepository = {
   create(input: CreateVpsInput): Promise<VpsRecord>;
   update(id: string, input: UpdateVpsInput): Promise<VpsRecord | undefined>;
   markKeyProvisioned(id: string): Promise<VpsRecord | undefined>;
+  updateAgentLocation(id: string, location: { city: string; country: string; detectedAt: string }): Promise<VpsRecord | undefined>;
   delete(id: string): Promise<boolean>;
   ensureLocalHost(input: EnsureLocalHostInput): Promise<VpsRecord>;
   markSeen(

@@ -1,5 +1,5 @@
 import { ConflictException, Injectable } from "@nestjs/common";
-export type LifecycleOperation = "install" | "uninstall";
+export type LifecycleOperation = "install" | "uninstall" | "upgrade";
 type Slot = { lifecycle?: LifecycleOperation; ingests: number; waiters: Array<() => void> };
 
 @Injectable()

@@ -29,6 +29,7 @@ type SystemMetrics struct {
 	Uptime      float64        `json:"uptime"`
 	System      *SystemInfo    `json:"system,omitempty"`
 	Docker      *DockerMetrics `json:"docker,omitempty"`
+	Location    *Location      `json:"location,omitempty"`
 }
 
 // CPUStats holds raw CPU time values from /proc/stat.

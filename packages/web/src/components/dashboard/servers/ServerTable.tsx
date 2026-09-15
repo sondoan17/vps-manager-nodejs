@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { Link } from "react-router-dom";
-import { DownloadCloud, Edit3, MoreHorizontal, ShieldCheck, Trash2, Unplug } from "lucide-react";
+import { DownloadCloud, Edit3, MoreHorizontal, RotateCw, ShieldCheck, Trash2, Unplug } from "lucide-react";
 import { Badge } from "../../ui/badge";
 import { Button } from "../../ui/button";
 import {
@@ -38,6 +38,7 @@ export function ServerTable({
   onVerify,
   onInstallAgent,
   onUninstallAgent,
+  onUpgradeAgent,
   jobs,
   onDelete,
   mode,
@@ -49,6 +50,7 @@ export function ServerTable({
   onVerify: (vps: VpsRecord) => void;
   onInstallAgent: (vps: VpsRecord) => void;
   onUninstallAgent: (vps: VpsRecord) => void;
+  onUpgradeAgent: (vps: VpsRecord) => void;
   jobs: DashboardJob[];
   onDelete: (vps: VpsRecord) => void;
   mode: "demo" | "local";
@@ -56,6 +58,7 @@ export function ServerTable({
 }) {
   const [deleteTarget, setDeleteTarget] = useState<VpsRecord | null>(null);
   const [uninstallTarget, setUninstallTarget] = useState<VpsRecord | null>(null);
+  const [upgradeTarget, setUpgradeTarget] = useState<VpsRecord | null>(null);
 
   function handleDeleteClick(vps: VpsRecord) {
     const isLocalHost = vps.kind === "local" || vps.managedBy === "system";
@@ -71,6 +74,7 @@ export function ServerTable({
             <tr className="border-b border-white/10 text-left text-xs uppercase tracking-wider text-white/50">
               <th className="px-3 py-2.5 font-normal">Name</th>
               <th className="px-3 py-2.5 font-normal">Host</th>
+              <th className="px-3 py-2.5 font-normal">Location</th>
               <th className="px-3 py-2.5 font-normal">Host status</th>
               <th className="px-3 py-2.5 font-normal">Agent</th>
               <th className="px-3 py-2.5 font-normal">Access</th>
@@ -90,6 +94,7 @@ export function ServerTable({
               const agentActionRunning = Boolean(agentJob && (agentJob.status === "queued" || agentJob.status === "running"));
               const showInstall = !agentActionRunning && vps.agentStatus !== "online" && vps.agentStatus !== "offline";
               const canUninstall = vps.agentStatus === "online" || vps.agentStatus === "offline" || vps.agentStatus === "failed";
+              const canUpgrade = mode !== "demo" && !isLocal && !agentActionRunning && canUninstall;
               return (
                 <tr
                   key={vps.id}
@@ -111,6 +116,11 @@ export function ServerTable({
                       title={`${vps.username}@${vps.host}:${vps.port}`}
                     >
                       {vps.username}@{vps.host}:{vps.port}
+                    </span>
+                  </td>
+                  <td className="px-3 py-3 text-white/60">
+                    <span className="block max-w-40 truncate" title={[vps.city, vps.country].filter(Boolean).join(", ") || "Location not detected"}>
+                      {[vps.city, vps.country].filter(Boolean).join(", ") || "Location not detected"}
                     </span>
                   </td>
                   <td className="px-3 py-3">
@@ -166,6 +176,7 @@ export function ServerTable({
                         <DownloadCloud size={13} />
                         {vps.agentStatus === "failed" ? "Retry agent" : "Agent"}
                       </Button> : null}
+                      {canUpgrade ? <Button type="button" aria-label={`Upgrade agent for ${displayName}`} size="sm" variant="secondary" className="text-[11px]" disabled={busy} onClick={() => setUpgradeTarget(vps)}><RotateCw size={13} /> Upgrade</Button> : null}
                       <DropdownMenu>
                         <DropdownMenuTrigger asChild>
                           <Button type="button" size="sm" variant="outline" aria-label={`More actions for ${displayName}`}>
@@ -208,6 +219,12 @@ export function ServerTable({
         </table>
       </div>
       {/* Delete confirmation dialog (single instance for table) */}
+      <AlertDialog open={upgradeTarget !== null} onOpenChange={(open) => { if (!open) setUpgradeTarget(null); }}>
+        <AlertDialogContent>
+          <AlertDialogHeader><AlertDialogTitle>Upgrade agent on {upgradeTarget ? vpsDisplayName(upgradeTarget) : "server"}?</AlertDialogTitle><AlertDialogDescription>Monitoring will pause briefly while the agent is upgraded. If the upgrade cannot complete, the previous version is restored automatically. Existing credentials are preserved and are not changed or stored again.</AlertDialogDescription></AlertDialogHeader>
+          <AlertDialogFooter><AlertDialogCancel>Cancel</AlertDialogCancel><AlertDialogAction onClick={() => { if (upgradeTarget) onUpgradeAgent(upgradeTarget); setUpgradeTarget(null); }}>Upgrade agent</AlertDialogAction></AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
       <AlertDialog
         open={deleteTarget !== null}
         onOpenChange={(open) => {

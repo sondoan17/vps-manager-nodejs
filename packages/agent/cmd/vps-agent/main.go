@@ -10,15 +10,25 @@ import (
 	"syscall"
 
 	"github.com/vps-manager/agent/internal/config"
+	"github.com/vps-manager/agent/internal/geo"
 	"github.com/vps-manager/agent/internal/metrics"
 	"github.com/vps-manager/agent/internal/push"
 	"github.com/vps-manager/agent/internal/run"
+	"github.com/vps-manager/agent/internal/version"
+	"path/filepath"
 )
 
 func main() {
 	configPath := flag.String("config", "", "path to config file")
+	stateFlag := flag.String("state", "", "path to persisted state file")
 	once := flag.Bool("once", false, "collect and push metrics once then exit")
+	showVersion := flag.Bool("version", false, "print agent version and exit")
 	flag.Parse()
+
+	if *showVersion {
+		fmt.Println(version.String())
+		return
+	}
 
 	if *configPath == "" {
 		fmt.Fprintf(os.Stderr, "Usage: vps-agent -config <path> [-once]\n")
@@ -35,7 +45,27 @@ func main() {
 	log.Printf("starting agent: %s", cfg)
 
 	collector := metrics.NewCollector()
+	statePath := cfg.StatePath
+	if *stateFlag != "" {
+		statePath = *stateFlag
+	}
+	if statePath == "" {
+		if home, e := os.UserHomeDir(); e == nil {
+			statePath = filepath.Join(home, ".vps-manager-agent", "state.json")
+		} else {
+			statePath = "/var/lib/vps-manager-agent/state.json"
+		}
+	}
+	detector := geo.New(statePath)
+	detector.Start()
 	pushClient := push.NewClient(cfg)
+	pushClient.SetLocationProvider(func() *metrics.Location {
+		l := detector.Location()
+		if l == nil {
+			return nil
+		}
+		return &metrics.Location{City: l.City, Country: l.Country, DetectedAt: l.DetectedAt}
+	})
 
 	// Wire server response config callback so dashboard toggle updates the
 	// collector's Docker metrics state on every successful push.

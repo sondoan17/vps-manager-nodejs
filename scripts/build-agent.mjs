@@ -6,7 +6,7 @@
  */
 
 import { execSync } from "child_process";
-import { existsSync, mkdirSync, statSync } from "fs";
+import { existsSync, mkdirSync, statSync, readFileSync } from "fs";
 import { join, dirname } from "path";
 import { fileURLToPath } from "url";
 
@@ -24,8 +24,12 @@ if (!existsSync(agentDir)) {
 console.log("Building vps-agent for linux/amd64...");
 mkdirSync(outputDir, { recursive: true });
 
+const packageJson = JSON.parse(readFileSync(join(root, "package.json"), "utf8"));
+const agentVersion = process.env.AGENT_VERSION || packageJson.version || "dev";
+const ldflags = `-X github.com/vps-manager/agent/internal/version.Value=${agentVersion}`;
+
 try {
-  execSync('go build -o "' + outputPath + '" ./cmd/vps-agent', {
+  execSync('go build -ldflags "' + ldflags + '" -o "' + outputPath + '" ./cmd/vps-agent', {
     cwd: agentDir,
     stdio: "inherit",
     env: { ...process.env, GOOS: "linux", GOARCH: "amd64", CGO_ENABLED: "0" },

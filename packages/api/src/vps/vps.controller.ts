@@ -117,6 +117,12 @@ export class VpsController {
     };
   }
 
+  @Post(":id/upgrade-agent")
+  async upgradeAgent(@Param("id") id: string) {
+    const result = await this.vps.upgradeAgent(id);
+    return { data: { jobId: result.jobId, state: result.state } };
+  }
+
   // ── Scoped VPS endpoints ───────────────────────────────────────────────
 
   /**

@@ -8,7 +8,11 @@ export type VpsRecord = {
   port: number;
   username: string;
   provider?: string;
+  /** Legacy read-only region field. */
   region?: string;
+  city?: string;
+  country?: string;
+  locationDetectedAt?: string;
   tags?: string[];
   status?: "unknown" | "healthy" | "warning" | "unreachable";
   lastSeenAt?: string;
@@ -57,7 +61,6 @@ export type CreateVpsInput = {
   port: number;
   username: string;
   provider?: string;
-  region?: string;
   tags?: string[];
   status?: "unknown" | "healthy" | "warning" | "unreachable";
   notes?: string;

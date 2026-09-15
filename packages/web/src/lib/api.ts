@@ -7,6 +7,9 @@ export type VpsRecord = {
   username: string;
   provider?: string;
   region?: string;
+  city?: string;
+  country?: string;
+  locationDetectedAt?: string;
   tags?: string[];
   status?: "unknown" | "healthy" | "warning" | "unreachable";
   lastSeenAt?: string;
@@ -337,7 +340,6 @@ export type UpdateVpsPayload = Partial<
     | "port"
     | "username"
     | "provider"
-    | "region"
     | "notes"
     | "dockerMetricsEnabled"
   >
@@ -392,6 +394,13 @@ export function uninstallAgent(id: string) {
     jobId: string;
     state: { status: string; lastInstallJobId?: string };
   }>(`${vpsPath(id)}/uninstall-agent`, { method: "POST" });
+}
+
+export function upgradeAgent(id: string) {
+  return request<{
+    jobId: string;
+    state: { status: string; lastInstallJobId?: string };
+  }>(`${vpsPath(id)}/upgrade-agent`, { method: "POST" });
 }
 
 export function deleteVps(id: string) {

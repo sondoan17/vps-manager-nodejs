@@ -281,6 +281,83 @@ describe("SSH host key provisioning — strict trust contract", () => {
 });
 
 // ---------------------------------------------------------------------------
+// Endpoint changes invalidate VPS-scoped host-key trust.
+// ---------------------------------------------------------------------------
+
+describe("VPS endpoint changes and host-key trust", () => {
+  async function createUpdateContext() {
+    const { store, vps } = await createStoredVps();
+    const { service: hostKeyPin, repo } = makeHostKeyPinService(strictLocalConfig);
+    await repo.upsert({
+      vpsId: vps.id,
+      host: vps.host,
+      port: vps.port,
+      fingerprint: fpA,
+    });
+    const audit = mockAudit();
+    const { VpsService } = await import("../src/vps/vps.service.js");
+    const service = new VpsService(
+      store,
+      createKeyService(join(tempDir, "private", "keys")),
+      {} as never,
+      audit as never,
+      strictLocalConfig,
+      {} as never,
+      {} as never,
+      createJsonAgentRepository(join(tempDir, "data", "agents.json")),
+      hostKeyPin,
+    );
+    return { service, repo, vps, audit };
+  }
+
+  it("revokes an existing VPS-scoped pin when the host changes", async () => {
+    const { service, repo, vps, audit } = await createUpdateContext();
+
+    await service.update(vps.id, { host: "203.0.113.21" });
+
+    expect(await repo.findByVpsId(vps.id)).toBeUndefined();
+    expect(audit.record).toHaveBeenCalledWith(expect.objectContaining({
+      action: "vps.update",
+      metadata: {
+        oldEndpoint: { host: HOST, port: PORT },
+        newEndpoint: { host: "203.0.113.21", port: PORT },
+      },
+    }));
+  });
+
+  it("revokes an existing VPS-scoped pin when the port changes", async () => {
+    const { service, repo, vps, audit } = await createUpdateContext();
+
+    await service.update(vps.id, { port: 2222 });
+
+    expect(await repo.findByVpsId(vps.id)).toBeUndefined();
+    expect(audit.record).toHaveBeenCalledWith(expect.objectContaining({
+      metadata: {
+        oldEndpoint: { host: HOST, port: PORT },
+        newEndpoint: { host: HOST, port: 2222 },
+      },
+    }));
+  });
+
+  it("preserves an existing VPS-scoped pin when the endpoint is unchanged", async () => {
+    const { service, repo, vps, audit } = await createUpdateContext();
+
+    await service.update(vps.id, { name: "renamed" });
+
+    expect(await repo.findByVpsId(vps.id)).toMatchObject({
+      vpsId: vps.id,
+      host: HOST,
+      port: PORT,
+      fingerprint: fpA,
+    });
+    expect(audit.record).toHaveBeenCalledWith(expect.objectContaining({
+      action: "vps.update",
+      metadata: undefined,
+    }));
+  });
+});
+
+// ---------------------------------------------------------------------------
 // Persisted pin is used by the ACTUAL host verifier (env pins are empty)
 // ---------------------------------------------------------------------------
 

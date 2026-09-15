@@ -755,6 +755,73 @@ describe("freshness using receivedAt", () => {
   });
 });
 
+// ── Agent location ───────────────────────────────────────────────────────
+
+describe("agent location ingestion", () => {
+  let service: AgentService;
+  let token: string;
+  let vpsId: string;
+
+  beforeEach(async () => {
+    vpsId = await createVps();
+    const result = await makeService().service.createCredential(vpsId);
+    service = makeService().service;
+    token = result.token;
+  });
+
+  it("accepts legacy payloads without location", async () => {
+    await request(app()).post("/api/agent/metrics")
+      .set("Authorization", `Bearer ${token}`)
+      .send(validPayload()).expect(201);
+    expect((await vpsRepo.get(vpsId))?.city).toBeUndefined();
+  });
+
+  it("persists a valid location", async () => {
+    const location = { city: "Singapore", country: "SG", detectedAt: new Date().toISOString() };
+    await request(app()).post("/api/agent/metrics")
+      .set("Authorization", `Bearer ${token}`)
+      .send(validPayload({ location })).expect(201);
+    await expect(vpsRepo.get(vpsId)).resolves.toMatchObject({
+      city: location.city,
+      country: location.country,
+      locationDetectedAt: location.detectedAt,
+    });
+  });
+
+  it.each([
+    [{ city: "", country: "SG" }],
+    [{ city: "Singapore", country: "" }],
+    [{ city: "Singapore", country: "SG", detectedAt: "not-a-date" }],
+    [{ city: "Singapore", country: "SG", detectedAt: new Date().toISOString(), extra: true }],
+    [{ city: "x".repeat(121), country: "SG", detectedAt: new Date().toISOString() }],
+  ])("rejects invalid location %#", async (location) => {
+    await request(app()).post("/api/agent/metrics")
+      .set("Authorization", `Bearer ${token}`)
+      .send(validPayload({ location })).expect(400);
+  });
+
+  it("does not overwrite a newer location with a stale timestamp", async () => {
+    const newer = new Date(Date.now() - 1_000).toISOString();
+    const older = new Date(Date.now() - 10_000).toISOString();
+    for (const location of [
+      { city: "New", country: "SG", detectedAt: newer },
+      { city: "Old", country: "SG", detectedAt: older },
+      { city: "Equal", country: "SG", detectedAt: newer },
+    ]) {
+      await service.ingestMetric(await service.verifyBearerToken(`Bearer ${token}`), validPayload({ location }));
+    }
+    expect((await vpsRepo.get(vpsId))?.city).toBe("Equal");
+  });
+
+  it("rejects a credential from owning another VPS", async () => {
+    const other = await createVps();
+    const otherCredential = await service.createCredential(other);
+    await request(app()).post("/api/agent/metrics")
+      .set("Authorization", `Bearer ${token}`)
+      .send(validPayload({ vpsId: otherCredential.credential.vpsId })).expect(401);
+  });
+});
+
 // ── Docker metrics ───────────────────────────────────────────────────────
 
 function validDockerPayload(overrides?: Record<string, unknown>) {

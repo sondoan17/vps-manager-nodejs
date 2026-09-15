@@ -76,7 +76,7 @@ export function ServersPanel(props: ServersPanelProps) {
           <div className="grid min-w-0 gap-3 md:grid-cols-[minmax(0,1fr)_180px]">
             <Input
               aria-label="Search servers"
-              placeholder="Search name, host, provider, tag..."
+              placeholder="Search name, host, provider, city, country, tag..."
               value={props.serverSearch}
               onChange={(event) => props.onSearchChange(event.target.value)}
             />
@@ -121,6 +121,7 @@ export function ServersPanel(props: ServersPanelProps) {
               onVerify={props.onVerify}
               onInstallAgent={props.onInstallAgent}
               onUninstallAgent={props.onUninstallAgent}
+              onUpgradeAgent={props.onUpgradeAgent}
               jobs={props.jobs}
               onDelete={props.onDelete}
               mode={props.mode}
@@ -143,6 +144,7 @@ export function ServersPanel(props: ServersPanelProps) {
                   onVerify={props.onVerify}
                   onInstallAgent={props.onInstallAgent}
                   onUninstallAgent={props.onUninstallAgent}
+                  onUpgradeAgent={props.onUpgradeAgent}
                   onToggleDockerMetrics={props.onToggleDockerMetrics}
                   onDelete={props.onDelete}
                   mode={props.mode}

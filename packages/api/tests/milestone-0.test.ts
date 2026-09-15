@@ -147,6 +147,7 @@ describe("database migrations", () => {
       "009_docker_metrics.sql",
       "010_ssh_host_key_pins.sql",
       "011_vps_display_name.sql",
+      "012_vps_location.sql",
     ]);
     expect(migrations[0]?.sql).toContain("CREATE TABLE IF NOT EXISTS vps");
     expect(migrations[1]?.sql).toContain("metric_samples_vps_effective_idx");
@@ -178,6 +179,15 @@ describe("database migrations", () => {
     expect(migrations[10]?.sql).toContain(
       "ALTER TABLE vps ADD COLUMN IF NOT EXISTS display_name",
     );
+    expect(migrations[11]?.sql).toContain(
+      "ALTER TABLE vps ADD COLUMN IF NOT EXISTS city",
+    );
+    expect(migrations[11]?.sql).toContain(
+      "ALTER TABLE vps ADD COLUMN IF NOT EXISTS country",
+    );
+    expect(migrations[11]?.sql).toContain(
+      "ALTER TABLE vps ADD COLUMN IF NOT EXISTS location_detected_at",
+    );
   });
 
   it("excludes optional migrations unless requested", async () => {
@@ -196,6 +206,7 @@ describe("database migrations", () => {
       "009_docker_metrics.sql",
       "010_ssh_host_key_pins.sql",
       "011_vps_display_name.sql",
+      "012_vps_location.sql",
     ]);
     expect(
       selectMigrations(migrations, true).map((migration) => migration.id),
@@ -211,6 +222,7 @@ describe("database migrations", () => {
       "009_docker_metrics.sql",
       "010_ssh_host_key_pins.sql",
       "011_vps_display_name.sql",
+      "012_vps_location.sql",
     ]);
   });
 });

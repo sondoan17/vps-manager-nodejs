@@ -17,15 +17,15 @@ export function ServerOpsSummary({
   const down = records.filter(
     (server) => server.status === "unreachable",
   ).length;
-  const regions = records.reduce<Record<string, number>>((acc, server) => {
-    const key = server.region || "Unassigned";
+  const locations = records.reduce<Record<string, number>>((acc, server) => {
+    const key = [server.city, server.country].filter(Boolean).join(", ") || "Not detected";
     acc[key] = (acc[key] || 0) + 1;
     return acc;
   }, {});
-  const regionText =
-    Object.entries(regions)
+  const locationText =
+    Object.entries(locations)
       .slice(0, 3)
-      .map(([region, count]) => `${region} ${count}`)
+      .map(([location, count]) => `${location} ${count}`)
       .join(" \u00b7 ") || "None";
   const hottest = metrics.length
     ? [...metrics].sort((a, b) => b.cpu - a.cpu)[0]
@@ -44,7 +44,7 @@ export function ServerOpsSummary({
         value={`${down}`}
         tone={down ? "red" : "default"}
       />
-      <SummaryPill label="Regions" value={regionText} />
+      <SummaryPill label="Locations" value={locationText} />
       <SummaryPill
         label="Hottest CPU"
         value={hottest ? `${hottest.vpsId} ${hottest.cpu}%` : "No metrics"}

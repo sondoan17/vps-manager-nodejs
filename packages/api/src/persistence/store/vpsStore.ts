@@ -42,7 +42,7 @@ export function createVpsStore(filePath = "data/vps.json") {
         port: input.port,
         username: input.username,
         provider: input.provider ?? "unknown",
-        region: input.region,
+         region: undefined,
         tags: input.tags ?? [],
         status: input.status ?? "unknown",
         notes: input.notes,
@@ -92,6 +92,17 @@ export function createVpsStore(filePath = "data/vps.json") {
           return data;
         },
       ).then((data) => data.vps.find((vps) => vps.id === id));
+    },
+    async updateAgentLocation(id, location) {
+      return readModifyWriteJsonFile<StoreFile>(filePath, { vps: [] }, (data) => {
+        data.vps = data.vps.map(withVpsDefaults);
+        const index = data.vps.findIndex((v) => v.id === id);
+        if (index === -1) return data;
+        const current = data.vps[index]!;
+        if (current.locationDetectedAt && Date.parse(current.locationDetectedAt) > Date.parse(location.detectedAt)) return data;
+        data.vps[index] = { ...current, city: location.city, country: location.country, locationDetectedAt: location.detectedAt, updatedAt: now() };
+        return data;
+      }).then((data) => data.vps.find((v) => v.id === id));
     },
     async delete(id: string) {
       let deleted = false;

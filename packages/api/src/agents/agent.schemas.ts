@@ -142,8 +142,13 @@ export const agentMetricPayloadSchema = z
         { message: "collectedAt must be within -10m / +2m of now" },
       ),
     agentVersion: z.string().min(1, "agentVersion is required"),
-    vpsId: z.string().optional(),
-    system: agentSystemInfoInputSchema.optional(),
+     vpsId: z.string().optional(),
+     location: z.object({
+       city: z.string().trim().min(1).max(120),
+       country: z.string().trim().min(1).max(120),
+       detectedAt: z.string().datetime({ offset: true }),
+     }).strict().optional(),
+     system: agentSystemInfoInputSchema.optional(),
     docker: agentDockerMetricsInputSchema.optional(),
   })
   .strict(); // reject unknown fields

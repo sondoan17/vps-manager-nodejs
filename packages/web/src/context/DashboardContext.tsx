@@ -33,6 +33,7 @@ import {
   provisionKey,
   trustSshHostKey,
   uninstallAgent,
+  upgradeAgent,
   updateVps,
   verifyKey,
   type DashboardOverview,
@@ -98,6 +99,7 @@ export type DashboardCtx = {
   onVerify: (vps: VpsRecord) => void;
   onInstallAgent: (vps: VpsRecord) => void;
   onUninstallAgent: (vps: VpsRecord) => void;
+  onUpgradeAgent: (vps: VpsRecord) => void;
   onToggleDockerMetrics: (vps: VpsRecord) => void;
   onEdit: (vps: VpsRecord, payload: UpdateVpsPayload) => Promise<void>;
   onDelete: (vps: VpsRecord) => void;
@@ -153,7 +155,7 @@ function applyAgentJobState(records: VpsRecord[], jobs: DashboardOverview["jobs"
     const lifecycleJobs = jobs.filter(
       (candidate) =>
         candidate.vpsId === vps.id &&
-        (candidate.type === "install-agent" || candidate.type === "uninstall-agent"),
+        (candidate.type === "install-agent" || candidate.type === "uninstall-agent" || candidate.type === "upgrade-agent"),
     );
     const job = lifecycleJobs.sort((a, b) => {
       const aTime = Date.parse(a.finishedAt || a.startedAt || "") || 0;
@@ -608,6 +610,21 @@ export function DashboardProvider({
     });
   }
 
+  async function handleUpgradeAgent(vps: VpsRecord) {
+    const label = vpsDisplayName(vps);
+    await runAction(`Starting agent upgrade for ${label}...`, async () => {
+      const result = await upgradeAgent(vps.id);
+      setOverview((current) => ({
+        ...current,
+        jobs: mergeJobs(current.jobs, [{ id: result.jobId, vpsId: vps.id, type: "upgrade-agent", status: "queued", step: "queued", progress: 0 }]),
+      }));
+      setRecords((current) => current.map((record) => record.id === vps.id
+        ? { ...record, agentStatus: "installing", lastAgentInstallJobId: result.jobId }
+        : record));
+      setStatus({ message: `Agent upgrade queued for ${label}. Job ${result.jobId} is running in the background.`, kind: "success" });
+    });
+  }
+
   async function handleToggleDockerMetrics(vps: VpsRecord) {
     const nextEnabled = !vps.dockerMetricsEnabled;
     const label = vpsDisplayName(vps);
@@ -663,7 +680,8 @@ export function DashboardProvider({
       vps.host,
       vps.username,
       vps.provider,
-      vps.region,
+      vps.city,
+      vps.country,
       vps.notes,
       ...(vps.tags || []),
     ]
@@ -724,6 +742,7 @@ export function DashboardProvider({
     onVerify: handleVerify,
     onInstallAgent: handleInstallAgent,
     onUninstallAgent: handleUninstallAgent,
+    onUpgradeAgent: handleUpgradeAgent,
     onToggleDockerMetrics: handleToggleDockerMetrics,
     onEdit: handleEdit,
     onDelete: handleDelete,

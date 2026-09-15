@@ -15,6 +15,7 @@ type Config struct {
 	Token                 string `json:"token"`
 	IntervalSeconds       int    `json:"intervalSeconds"`
 	RequestTimeoutSeconds int    `json:"requestTimeoutSeconds"`
+	StatePath             string `json:"statePath,omitempty"`
 }
 
 // Load reads and validates a config file from the given path.

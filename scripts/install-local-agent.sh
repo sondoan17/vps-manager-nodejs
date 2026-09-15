@@ -34,6 +34,8 @@ umask 077
 BINARY_DEST="/usr/local/bin/vps-manager-agent"
 CONFIG_DIR="/etc/vps-manager-agent"
 CONFIG_FILE="${CONFIG_DIR}/config.json"
+STATE_DIR="/var/lib/vps-manager-agent"
+STATE_FILE="${STATE_DIR}/state.json"
 SERVICE_NAME_DEFAULT="vps-manager-agent"
 SERVICE_USER_DEFAULT="vps-manager-agent"
 UNIT_FILE="/etc/systemd/system/${SERVICE_NAME_DEFAULT}.service"
@@ -263,6 +265,9 @@ else
   fi
   chown root:"${SERVICE_USER}" "$CONFIG_FILE"
   chmod 0640 "$CONFIG_FILE"
+  mkdir -p "$STATE_DIR"
+  chown "${SERVICE_USER}:${SERVICE_USER}" "$STATE_DIR"
+  chmod 0750 "$STATE_DIR"
   echo "  Installed config: ${CONFIG_FILE}"
 fi
 
@@ -287,7 +292,7 @@ Type=simple
 User=${SERVICE_USER}
 Group=${SERVICE_USER}
 ${SUPP_GROUPS_LINE}
-ExecStart=${BINARY_DEST} -config ${CONFIG_FILE}
+ExecStart=${BINARY_DEST} -config ${CONFIG_FILE} -state ${STATE_FILE}
 Restart=always
 RestartSec=10
 

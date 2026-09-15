@@ -16,9 +16,8 @@ import (
 
 	"github.com/vps-manager/agent/internal/config"
 	"github.com/vps-manager/agent/internal/metrics"
+	"github.com/vps-manager/agent/internal/version"
 )
-
-const agentVersion = "0.1.0"
 
 // ErrAuth indicates a fatal authentication failure (401/403).
 type ErrAuth struct {
@@ -64,12 +63,15 @@ type Client struct {
 	token         string
 	httpClient    *http.Client
 	configHandler func(*ConfigResponse)
+	location      func() *metrics.Location
 }
 
 // SetConfigHandler registers a callback that receives runtime configuration
 // from the server on every successful push response. Missing or malformed
 // config (including old server responses) produces a ConfigResponse with
 // DockerMetricsEnabled=false (fail closed).
+func (c *Client) SetLocationProvider(provider func() *metrics.Location) { c.location = provider }
+
 func (c *Client) SetConfigHandler(handler func(*ConfigResponse)) {
 	c.configHandler = handler
 }
@@ -98,12 +100,17 @@ type payload struct {
 	Uptime       float64                `json:"uptime"`
 	AgentVersion string                 `json:"agentVersion"`
 	System       *metrics.SystemInfo    `json:"system,omitempty"`
+	Location     *metrics.Location      `json:"location,omitempty"`
 	Docker       *metrics.DockerMetrics `json:"docker,omitempty"`
 }
 
 // Push sends metrics to the backend. It distinguishes between fatal auth
 // errors (ErrAuth), fatal request errors (ErrFatal), and retryable errors (ErrRetryable).
 func (c *Client) Push(ctx context.Context, m *metrics.SystemMetrics) error {
+	location := m.Location
+	if location == nil && c.location != nil {
+		location = c.location()
+	}
 	p := payload{
 		VpsId:        "", // backend derives from token
 		CollectedAt:  time.Now().UTC().Format(time.RFC3339),
@@ -114,9 +121,10 @@ func (c *Client) Push(ctx context.Context, m *metrics.SystemMetrics) error {
 		NetworkRx:    m.NetworkRx,
 		NetworkTx:    m.NetworkTx,
 		Uptime:       m.Uptime,
-		AgentVersion: agentVersion,
+		AgentVersion: version.String(),
 		System:       m.System,
 		Docker:       m.Docker,
+		Location:     location,
 	}
 
 	body, err := json.Marshal(p)

@@ -66,6 +66,7 @@ export function ServerCard({
   onVerify,
   onInstallAgent,
   onUninstallAgent,
+  onUpgradeAgent,
   onToggleDockerMetrics,
   onDelete,
   mode,
@@ -83,6 +84,7 @@ export function ServerCard({
   onVerify: (vps: VpsRecord) => void;
   onInstallAgent: (vps: VpsRecord) => void;
   onUninstallAgent: (vps: VpsRecord) => void;
+  onUpgradeAgent: (vps: VpsRecord) => void;
   onToggleDockerMetrics: (vps: VpsRecord) => void;
   onDelete: (vps: VpsRecord) => void;
   mode: "demo" | "local";
@@ -96,6 +98,7 @@ export function ServerCard({
   const [passwordError, setPasswordError] = useState("");
   const [deleteTarget, setDeleteTarget] = useState<VpsRecord | null>(null);
   const [uninstallTarget, setUninstallTarget] = useState<VpsRecord | null>(null);
+  const [upgradeTarget, setUpgradeTarget] = useState<VpsRecord | null>(null);
   const displayName = vpsDisplayName(vps);
   const hostId = vpsHostId(vps);
   const osLabel =
@@ -111,6 +114,8 @@ export function ServerCard({
     !agentActionRunning &&
     vps.agentStatus !== "online" &&
     vps.agentStatus !== "offline";
+  const canUpgrade = mode !== "demo" && !isLocalHost && !agentActionRunning &&
+    (vps.agentStatus === "online" || vps.agentStatus === "offline" || vps.agentStatus === "failed");
 
   const handlePasswordKeyDown = (e: React.KeyboardEvent) => {
     if (e.key === "Enter") {
@@ -223,6 +228,9 @@ export function ServerCard({
                 <DownloadCloud size={16} />
                 {vps.agentStatus === "failed" ? "Retry install" : "Install agent"}
               </Button> : null}
+              {canUpgrade ? <Button type="button" size="sm" variant="default" disabled={busy} onClick={() => setUpgradeTarget(vps)}>
+                <RotateCw size={16} /> Upgrade agent
+              </Button> : null}
             </>
           ) : (
             <>
@@ -298,6 +306,15 @@ export function ServerCard({
         </AlertDialogContent>
       </AlertDialog>
       {/* Uninstall confirmation – outside DropdownMenu so focus is restored cleanly */}
+      <AlertDialog open={upgradeTarget?.id === vps.id} onOpenChange={(open) => { if (!open) setUpgradeTarget(null); }}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Upgrade agent on {displayName}?</AlertDialogTitle>
+            <AlertDialogDescription>Monitoring will pause briefly while the agent is upgraded. If the upgrade cannot complete, the previous version is restored automatically. Existing credentials are preserved and are not changed or stored again.</AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter><AlertDialogCancel>Cancel</AlertDialogCancel><AlertDialogAction onClick={() => { onUpgradeAgent(vps); setUpgradeTarget(null); }}>Upgrade agent</AlertDialogAction></AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
       <AlertDialog
         open={uninstallTarget?.id === vps.id}
         onOpenChange={(open) => {
@@ -523,6 +540,7 @@ function ServerSystemInfoStrip({
 }
 
 function ServerLocationMeta({ vps }: { vps: VpsRecord }) {
+  const location = [vps.city, vps.country].filter(Boolean).join(", ") || "Location not detected";
   return (
     <div className="mt-2 flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1 text-[11px] text-white/40">
       <span className="inline-flex min-w-0 items-center gap-1">
@@ -532,7 +550,7 @@ function ServerLocationMeta({ vps }: { vps: VpsRecord }) {
       <span aria-hidden="true">·</span>
       <span className="inline-flex min-w-0 items-center gap-1">
         <MapPin size={12} aria-hidden="true" />
-        <span className="truncate">{vps.region || "Region not set"}</span>
+        <span className="truncate text-white/65" title={location}>{location}</span>
       </span>
     </div>
   );

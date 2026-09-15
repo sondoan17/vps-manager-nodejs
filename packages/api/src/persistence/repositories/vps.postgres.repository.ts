@@ -33,6 +33,9 @@ type VpsRow = {
   kind: string | null;
   managed_by: string | null;
   docker_metrics_enabled: boolean | null;
+  city: string | null;
+  country: string | null;
+  location_detected_at: Date | string | null;
   created_at: Date | string;
   updated_at: Date | string;
 };
@@ -67,7 +70,7 @@ export function createPostgresVpsRepository(pool: DatabasePool): VpsRepository {
           input.port,
           input.username,
           input.provider ?? "unknown",
-          input.region ?? null,
+           null,
           input.tags ?? [],
           input.status ?? "unknown",
           input.notes ?? null,
@@ -128,6 +131,14 @@ export function createPostgresVpsRepository(pool: DatabasePool): VpsRepository {
       );
       return result.rows[0] ? rowToVps(result.rows[0]) : undefined;
     },
+    async updateAgentLocation(id, location) {
+      const result = await pool.query<VpsRow>(
+        `UPDATE vps SET city = $2, country = $3, location_detected_at = $4, updated_at = NOW()
+         WHERE id = $1 AND (location_detected_at IS NULL OR location_detected_at <= $4) RETURNING *`,
+        [id, location.city, location.country, new Date(location.detectedAt)],
+      );
+      return result.rows[0] ? rowToVps(result.rows[0]) : get(id);
+    },
     async delete(id) {
       const result = await pool.query("DELETE FROM vps WHERE id = $1", [id]);
       return Boolean(result.rowCount);
@@ -159,7 +170,7 @@ export function createPostgresVpsRepository(pool: DatabasePool): VpsRepository {
           input.port,
           input.username,
           input.provider ?? "local",
-          input.region ?? null,
+           null,
           input.tags ?? ["local", "local-agent", "system"],
           input.status ?? "unknown",
           input.notes ?? null,
@@ -199,8 +210,11 @@ function rowToVps(row: VpsRow): VpsRecord {
     keyProvisionedAt: optionalIsoString(row.key_provisioned_at),
     kind: (row.kind as VpsRecord["kind"]) ?? undefined,
     managedBy: (row.managed_by as VpsRecord["managedBy"]) ?? undefined,
-    dockerMetricsEnabled: row.docker_metrics_enabled ?? false,
-    createdAt: requiredIsoString(row.created_at),
+     dockerMetricsEnabled: row.docker_metrics_enabled ?? false,
+     city: row.city ?? undefined,
+     country: row.country ?? undefined,
+     locationDetectedAt: optionalIsoString(row.location_detected_at),
+     createdAt: requiredIsoString(row.created_at),
     updatedAt: requiredIsoString(row.updated_at),
   });
 }

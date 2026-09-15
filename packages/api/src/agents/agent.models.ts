@@ -131,6 +131,7 @@ export type AgentMetricPayload = {
   networkTx: number;
   uptime: number;
   agentVersion: string;
+  location?: { city: string; country: string; detectedAt: string };
   system?: AgentSystemInfoInput;
   docker?: AgentDockerMetricsInput;
 };

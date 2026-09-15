@@ -22,6 +22,7 @@ import {
 } from "./vps.schemas.js";
 import { AgentInstallerService } from "../agents/agent-installer.service.js";
 import { AgentUninstallerService } from "../agents/agent-uninstaller.service.js";
+import { AgentUpgraderService } from "../agents/agent-upgrader.service.js";
 import { AGENT_REPOSITORY } from "../tokens.js";
 import type { AgentRepository } from "../persistence/repositories/agent.repository.js";
 import { HostKeyPinService } from "../ssh/host-key-pin.service.js";
@@ -40,6 +41,7 @@ export class VpsService {
     private readonly agentUninstaller: AgentUninstallerService,
     @Inject(AGENT_REPOSITORY) private readonly agentRepository: AgentRepository,
     private readonly hostKeyPin: HostKeyPinService,
+    private readonly agentUpgrader?: AgentUpgraderService,
   ) {}
 
   async list() {
@@ -170,6 +172,16 @@ export class VpsService {
     // For remote/user-managed hosts: normal update but also allow dockerMetricsEnabled
     const parsedBody = updateVpsSchema.parse(body);
     const hasDockerToggle = parsedBody && "dockerMetricsEnabled" in parsedBody;
+    const oldEndpoint = { host: vps.host, port: vps.port };
+    const newEndpoint = {
+      host: parsedBody.host ?? vps.host,
+      port: parsedBody.port ?? vps.port,
+    };
+    const endpointChanged =
+      oldEndpoint.host !== newEndpoint.host || oldEndpoint.port !== newEndpoint.port;
+    const endpointAuditMetadata = endpointChanged
+      ? { oldEndpoint, newEndpoint }
+      : undefined;
 
     if (hasDockerToggle) {
       const oldValue = vps.dockerMetricsEnabled ?? false;
@@ -182,36 +194,42 @@ export class VpsService {
         });
       }
 
-      const updated = await this.store.update(id, parsedBody);
-      if (!updated) throw new VpsNotFoundError();
+       const updated = await this.store.update(id, parsedBody);
+       if (!updated) throw new VpsNotFoundError();
+       if (endpointChanged) await this.hostKeyPin.revokeTrust(id);
 
-      await this.audit.record({
+       await this.audit.record({
         actor: "system",
         action:
           oldValue !== newValue ? "vps.docker_metrics.update" : "vps.update",
         resourceType: "vps",
         resourceId: id,
         result: "success",
-        metadata: hasDockerToggle
-          ? {
-              old: { dockerMetricsEnabled: oldValue },
-              new: { dockerMetricsEnabled: newValue },
-            }
-          : undefined,
+         metadata: {
+           ...(hasDockerToggle
+             ? {
+                 old: { dockerMetricsEnabled: oldValue },
+                 new: { dockerMetricsEnabled: newValue },
+               }
+             : {}),
+           ...(endpointAuditMetadata ?? {}),
+         },
       });
       return updated;
     }
 
     const updated = await this.store.update(id, parsedBody);
     if (!updated) throw new VpsNotFoundError();
+    if (endpointChanged) await this.hostKeyPin.revokeTrust(id);
     await this.audit.record({
       actor: "system",
       action: "vps.update",
       resourceType: "vps",
       resourceId: id,
-      result: "success",
-    });
-    return updated;
+       result: "success",
+       metadata: endpointAuditMetadata,
+     });
+     return updated;
   }
 
   async delete(id: string) {
@@ -365,5 +383,13 @@ export class VpsService {
     const vps = await this.get(id);
     this.assertRemoteUserManaged(vps);
     return this.agentUninstaller.uninstall(vps.id);
+  }
+
+  async upgradeAgent(id: string) {
+    this.assertNotDemo();
+    const vps = await this.get(id);
+    this.assertRemoteUserManaged(vps);
+    if (!this.agentUpgrader) throw new Error("Agent upgrade service is unavailable");
+    return this.agentUpgrader.upgrade(vps.id);
   }
 }

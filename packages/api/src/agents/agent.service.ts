@@ -303,8 +303,13 @@ export class AgentService {
     }
     // When dockerMetricsEnabled is false, any Docker payload is silently ignored.
 
-    // 9. Build metric sample and append
-    const sample: MetricSample = {
+     // Persist only agent-owned location fields through the dedicated method.
+     if (parsed.location) {
+       await this.vpsRepository.updateAgentLocation(credential.vpsId, parsed.location);
+     }
+
+     // 9. Build metric sample and append
+     const sample: MetricSample = {
       vpsId: credential.vpsId,
       cpu: parsed.cpu,
       memory: parsed.memory,

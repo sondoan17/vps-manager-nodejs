@@ -4,6 +4,12 @@ import (
 	"strings"
 )
 
+type Location struct {
+	City       string `json:"city,omitempty"`
+	Country    string `json:"country,omitempty"`
+	DetectedAt string `json:"detectedAt,omitempty"`
+}
+
 // SystemInfo holds optional system information collected best-effort.
 type SystemInfo struct {
 	OS       *OSInfo       `json:"os,omitempty"`
