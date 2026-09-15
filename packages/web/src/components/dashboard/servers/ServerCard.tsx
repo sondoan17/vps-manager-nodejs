@@ -13,9 +13,7 @@ import {
   Server,
   ServerCog,
   ShieldCheck,
-  TerminalSquare,
   Trash2,
-  Unplug,
 } from "lucide-react";
 import { Button } from "../../ui/button";
 import {
@@ -33,7 +31,6 @@ import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
-  DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "../../ui/dropdown-menu";
 import { Input } from "../../ui/input";
@@ -183,14 +180,15 @@ export function ServerCard({
             jobs={jobs}
           />
           <div className="flex min-w-0 flex-wrap items-center gap-2 xl:justify-end">
-          <Link
-            to={`/vps/${encodeURIComponent(vps.id)}`}
-            aria-label={`Manage ${displayName}`}
-            className="inline-flex h-9 min-w-0 items-center justify-center border border-white/10 bg-white/[0.03] px-3 text-sm font-normal text-white transition-colors hover:bg-white/[0.08]"
-          >
-            <Server size={16} />
-            <span className="ml-2">Manage</span>
-          </Link>
+          <Button asChild type="button" size="sm" variant="default">
+            <Link
+              to={`/vps/${encodeURIComponent(vps.id)}`}
+              aria-label={`Manage ${displayName}`}
+            >
+              <Server size={16} />
+              <span>Manage</span>
+            </Link>
+          </Button>
           {isLocalHost ? (
             <span className="inline-flex h-9 items-center gap-2 px-2 text-sm text-white/50">
               <Activity size={16} aria-hidden="true" />
@@ -208,16 +206,6 @@ export function ServerCard({
                 <ShieldCheck size={16} />
                 Verify access
               </Button>
-              <Button
-                type="button"
-                size="sm"
-                variant="secondary"
-                disabled={busy}
-                onClick={() => setShowPassword((value) => !value)}
-              >
-                <KeyRound size={16} />
-                Reinstall key
-              </Button>
               {showInstall ? <Button
                 type="button"
                 size="sm"
@@ -227,9 +215,6 @@ export function ServerCard({
               >
                 <DownloadCloud size={16} />
                 {vps.agentStatus === "failed" ? "Retry install" : "Install agent"}
-              </Button> : null}
-              {canUpgrade ? <Button type="button" size="sm" variant="default" disabled={busy} onClick={() => setUpgradeTarget(vps)}>
-                <RotateCw size={16} /> Upgrade agent
               </Button> : null}
             </>
           ) : (
@@ -261,6 +246,10 @@ export function ServerCard({
             busy={busy}
             isLocalHost={isLocalHost}
             onRotate={() => setShowPassword(true)}
+            canUpgrade={canUpgrade}
+            onRequestUpgrade={() => {
+              window.setTimeout(() => setUpgradeTarget(vps), 0);
+            }}
             onRequestUninstall={() => {
               window.setTimeout(() => setUninstallTarget(vps), 0);
             }}
@@ -653,6 +642,8 @@ function ServerOverflow({
   busy,
   isLocalHost,
   onRotate,
+  canUpgrade,
+  onRequestUpgrade,
   onRequestUninstall,
   onRequestDelete,
   mode,
@@ -662,6 +653,8 @@ function ServerOverflow({
   busy: boolean;
   isLocalHost: boolean;
   onRotate: () => void;
+  canUpgrade: boolean;
+  onRequestUpgrade: () => void;
   onRequestUninstall: () => void;
   onRequestDelete: () => void;
   mode: "demo" | "local";
@@ -681,45 +674,14 @@ function ServerOverflow({
         </Button>
       </DropdownMenuTrigger>
       <DropdownMenuContent align="end" className="w-48 rounded-none">
-        <DropdownMenuItem asChild>
-          <Link
-            to={`/vps/${encodeURIComponent(vps.id)}/terminal`}
-            className="flex items-center gap-2"
-          >
-            <TerminalSquare size={15} />
-            Open terminal
-          </Link>
+        <DropdownMenuItem disabled={busy || !canUpgrade} onClick={onRequestUpgrade}>
+          <RotateCw size={15} />
+          Upgrade agent
         </DropdownMenuItem>
-        <DropdownMenuItem asChild>
-          <Link
-            to={`/vps/${encodeURIComponent(vps.id)}/metrics`}
-            className="flex items-center gap-2"
-          >
-            <Activity size={15} />
-            View metrics
-          </Link>
+        <DropdownMenuItem onClick={onRotate} disabled={busy || isLocalHost}>
+          <KeyRound size={15} />
+          Reinstall SSH key
         </DropdownMenuItem>
-        {isLocalHost ? (
-          <DropdownMenuItem disabled>
-            <Activity size={15} />
-            Managed by local agent
-          </DropdownMenuItem>
-        ) : (
-          <DropdownMenuItem onClick={onRotate} disabled={busy}>
-            <RotateCw size={15} />
-            {vps.keyProvisionedAt ? "Rotate key" : "Install key"}
-          </DropdownMenuItem>
-        )}
-        {vps.agentStatus === "online" || vps.agentStatus === "offline" ? (
-          <DropdownMenuItem
-            className="text-destructive focus:text-destructive"
-            disabled={busy}
-            onClick={onRequestUninstall}
-          >
-            <Unplug size={15} />
-            Uninstall agent
-          </DropdownMenuItem>
-        ) : null}
         <DropdownMenuItem
           disabled={busy || isLocalHost || mode === "demo"}
           onClick={onEdit}
@@ -729,14 +691,13 @@ function ServerOverflow({
           <Edit3 size={15} />
           Edit server
         </DropdownMenuItem>
-        <DropdownMenuSeparator />
         <DropdownMenuItem
           className="text-destructive focus:text-destructive"
           disabled={busy || isLocalHost}
           onClick={onRequestDelete}
         >
           <Trash2 size={15} />
-          Delete server
+          Remove server
         </DropdownMenuItem>
       </DropdownMenuContent>
     </DropdownMenu>

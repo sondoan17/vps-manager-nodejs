@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 
 	"io"
+	"log"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -20,6 +21,7 @@ type Location struct {
 type state struct {
 	Schema    int       `json:"schema"`
 	Attempted bool      `json:"attempted"`
+	Status    string    `json:"status,omitempty"`
 	Location  *Location `json:"location,omitempty"`
 }
 type response struct {
@@ -54,7 +56,7 @@ func (d *Detector) Start() *Location {
 	if d.location == nil {
 		if s, err := readState(d.path); err == nil {
 			d.location = s.Location
-			if s.Attempted {
+			if s.Schema >= 2 || (s.Schema == 1 && s.Location != nil) || (s.Schema == 1 && s.Attempted && s.Status != "") {
 				d.started = true
 			}
 		}
@@ -66,14 +68,18 @@ func (d *Detector) Start() *Location {
 	}
 	d.started = true
 	d.mu.Unlock()
-	go d.detect()
+	d.detect()
 	return d.Location()
 }
 func (d *Detector) detect() {
 	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
 	defer cancel()
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, "https://ipwho.is/?fields=success,city,country", nil)
-	if err == nil {
+	var err error
+	var loc *Location
+	req, reqErr := http.NewRequestWithContext(ctx, http.MethodGet, "https://ipwho.is/?fields=success,city,country", nil)
+	if reqErr != nil {
+		err = reqErr
+	} else {
 		var resp *http.Response
 		resp, err = d.client.Do(req)
 		if err == nil {
@@ -81,17 +87,25 @@ func (d *Detector) detect() {
 			var r response
 			err = json.NewDecoder(io.LimitReader(resp.Body, 4096)).Decode(&r)
 			if err == nil && resp.StatusCode >= 200 && resp.StatusCode < 300 && r.Success && r.City != "" && r.Country != "" {
-				d.mu.Lock()
-				d.location = &Location{City: r.City, Country: r.Country, DetectedAt: time.Now().UTC().Format(time.RFC3339)}
-				d.mu.Unlock()
+				loc = &Location{City: r.City, Country: r.Country, DetectedAt: time.Now().UTC().Format(time.RFC3339)}
 			}
 		}
 	}
 	d.mu.Lock()
-	loc := d.location
+	d.location = loc
 	d.mu.Unlock()
-	_ = writeState(d.path, state{Schema: 1, Attempted: true, Location: loc})
-	_ = err
+	status := "failure"
+	if loc != nil {
+		status = "success"
+		log.Printf("geo lookup success")
+	} else {
+		log.Printf("geo lookup failure")
+	}
+	if e := writeState(d.path, state{Schema: 2, Attempted: true, Status: status, Location: loc}); e != nil {
+		log.Printf("geo state write failure")
+	} else {
+		log.Printf("geo state write success")
+	}
 }
 func readState(path string) (state, error) {
 	var s state

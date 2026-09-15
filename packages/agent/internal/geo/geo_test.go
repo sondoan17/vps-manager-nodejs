@@ -57,7 +57,7 @@ func TestDetectorOneLookupAndPersistedSuccess(t *testing.T) {
 	if err := json.Unmarshal(b, &persisted); err != nil {
 		t.Fatal(err)
 	}
-	if len(persisted) != 3 {
+	if len(persisted) != 4 {
 		t.Fatalf("state fields=%v", persisted)
 	}
 	if _, ok := persisted["location"]; !ok {

@@ -147,6 +147,14 @@ if [[ "$UNINSTALL" == "true" ]]; then
     fi
   fi
 
+  if [[ -d "$STATE_DIR" ]]; then
+    if [[ "$DRY_RUN" == "true" ]]; then
+      echo "  [DRY-RUN] Would remove: ${STATE_DIR}/"
+    else
+      rm -rf "$STATE_DIR"
+    fi
+  fi
+
   echo "[Uninstall] Note: API app data in /opt/vps-manager was preserved."
   echo "[Uninstall] Agent tokens can be revoked via the dashboard > Servers > Local Host."
   exit 0
@@ -300,6 +308,8 @@ RestartSec=10
 NoNewPrivileges=true
 PrivateTmp=true
 ProtectSystem=strict
+StateDirectory=vps-manager-agent
+StateDirectoryMode=0750
 ProtectHome=true
 CapabilityBoundingSet=
 AmbientCapabilities=

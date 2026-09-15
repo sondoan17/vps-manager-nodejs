@@ -46,7 +46,7 @@ import { vpsDisplayName } from "../lib/dashboard-formatters";
 // ── Types ────────────────────────────────────────────────────────────
 
 type StatusKind = "default" | "success" | "destructive";
-type Status = { message: string; kind: StatusKind };
+type Status = { message: string; kind: StatusKind } | null;
 
 type PendingHostKeyTrust = {
   vpsId: string;
@@ -256,10 +256,12 @@ export function DashboardProvider({
     useState<PendingHostKeyTrust | null>(null);
   const unsubscribeRef = useRef<(() => void) | null>(null);
   const [initialLoadDone, setInitialLoadDone] = useState(false);
+  const [refreshToastVisible, setRefreshToastVisible] = useState(false);
+  const refreshToastTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // ── Data loading ───────────────────────────────────────────────────
 
-  async function loadVps(message = "VPS list refreshed.") {
+  async function loadVps(message?: string) {
     const [dashboard, servers, jobs, metrics, auditEvents] = await Promise.all([
       getDashboardOverview(),
       listVps(),
@@ -286,7 +288,7 @@ export function DashboardProvider({
       },
     });
     setRecords(servers);
-    setStatus({ message, kind: "success" });
+    if (message) setStatus({ message, kind: "success" });
   }
 
   async function runAction<T>(
@@ -317,7 +319,10 @@ export function DashboardProvider({
     let cancelled = false;
     loadVps()
       .then(() => {
-        if (!cancelled) setInitialLoadDone(true);
+        if (!cancelled) {
+          setInitialLoadDone(true);
+          setStatus(null);
+        }
       })
       .catch(() => {
         if (!cancelled) {
@@ -332,6 +337,12 @@ export function DashboardProvider({
       cancelled = true;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  useEffect(() => {
+    return () => {
+      if (refreshToastTimerRef.current) clearTimeout(refreshToastTimerRef.current);
+    };
   }, []);
 
   // ── SSE monitoring subscription ───────────────────────────────────
@@ -406,6 +417,30 @@ export function DashboardProvider({
       });
     }
     onAfterLogout?.();
+  }
+
+  async function handleRefresh() {
+    if (busy) return;
+    setBusy(true);
+    setStatus({ message: "Refreshing VPS list...", kind: "default" });
+    setRefreshToastVisible(false);
+    if (refreshToastTimerRef.current) clearTimeout(refreshToastTimerRef.current);
+    try {
+      await loadVps();
+      setStatus(null);
+      setRefreshToastVisible(true);
+      refreshToastTimerRef.current = setTimeout(() => {
+        setRefreshToastVisible(false);
+        refreshToastTimerRef.current = null;
+      }, 2500);
+    } catch {
+      setStatus({
+        message: "⚠ VPS list could not be refreshed",
+        kind: "destructive",
+      });
+    } finally {
+      setBusy(false);
+    }
   }
 
   async function handleCreate(event: FormEvent<HTMLFormElement>) {
@@ -699,14 +734,14 @@ export function DashboardProvider({
     );
   });
 
-  const statusAlert = (
+  const statusAlert = status ? (
     <Alert
       variant={status.kind}
       className="rounded-none px-3 py-2 text-sm font-normal"
     >
       {status.message}
     </Alert>
-  );
+  ) : null;
 
   const mode = overview.mode;
 
@@ -731,7 +766,7 @@ export function DashboardProvider({
     mode,
     loaded: initialLoadDone,
     onLogout: authRequired ? handleLogout : undefined,
-    onRefresh: () => runAction("Refreshing VPS list...", () => loadVps()),
+    onRefresh: () => void handleRefresh(),
     onSearchChange: setServerSearch,
     onStatusFilterChange: setStatusFilter,
     onCreateFormChange: setCreateForm,
@@ -751,6 +786,17 @@ export function DashboardProvider({
   return (
     <DashboardContext.Provider value={ctx}>
       {children}
+      {refreshToastVisible ? (
+        <div
+          role="status"
+          aria-live="polite"
+          aria-atomic="true"
+          className="fixed right-4 top-4 z-50 max-w-[calc(100vw-2rem)] border border-white/10 bg-[#111318] px-4 py-3 text-sm font-medium text-white shadow-2xl shadow-black/40 sm:right-6 sm:top-6"
+        >
+          <span aria-hidden="true" className="mr-2 text-emerald-400">✓</span>
+          <span>VPS list refreshed</span>
+        </div>
+      ) : null}
       <AlertDialog
         open={Boolean(pendingHostKeyTrust)}
         onOpenChange={(open) => {

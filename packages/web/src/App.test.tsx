@@ -233,6 +233,46 @@ describe("React dashboard", () => {
     ).toBeInTheDocument();
   });
 
+  it("shows successful manual refresh feedback as a top-right status toast", async () => {
+    const dashboardResponse = {
+      ok: true,
+      status: 200,
+      json: async () => ({ data: emptyDashboard }),
+    };
+    const emptyListResponse = {
+      ok: true,
+      status: 200,
+      json: async () => ({ data: [] }),
+    };
+
+    fetchMock
+      .mockResolvedValueOnce(authOk())
+      .mockResolvedValueOnce(dashboardResponse)
+      .mockResolvedValueOnce(emptyListResponse)
+      .mockResolvedValueOnce(emptyListResponse)
+      .mockResolvedValueOnce(emptyListResponse)
+      .mockResolvedValueOnce(emptyListResponse)
+      .mockResolvedValueOnce(dashboardResponse)
+      .mockResolvedValueOnce(emptyListResponse)
+      .mockResolvedValueOnce(emptyListResponse)
+      .mockResolvedValueOnce(emptyListResponse)
+      .mockResolvedValueOnce(emptyListResponse);
+
+    renderApp(["/vps"]);
+    await screen.findByText(
+      "No VPS servers yet. Add your first server to get started.",
+    );
+
+    await userEvent.click(
+      screen.getByRole("button", { name: "Refresh dashboard" }),
+    );
+
+    const toast = await screen.findByRole("status");
+    expect(toast).toHaveTextContent("✓VPS list refreshed");
+    expect(toast).toHaveClass("fixed", "right-4", "top-4");
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+  });
+
   it("creates a VPS then provisions key only when one-time password is submitted", async () => {
     fetchMock
       .mockResolvedValueOnce(authOk())
@@ -801,7 +841,7 @@ describe("React dashboard", () => {
               containers: [
                 {
                   id: "abc123",
-                  name: "api",
+                  name: "student_api_1",
                   image: "app:latest",
                   state: "running",
                   status: "Up 2 minutes",
@@ -813,14 +853,31 @@ describe("React dashboard", () => {
                   blockWriteBytes: 400,
                   pids: 4,
                 },
+                {
+                  id: "def456",
+                  name: "student_worker_1",
+                  image: "worker:latest",
+                  state: "exited",
+                  status: "Exited (1)",
+                  cpuPercent: 0,
+                  memoryUsageBytes: 0,
+                  networkRxBytes: 0,
+                  networkTxBytes: 0,
+                  blockReadBytes: 0,
+                  blockWriteBytes: 0,
+                  pids: 0,
+                },
               ],
             },
           ],
         }),
       );
 
-      expect(await screen.findByText("1/2 running")).toBeInTheDocument();
-      expect(screen.getByText(/api/)).toBeInTheDocument();
+      expect(await screen.findByText("1 running")).toBeInTheDocument();
+      expect(screen.getByText("1 stopped")).toBeInTheDocument();
+      const problemRow = screen.getByText("worker").closest("li")!;
+      const runningRow = screen.getByText("api").closest("li")!;
+      expect(problemRow.compareDocumentPosition(runningRow) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
 
       fetchMock
         .mockResolvedValueOnce({
@@ -1192,7 +1249,7 @@ describe("React dashboard", () => {
       expect(fetchMock).toHaveBeenCalledTimes(6);
     });
 
-    it("hides install and offers uninstall when the agent is online", async () => {
+    it("shows the card action hierarchy and ordered overflow menu when the agent is online", async () => {
       const onlineRecords = [{ ...twoServerRecords[0], agentStatus: "online" }];
       fetchMock
         .mockResolvedValueOnce(authOk())
@@ -1206,9 +1263,16 @@ describe("React dashboard", () => {
       renderApp(["/vps"]);
       expect((await screen.findAllByText("Agent online")).length).toBeGreaterThan(0);
       expect(screen.queryByRole("button", { name: "Install agent" })).not.toBeInTheDocument();
+      expect(screen.getByRole("link", { name: "Manage web-01" })).toBeInTheDocument();
+      expect(screen.getByRole("button", { name: "Verify access" })).toBeInTheDocument();
 
       await user.click(screen.getByRole("button", { name: "More actions for web-01" }));
-      expect(await screen.findByRole("menuitem", { name: "Uninstall agent" })).toBeInTheDocument();
+      expect((await screen.findAllByRole("menuitem")).map((item) => item.textContent)).toEqual([
+        "Upgrade agent",
+        "Reinstall SSH key",
+        "Edit server",
+        "Remove server",
+      ]);
     });
 
     it("confirms and queues an upgrade for an eligible remote installed agent", async () => {
@@ -1224,7 +1288,8 @@ describe("React dashboard", () => {
 
       const user = userEvent.setup();
       renderApp(["/vps"]);
-      await user.click(await screen.findByRole("button", { name: "Upgrade agent" }));
+      await user.click(await screen.findByRole("button", { name: "More actions for web-01" }));
+      await user.click(screen.getByRole("menuitem", { name: "Upgrade agent" }));
       expect(screen.getByText(/Monitoring will pause briefly/)).toBeInTheDocument();
       expect(screen.getByText(/previous version is restored automatically/)).toBeInTheDocument();
       expect(screen.getByText(/Existing credentials are preserved/)).toBeInTheDocument();
