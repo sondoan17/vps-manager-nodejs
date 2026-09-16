@@ -5,6 +5,17 @@ on:
     branches: [main]
   pull_request:
   workflow_dispatch:
+    inputs:
+      force_api_build:
+        description: Force the API image build
+        required: false
+        default: false
+        type: boolean
+      force_web_build:
+        description: Force the web image build
+        required: false
+        default: false
+        type: boolean
 
 permissions:
   contents: read
@@ -22,8 +33,8 @@ jobs:
     name: Verify
     runs-on: ubuntu-latest
     outputs:
-      api_changed: ${{ steps.changes.outputs.api }}
-      web_changed: ${{ steps.changes.outputs.web }}
+      api_changed: ${{ steps.effective.outputs.api_changed }}
+      web_changed: ${{ steps.effective.outputs.web_changed }}
       agent_changed: ${{ steps.changes.outputs.agent }}
     steps:
       - name: Checkout
@@ -54,6 +65,25 @@ jobs:
               - 'packages/agent/**'
               - 'scripts/build-agent.mjs'
               - 'Dockerfile'
+
+      - name: Compute effective image changes
+        id: effective
+        env:
+          API_CHANGED: ${{ steps.changes.outputs.api }}
+          WEB_CHANGED: ${{ steps.changes.outputs.web }}
+          FORCE_API_BUILD: ${{ github.event_name == 'workflow_dispatch' && inputs.force_api_build || false }}
+          FORCE_WEB_BUILD: ${{ github.event_name == 'workflow_dispatch' && inputs.force_web_build || false }}
+        run: |
+          if [ "$API_CHANGED" = "true" ] || [ "$FORCE_API_BUILD" = "true" ]; then
+            echo "api_changed=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "api_changed=false" >> "$GITHUB_OUTPUT"
+          fi
+          if [ "$WEB_CHANGED" = "true" ] || [ "$FORCE_WEB_BUILD" = "true" ]; then
+            echo "web_changed=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "web_changed=false" >> "$GITHUB_OUTPUT"
+          fi
 
       - name: Setup Node.js
         uses: actions/setup-node@v4
@@ -90,11 +120,11 @@ jobs:
         run: npm run test:agent
 
       - name: Setup Docker Buildx
-        if: steps.changes.outputs.api == 'true' || steps.changes.outputs.web == 'true'
+        if: steps.effective.outputs.api_changed == 'true' || steps.effective.outputs.web_changed == 'true'
         uses: docker/setup-buildx-action@v3
 
       - name: Build API Docker image
-        if: steps.changes.outputs.api == 'true'
+        if: steps.effective.outputs.api_changed == 'true'
         uses: docker/build-push-action@v6
         with:
           context: .
@@ -106,7 +136,7 @@ jobs:
           cache-to: type=gha,mode=max
 
       - name: Smoke test API runtime migration assets and agent binary
-        if: steps.changes.outputs.api == 'true'
+        if: steps.effective.outputs.api_changed == 'true'
         run: |
           docker run --rm --entrypoint sh vps-manager-nodejs-api:ci -lc '
             test -f /app/dist/db/migrate.js
@@ -120,7 +150,7 @@ jobs:
           '
 
       - name: Build web Docker image
-        if: steps.changes.outputs.web == 'true'
+        if: steps.effective.outputs.web_changed == 'true'
         uses: docker/build-push-action@v6
         with:
           context: .
@@ -296,6 +326,18 @@ jobs:
           DASHBOARD_COOKIE_SECURE_VALUE: ${{ vars.DASHBOARD_COOKIE_SECURE }}
           DASHBOARD_COOKIE_SAME_SITE_VALUE: ${{ vars.DASHBOARD_COOKIE_SAME_SITE }}
           TRUST_PROXY_HOPS_VALUE: ${{ vars.TRUST_PROXY_HOPS }}
+          TERMINAL_GLOBAL_LIMIT_VALUE: ${{ vars.TERMINAL_GLOBAL_LIMIT }}
+          TERMINAL_DASHBOARD_LIMIT_VALUE: ${{ vars.TERMINAL_DASHBOARD_LIMIT }}
+          TERMINAL_VPS_LIMIT_VALUE: ${{ vars.TERMINAL_VPS_LIMIT }}
+          TERMINAL_PENDING_LIMIT_VALUE: ${{ vars.TERMINAL_PENDING_LIMIT }}
+          TERMINAL_OPEN_TIMEOUT_MS_VALUE: ${{ vars.TERMINAL_OPEN_TIMEOUT_MS }}
+          TERMINAL_IDLE_TIMEOUT_MS_VALUE: ${{ vars.TERMINAL_IDLE_TIMEOUT_MS }}
+          TERMINAL_LIFETIME_MS_VALUE: ${{ vars.TERMINAL_LIFETIME_MS }}
+          TERMINAL_REVOCATION_POLL_MS_VALUE: ${{ vars.TERMINAL_REVOCATION_POLL_MS }}
+          TERMINAL_HEARTBEAT_MS_VALUE: ${{ vars.TERMINAL_HEARTBEAT_MS }}
+          TERMINAL_OUTPUT_BUFFER_BYTES_VALUE: ${{ vars.TERMINAL_OUTPUT_BUFFER_BYTES }}
+          TERMINAL_INPUT_BUFFER_BYTES_VALUE: ${{ vars.TERMINAL_INPUT_BUFFER_BYTES }}
+          TERMINAL_SLOW_CONSUMER_TIMEOUT_MS_VALUE: ${{ vars.TERMINAL_SLOW_CONSUMER_TIMEOUT_MS }}
           GHCR_USER: ${{ github.actor }}
           GHCR_TOKEN: ${{ github.token }}
         run: |
@@ -323,6 +365,19 @@ jobs:
           DASHBOARD_COOKIE_SECURE_VALUE="${DASHBOARD_COOKIE_SECURE_VALUE:-true}"
           DASHBOARD_COOKIE_SAME_SITE_VALUE="${DASHBOARD_COOKIE_SAME_SITE_VALUE:-lax}"
           TRUST_PROXY_HOPS_VALUE="${TRUST_PROXY_HOPS_VALUE:-0}"
+          TERMINAL_GLOBAL_LIMIT_VALUE="${TERMINAL_GLOBAL_LIMIT_VALUE:-10}"
+          TERMINAL_DASHBOARD_LIMIT_VALUE="${TERMINAL_DASHBOARD_LIMIT_VALUE:-3}"
+          TERMINAL_VPS_LIMIT_VALUE="${TERMINAL_VPS_LIMIT_VALUE:-2}"
+          TERMINAL_PENDING_LIMIT_VALUE="${TERMINAL_PENDING_LIMIT_VALUE:-10}"
+          TERMINAL_OPEN_TIMEOUT_MS_VALUE="${TERMINAL_OPEN_TIMEOUT_MS_VALUE:-10000}"
+          TERMINAL_IDLE_TIMEOUT_MS_VALUE="${TERMINAL_IDLE_TIMEOUT_MS_VALUE:-900000}"
+          TERMINAL_LIFETIME_MS_VALUE="${TERMINAL_LIFETIME_MS_VALUE:-7200000}"
+          TERMINAL_REVOCATION_POLL_MS_VALUE="${TERMINAL_REVOCATION_POLL_MS_VALUE:-5000}"
+          TERMINAL_HEARTBEAT_MS_VALUE="${TERMINAL_HEARTBEAT_MS_VALUE:-30000}"
+          TERMINAL_OUTPUT_BUFFER_BYTES_VALUE="${TERMINAL_OUTPUT_BUFFER_BYTES_VALUE:-1048576}"
+          TERMINAL_INPUT_BUFFER_BYTES_VALUE="${TERMINAL_INPUT_BUFFER_BYTES_VALUE:-65536}"
+          TERMINAL_SLOW_CONSUMER_TIMEOUT_MS_VALUE="${TERMINAL_SLOW_CONSUMER_TIMEOUT_MS_VALUE:-10000}"
+
           SSH_OPTS=(
             -i ~/.ssh/deploy_key
             -p "${VPS_PORT:-22}"
@@ -381,7 +436,20 @@ jobs:
           AGENT_PUBLIC_BASE_URL=$AGENT_PUBLIC_BASE_URL_VALUE
           ALLOW_INSECURE_AGENT_HTTP=$ALLOW_INSECURE_AGENT_HTTP_VALUE
           TRUST_PROXY_HOPS=$TRUST_PROXY_HOPS_VALUE
+          TERMINAL_GLOBAL_LIMIT=$TERMINAL_GLOBAL_LIMIT_VALUE
+          TERMINAL_DASHBOARD_LIMIT=$TERMINAL_DASHBOARD_LIMIT_VALUE
+          TERMINAL_VPS_LIMIT=$TERMINAL_VPS_LIMIT_VALUE
+          TERMINAL_PENDING_LIMIT=$TERMINAL_PENDING_LIMIT_VALUE
+          TERMINAL_OPEN_TIMEOUT_MS=$TERMINAL_OPEN_TIMEOUT_MS_VALUE
+          TERMINAL_IDLE_TIMEOUT_MS=$TERMINAL_IDLE_TIMEOUT_MS_VALUE
+          TERMINAL_LIFETIME_MS=$TERMINAL_LIFETIME_MS_VALUE
+          TERMINAL_REVOCATION_POLL_MS=$TERMINAL_REVOCATION_POLL_MS_VALUE
+          TERMINAL_HEARTBEAT_MS=$TERMINAL_HEARTBEAT_MS_VALUE
+          TERMINAL_OUTPUT_BUFFER_BYTES=$TERMINAL_OUTPUT_BUFFER_BYTES_VALUE
+          TERMINAL_INPUT_BUFFER_BYTES=$TERMINAL_INPUT_BUFFER_BYTES_VALUE
+          TERMINAL_SLOW_CONSUMER_TIMEOUT_MS=$TERMINAL_SLOW_CONSUMER_TIMEOUT_MS_VALUE
           STORAGE_DRIVER=postgres
+
           POSTGRES_DB=vps_manager
           POSTGRES_USER=vps_manager
           POSTGRES_PASSWORD=$POSTGRES_PASSWORD_ONE_LINE
