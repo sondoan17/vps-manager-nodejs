@@ -108,15 +108,19 @@ export function TerminalPanel({ vps, enabled = true }: { vps: VpsRecord; enabled
     const term = new Terminal({ convertEol: true, cursorBlink: true, scrollback: 5000, fontFamily: "ui-monospace, SFMono-Regular, Menlo, monospace", theme: { background: "#111318", foreground: "#f5f5f5", cursor: "#ffffff" } });
     const fit = new FitAddon(); term.loadAddon(fit); term.open(mountRef.current); fit.fit();
     terminalRef.current = term; fitRef.current = fit;
+    // A browser may produce both a keyboard shortcut and a paste event for one action.
+    // The paste event is authoritative when present; changing this token cancels the
+    // pending Clipboard API fallback before it can send the same text again.
+    let pasteAttempt = 0;
     const copySelection = async () => {
       const selection = term.getSelection();
       if (!selection) { setNotice("Select terminal text before copying."); return; }
       if (window.isSecureContext === false || !navigator.clipboard?.writeText) { setNotice(clipboardUnavailableNotice); return; }
       try { await navigator.clipboard.writeText(selection); } catch { setNotice(clipboardUnavailableNotice); }
     };
-    const readClipboard = async () => {
+    const readClipboard = async (attempt: number) => {
       if (window.isSecureContext === false || !navigator.clipboard?.readText) { setNotice(clipboardUnavailableNotice); return; }
-      try { queuePaste(await navigator.clipboard.readText()); } catch { setNotice(clipboardUnavailableNotice); }
+      try { const text = await navigator.clipboard.readText(); if (attempt === pasteAttempt) queuePaste(text); } catch { if (attempt === pasteAttempt) setNotice(clipboardUnavailableNotice); }
     };
     term.attachCustomKeyEventHandler((event) => {
       if (event.type !== "keydown") return true;
@@ -124,7 +128,7 @@ export function TerminalPanel({ vps, enabled = true }: { vps: VpsRecord; enabled
       const copyShortcut = key === "c" && ((event.ctrlKey && event.shiftKey) || event.metaKey || (event.ctrlKey && Boolean(term.getSelection())));
       const pasteShortcut = key === "v" && (event.ctrlKey || event.metaKey);
       if (copyShortcut) { void copySelection(); return false; }
-      if (pasteShortcut) { void readClipboard(); return false; }
+      if (pasteShortcut) { const attempt = ++pasteAttempt; void readClipboard(attempt); return false; }
       return true;
     });
     const scheme = window.location.protocol === "https:" ? "wss" : "ws";
@@ -138,8 +142,11 @@ export function TerminalPanel({ vps, enabled = true }: { vps: VpsRecord; enabled
     inputDisposable.current = term.onData((data) => { if (current() && socket.readyState === WebSocket.OPEN) socket.send(JSON.stringify({ type: "input", data })); });
     const pasteTarget = mountRef.current;
     const onPaste = (event: ClipboardEvent) => {
+      ++pasteAttempt;
       const text = event.clipboardData?.getData("text") ?? "";
       event.preventDefault();
+      event.stopPropagation();
+      event.stopImmediatePropagation();
       queuePaste(text);
     };
     const onCopy = (event: ClipboardEvent) => { const selection = term.getSelection(); if (!selection || !event.clipboardData) return; event.preventDefault(); event.clipboardData.setData("text/plain", selection); };
