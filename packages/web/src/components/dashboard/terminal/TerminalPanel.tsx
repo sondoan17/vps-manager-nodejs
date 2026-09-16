@@ -44,6 +44,8 @@ function parseServerMessage(raw: unknown): ServerMessage | undefined {
 }
 
 const invalidResponseNotice = "The terminal received an invalid response.";
+const maxTerminalInputBytes = 64 * 1024;
+const clipboardUnavailableNotice = "Clipboard access is unavailable or was denied. Use the browser's copy or paste command instead.";
 
 export function TerminalPanel({ vps, enabled = true }: { vps: VpsRecord; enabled?: boolean }) {
   const host = `${vps.username}@${vps.host}:${vps.port}`;
@@ -69,6 +71,14 @@ export function TerminalPanel({ vps, enabled = true }: { vps: VpsRecord; enabled
   const pendingLink = useRef<HTMLAnchorElement>();
   const allowNextNavigation = useRef(false);
   const active = status === "connected" || status === "connecting" || status === "verifying" || status === "reconnecting";
+
+  const queuePaste = useCallback((text: string) => {
+    if (!text) return;
+    if (socketRef.current?.readyState !== 1) { setNotice("Connect the terminal before pasting."); return; }
+    if (new TextEncoder().encode(text).length > maxTerminalInputBytes) { setNotice("The clipboard content is too large to paste into the terminal at once."); return; }
+    if (/\r|\n/.test(text)) { pendingPaste.current = text; setConfirmPaste(true); return; }
+    socketRef.current.send(JSON.stringify({ type: "input", data: text }));
+  }, []);
 
   const disposeConnection = useCallback(() => {
     if (resizeTimer.current !== undefined) window.clearTimeout(resizeTimer.current);
@@ -98,6 +108,25 @@ export function TerminalPanel({ vps, enabled = true }: { vps: VpsRecord; enabled
     const term = new Terminal({ convertEol: true, cursorBlink: true, scrollback: 5000, fontFamily: "ui-monospace, SFMono-Regular, Menlo, monospace", theme: { background: "#111318", foreground: "#f5f5f5", cursor: "#ffffff" } });
     const fit = new FitAddon(); term.loadAddon(fit); term.open(mountRef.current); fit.fit();
     terminalRef.current = term; fitRef.current = fit;
+    const copySelection = async () => {
+      const selection = term.getSelection();
+      if (!selection) { setNotice("Select terminal text before copying."); return; }
+      if (window.isSecureContext === false || !navigator.clipboard?.writeText) { setNotice(clipboardUnavailableNotice); return; }
+      try { await navigator.clipboard.writeText(selection); } catch { setNotice(clipboardUnavailableNotice); }
+    };
+    const readClipboard = async () => {
+      if (window.isSecureContext === false || !navigator.clipboard?.readText) { setNotice(clipboardUnavailableNotice); return; }
+      try { queuePaste(await navigator.clipboard.readText()); } catch { setNotice(clipboardUnavailableNotice); }
+    };
+    term.attachCustomKeyEventHandler((event) => {
+      if (event.type !== "keydown") return true;
+      const key = event.key.toLowerCase();
+      const copyShortcut = key === "c" && ((event.ctrlKey && event.shiftKey) || event.metaKey);
+      const pasteShortcut = key === "v" && ((event.ctrlKey && event.shiftKey) || event.metaKey);
+      if (copyShortcut) { void copySelection(); return false; }
+      if (pasteShortcut) { void readClipboard(); return false; }
+      return true;
+    });
     const scheme = window.location.protocol === "https:" ? "wss" : "ws";
     const socket = new WebSocket(`${scheme}://${window.location.host}/api/vps/${encodeURIComponent(vps.id)}/terminal`);
     socketRef.current = socket;
@@ -110,18 +139,18 @@ export function TerminalPanel({ vps, enabled = true }: { vps: VpsRecord; enabled
     const pasteTarget = mountRef.current;
     const onPaste = (event: ClipboardEvent) => {
       const text = event.clipboardData?.getData("text") ?? "";
-      if (!/[\r\n]/.test(text)) return;
       event.preventDefault();
-      pendingPaste.current = text;
-      setConfirmPaste(true);
+      queuePaste(text);
     };
+    const onCopy = (event: ClipboardEvent) => { const selection = term.getSelection(); if (!selection || !event.clipboardData) return; event.preventDefault(); event.clipboardData.setData("text/plain", selection); };
     pasteTarget.addEventListener("paste", onPaste, true);
+    pasteTarget.addEventListener("copy", onCopy, true);
     const priorDispose = inputDisposable.current;
-    inputDisposable.current = { dispose: () => { pasteTarget.removeEventListener("paste", onPaste, true); priorDispose?.dispose(); } };
+    inputDisposable.current = { dispose: () => { pasteTarget.removeEventListener("paste", onPaste, true); pasteTarget.removeEventListener("copy", onCopy, true); priorDispose?.dispose(); } };
     const observer = new ResizeObserver(() => { if (!current()) return; if (resizeTimer.current !== undefined) window.clearTimeout(resizeTimer.current); resizeTimer.current = window.setTimeout(() => { if (!current()) return; fit.fit(); if (socket.readyState === WebSocket.OPEN) socket.send(JSON.stringify({ type: "resize", cols: Math.max(1, Math.min(500, term.cols)), rows: Math.max(1, Math.min(200, term.rows)) })); }, 120); });
     observer.observe(mountRef.current);
     observerRef.current = observer;
-  }, [disposeConnection, enabled, status, vps.id]);
+  }, [disposeConnection, enabled, queuePaste, status, vps.id]);
 
   const disconnect = useCallback(() => { manualClose.current = true; setStatus("disconnecting"); if (socketRef.current?.readyState === WebSocket.OPEN) socketRef.current.send(JSON.stringify({ type: "disconnect" })); socketRef.current?.close(); setStatus("disconnected"); }, []);
   useEffect(() => () => disposeConnection(), [disposeConnection]);
@@ -165,7 +194,7 @@ export function TerminalPanel({ vps, enabled = true }: { vps: VpsRecord; enabled
     {root && <div role="alert" className="flex gap-3 border border-amber-300/30 bg-amber-300/10 p-3 text-sm text-amber-100"><AlertTriangle size={18} className="shrink-0" aria-hidden="true" /><span><strong>Root shell.</strong> Commands can change or delete data on this server. Review the host identity before connecting.</span></div>}
     {notice && <div role="alert" className="border border-red-300/30 bg-red-300/10 p-3 text-sm text-red-100">{notice}</div>}
     <div className="overflow-hidden border border-white/10 bg-[#111318]"><div ref={mountRef} aria-label={`SSH terminal for ${host}`} role="application" tabIndex={0} className="h-[clamp(20rem,62vh,42rem)] min-h-0 p-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-300/70 sm:min-h-[28rem]" />{status === "disconnected" || status === "disabled" ? <div className="border-t border-white/10 p-3 text-xs text-white/50">{status === "disabled" ? "Web terminal is disabled for this environment." : "Connect to open a new SSH shell. Scrollback is retained after disconnect."}</div> : null}</div>
-    <div aria-live="polite" className="flex flex-wrap justify-between gap-2 font-mono text-xs text-white/40"><span>{labels[status]}</span><span>{expiresAt ? `Expires ${new Date(expiresAt).toLocaleTimeString()}` : "SSH transport · Monitoring status is shown in the dashboard header"}</span></div>
+    <div aria-live="polite" className="flex flex-wrap justify-between gap-2 font-mono text-xs text-white/40"><span>{labels[status]} · Copy Ctrl+Shift+C / ⌘C · Paste Ctrl+Shift+V / ⌘V</span><span>{expiresAt ? `Expires ${new Date(expiresAt).toLocaleTimeString()}` : "SSH transport · Monitoring status is shown in the dashboard header"}</span></div>
     <AlertDialog open={confirmClose} onOpenChange={setConfirmClose}><AlertDialogContent className="border-white/10 bg-[#111318] text-white"><AlertDialogHeader><AlertDialogTitle>Close active SSH session?</AlertDialogTitle><AlertDialogDescription className="text-white/60">The shell will disconnect. Running foreground commands may continue or be interrupted remotely.</AlertDialogDescription></AlertDialogHeader><AlertDialogFooter><AlertDialogCancel>Keep session open</AlertDialogCancel><AlertDialogAction onClick={disconnect}>Disconnect and leave</AlertDialogAction></AlertDialogFooter></AlertDialogContent></AlertDialog>
     <AlertDialog open={confirmPaste} onOpenChange={(open) => { setConfirmPaste(open); if (!open) pendingPaste.current = ""; }}><AlertDialogContent className="border-white/10 bg-[#111318] text-white"><AlertDialogHeader><AlertDialogTitle>Paste multiple lines?</AlertDialogTitle><AlertDialogDescription className="text-white/60">Multiple lines may run several commands at once. Review the clipboard content before continuing. It is not saved by this page.</AlertDialogDescription></AlertDialogHeader><AlertDialogFooter><AlertDialogCancel>Cancel paste</AlertDialogCancel><AlertDialogAction onClick={sendPendingPaste}>Paste into terminal</AlertDialogAction></AlertDialogFooter></AlertDialogContent></AlertDialog>
     <AlertDialog open={confirmNavigation} onOpenChange={(open) => { setConfirmNavigation(open); if (!open) pendingLink.current = undefined; }}><AlertDialogContent className="border-white/10 bg-[#111318] text-white"><AlertDialogHeader><AlertDialogTitle>Leave this active session?</AlertDialogTitle><AlertDialogDescription className="text-white/60">Leaving this page disconnects the SSH session. Finish your work or disconnect first.</AlertDialogDescription></AlertDialogHeader><AlertDialogFooter><AlertDialogCancel>Stay here</AlertDialogCancel><AlertDialogAction onClick={() => { const link = pendingLink.current; pendingLink.current = undefined; allowNextNavigation.current = true; disconnect(); link?.click(); }}>Disconnect and leave</AlertDialogAction></AlertDialogFooter></AlertDialogContent></AlertDialog>
