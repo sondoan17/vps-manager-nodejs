@@ -17,6 +17,7 @@ export type SessionRepository = {
     input: Omit<SessionRecord, "id" | "createdAt">,
   ): Promise<SessionRecord>;
   findByTokenHash(tokenHash: string): Promise<SessionRecord | undefined>;
+  findActiveById(id: string): Promise<SessionRecord | undefined>;
   revoke(id: string): Promise<void>;
   /** Revoke all non-expired sessions. Used on password rotation. */
   revokeAll(): Promise<number>;
@@ -52,6 +53,14 @@ export function createJsonSessionRepository(
       const now = new Date().toISOString();
       return data.sessions.find(
         (s) => s.tokenHash === tokenHash && !s.revokedAt && s.expiresAt > now,
+      );
+    },
+
+    async findActiveById(id) {
+      const data = await readJsonFile<SessionFile>(filePath, { sessions: [] });
+      const now = new Date().toISOString();
+      return data.sessions.find(
+        (s) => s.id === id && !s.revokedAt && s.expiresAt > now,
       );
     },
 

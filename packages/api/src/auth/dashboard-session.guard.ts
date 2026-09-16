@@ -3,24 +3,11 @@ import {
   ExecutionContext,
   Inject,
   Injectable,
-  UnauthorizedException,
 } from "@nestjs/common";
-import { createHash } from "node:crypto";
 import type { Request } from "express";
 import type { AppConfig } from "../config/app-config.js";
-import type { SessionRepository } from "../persistence/repositories/session.repository.js";
-import { APP_CONFIG, SESSION_REPOSITORY } from "../tokens.js";
-import { SESSION_COOKIE_NAME, parseCookie } from "./cookies.js";
-
-/**
- * Hash a session token (with optional secret pepper) for secure storage.
- */
-function hashToken(token: string, pepper?: string): string {
-  return createHash("sha256")
-    .update(token)
-    .update(pepper ?? "")
-    .digest("hex");
-}
+import { DashboardSessionService } from "./dashboard-session.service.js";
+import { APP_CONFIG } from "../tokens.js";
 
 /**
  * Dashboard session guard.
@@ -37,7 +24,8 @@ function hashToken(token: string, pepper?: string): string {
 export class DashboardSessionGuard implements CanActivate {
   constructor(
     @Inject(APP_CONFIG) private readonly config: AppConfig,
-    @Inject(SESSION_REPOSITORY) private readonly sessions: SessionRepository,
+    @Inject(DashboardSessionService)
+    private readonly sessionService: DashboardSessionService,
   ) {}
 
   async canActivate(context: ExecutionContext): Promise<boolean> {
@@ -45,28 +33,7 @@ export class DashboardSessionGuard implements CanActivate {
     if (this.config.mode !== "local") return true;
 
     const request = context.switchToHttp().getRequest<Request>();
-    const cookieToken = parseCookie(
-      request.headers.cookie,
-      SESSION_COOKIE_NAME,
-    );
-
-    if (!cookieToken) {
-      throw new UnauthorizedException({
-        error: { message: "Authentication required" },
-      });
-    }
-
-    const tokenHash = hashToken(
-      cookieToken,
-      this.config.dashboardSessionSecret,
-    );
-    const session = await this.sessions.findByTokenHash(tokenHash);
-
-    if (!session) {
-      throw new UnauthorizedException({
-        error: { message: "Invalid or expired session" },
-      });
-    }
+    const session = await this.sessionService.authenticate(request);
 
     (request as Request & { dashboardSessionId?: string }).dashboardSessionId =
       session.id;

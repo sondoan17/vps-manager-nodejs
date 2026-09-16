@@ -42,6 +42,15 @@ export function createPostgresSessionRepository(
       return result.rows[0] ? rowToSession(result.rows[0]) : undefined;
     },
 
+    async findActiveById(id) {
+      const result = await pool.query<SessionRow>(
+        `SELECT * FROM dashboard_sessions
+         WHERE id = $1 AND revoked_at IS NULL AND expires_at > NOW()`,
+        [id],
+      );
+      return result.rows[0] ? rowToSession(result.rows[0]) : undefined;
+    },
+
     async revoke(id) {
       await pool.query(
         "UPDATE dashboard_sessions SET revoked_at = NOW() WHERE id = $1",

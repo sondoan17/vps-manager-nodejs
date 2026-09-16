@@ -1,5 +1,6 @@
 import {
   Client,
+  type ClientChannel,
   type ServerHostKeyAlgorithm,
   type SFTPWrapper,
 } from "ssh2";
@@ -25,6 +26,35 @@ export interface SshSecurityOptions {
    * key type that was not pinned at trust time.
    */
   serverHostKeyAlgorithms?: string[];
+  /** Terminal connections must have an explicitly resolved pin. */
+  requireHostKeyPin?: boolean;
+  /** Indicates that at least one trusted fingerprint was resolved. */
+  hasTrustedHostKeyPin?: boolean;
+}
+
+/** Internal SSH terminal handle; use SshService.openManagedShell rather than this primitive directly. */
+export interface ManagedSshShell {
+  client: Client;
+  channel: ClientChannel;
+  close(): void;
+}
+
+export interface SshPtyDimensions {
+  cols: number;
+  rows: number;
+  height?: number;
+  width?: number;
+}
+
+export function validateSshPtyDimensions(dimensions: SshPtyDimensions): SshPtyDimensions {
+  const { cols, rows, height = 0, width = 0 } = dimensions;
+  if (![cols, rows, height, width].every(Number.isInteger)) {
+    throw new SshOperationError("SSH terminal dimensions are invalid.");
+  }
+  if (cols < 1 || cols > 500 || rows < 1 || rows > 200 || height < 0 || height > 10_000 || width < 0 || width > 10_000) {
+    throw new SshOperationError("SSH terminal dimensions are outside the permitted range.");
+  }
+  return { cols, rows, height, width };
 }
 
 function connect(
@@ -37,6 +67,9 @@ function connect(
   },
   security?: SshSecurityOptions,
 ) {
+  if (security?.requireHostKeyPin && (!security.hasTrustedHostKeyPin || !security.vettedHost || !security.hostVerifier)) {
+    return Promise.reject(new SshOperationError("SSH terminal requires vetted host and trusted host key verification."));
+  }
   return new Promise<Client>((resolve, reject) => {
     const client = new Client();
     let settled = false;
@@ -69,8 +102,8 @@ function connect(
         host: targetHost,
         port: config.port,
         username: config.username,
-        password: config.password,
-        privateKey: config.privateKey,
+        ...(config.password !== undefined ? { password: config.password } : {}),
+        ...(config.privateKey !== undefined ? { privateKey: config.privateKey } : {}),
         readyTimeout: SSH_READY_TIMEOUT_MS,
         hostVerifier: security?.hostVerifier,
         algorithms: security?.serverHostKeyAlgorithms
@@ -87,6 +120,48 @@ function connect(
       reject(toSshOperationError(error));
     }
   });
+}
+
+export async function openManagedSshShell(
+  vps: VpsRecord,
+  auth: { privateKey: string },
+  dimensions: SshPtyDimensions,
+  security: SshSecurityOptions,
+): Promise<ManagedSshShell> {
+  const pty = validateSshPtyDimensions(dimensions);
+  if (!auth.privateKey.trim()) {
+    throw new SshOperationError("SSH terminal requires a private key.");
+  }
+  const client = await connect(
+    { host: vps.host, port: vps.port, username: vps.username, ...auth },
+    { ...security, requireHostKeyPin: true },
+  );
+  try {
+    const channel = await new Promise<ClientChannel>((resolve, reject) => {
+      client.shell(
+        { term: "xterm-256color", cols: pty.cols, rows: pty.rows, height: pty.height, width: pty.width },
+        (error, stream) => (error ? reject(toSshOperationError(error)) : resolve(stream)),
+      );
+    });
+    let closed = false;
+    return {
+      client,
+      channel,
+      close: () => {
+        if (closed) return;
+        closed = true;
+        try { channel.end(); } catch { /* best effort */ }
+        try { client.end(); } catch { /* best effort */ }
+        setTimeout(() => {
+          try { (channel as ClientChannel & { destroy?: () => void }).destroy?.(); } catch { /* best effort */ }
+          try { (client as Client & { destroy?: () => void }).destroy?.(); } catch { /* best effort */ }
+        }, 250).unref();
+      },
+    };
+  } catch (error) {
+    client.end();
+    throw error;
+  }
 }
 
 function toSshOperationError(error: unknown) {

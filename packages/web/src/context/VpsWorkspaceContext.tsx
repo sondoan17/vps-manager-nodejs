@@ -312,16 +312,7 @@ export function VpsWorkspaceAuditPage() {
 export function VpsWorkspaceTerminalPage() {
   const { vps, overview } = useVpsWorkspace();
   return (
-    <div className="space-y-2">
-      <h2 className="text-lg font-normal text-white">
-        Terminal for {vpsDisplayName(vps)}
-      </h2>
-      <p className="text-sm text-white/50">
-        Terminal configuration is still provided by the global dashboard until
-        scoped terminal APIs are added.
-      </p>
-      <TerminalPanel terminal={overview.terminal} />
-    </div>
+    <TerminalPanel vps={vps} enabled={overview.settings.webTerminalEnabled && overview.settings.realSshEnabled} />
   );
 }
 

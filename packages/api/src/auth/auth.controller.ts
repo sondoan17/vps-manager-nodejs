@@ -10,7 +10,7 @@ import {
   UnauthorizedException,
   UseGuards,
 } from "@nestjs/common";
-import { randomBytes, createHash } from "node:crypto";
+import { randomBytes } from "node:crypto";
 import type { Request, Response } from "express";
 import type { AppConfig } from "../config/app-config.js";
 import { verifyPassword } from "./password-hash.js";
@@ -23,29 +23,21 @@ import {
 } from "../tokens.js";
 import { DashboardSessionGuard } from "./dashboard-session.guard.js";
 import { OriginGuard } from "./origin-guard.js";
-import { SESSION_COOKIE_NAME, parseCookie } from "./cookies.js";
-
-/**
- * Hash a session token (with optional secret pepper) for secure storage.
- */
-function hashToken(token: string, pepper?: string): string {
-  return createHash("sha256")
-    .update(token)
-    .update(pepper ?? "")
-    .digest("hex");
-}
+import { SESSION_COOKIE_NAME } from "./cookies.js";
+import { DashboardSessionService } from "./dashboard-session.service.js";
 
 /**
  * Create a session for the given request and set the cookie on the response.
  */
 async function createSessionAndSetCookie(
   sessions: SessionRepository,
+  sessionService: DashboardSessionService,
   config: AppConfig,
   req: Request,
   res: Response,
 ) {
   const rawToken = randomBytes(32).toString("hex");
-  const tokenHash = hashToken(rawToken, config.dashboardSessionSecret);
+  const tokenHash = sessionService.hashToken(rawToken);
   const expiresAt = new Date(
     Date.now() + config.dashboardSessionTtlSeconds * 1000,
   ).toISOString();
@@ -74,6 +66,8 @@ export class AuthController {
     @Inject(SESSION_REPOSITORY) private readonly sessions: SessionRepository,
     @Inject(ADMIN_CREDENTIAL_REPOSITORY)
     private readonly adminCredential: AdminCredentialRepository,
+    @Inject(DashboardSessionService)
+    private readonly sessionService: DashboardSessionService,
   ) {}
 
   /**
@@ -122,6 +116,7 @@ export class AuthController {
     // 3. Success — create session
     const session = await createSessionAndSetCookie(
       this.sessions,
+      this.sessionService,
       this.config,
       req,
       res,
@@ -149,14 +144,8 @@ export class AuthController {
   @Post("logout")
   @UseGuards(DashboardSessionGuard, OriginGuard)
   async logout(@Req() req: Request, @Res({ passthrough: true }) res: Response) {
-    const token = parseCookie(req.headers.cookie, SESSION_COOKIE_NAME);
-    if (token) {
-      const tokenHash = hashToken(token, this.config.dashboardSessionSecret);
-      const session = await this.sessions.findByTokenHash(tokenHash);
-      if (session) {
-        await this.sessions.revoke(session.id);
-      }
-    }
+    const session = await this.sessionService.findByRequest(req);
+    if (session) await this.sessions.revoke(session.id);
 
     res.clearCookie(SESSION_COOKIE_NAME, {
       httpOnly: true,
@@ -187,20 +176,7 @@ export class AuthController {
       };
     }
 
-    const token = parseCookie(req.headers.cookie, SESSION_COOKIE_NAME);
-    if (!token) {
-      return {
-        data: {
-          mode: "local",
-          authenticated: false,
-          authRequired: true,
-        },
-      };
-    }
-
-    const tokenHash = hashToken(token, this.config.dashboardSessionSecret);
-    const session = await this.sessions.findByTokenHash(tokenHash);
-
+    const session = await this.sessionService.findByRequest(req);
     if (!session) {
       return {
         data: {
@@ -210,6 +186,7 @@ export class AuthController {
         },
       };
     }
+
 
     return {
       data: {

@@ -8,6 +8,7 @@ import {
 import type { Request } from "express";
 import type { AppConfig } from "../config/app-config.js";
 import { APP_CONFIG } from "../tokens.js";
+import { isExactAllowedOrigin } from "./origin-policy.js";
 
 /**
  * Origin/CSRF protection guard for cookie-authenticated unsafe methods.
@@ -49,21 +50,17 @@ export class OriginGuard implements CanActivate {
       });
     }
 
-    // Same-origin: origin host matches the request host
-    const host = request.headers.host;
+    if (isExactAllowedOrigin({
+      origin,
+      host: request.headers.host,
+      configuredOrigin: this.config.dashboardPublicOrigin,
+    })) return true;
+
     try {
-      const originUrl = new URL(origin);
-      if (host && originUrl.host === host) return true;
+      new URL(origin);
     } catch {
       throw new ForbiddenException({ error: { message: "Invalid origin" } });
     }
-
-    // Allow configured public origin
-    if (
-      this.config.dashboardPublicOrigin &&
-      origin === this.config.dashboardPublicOrigin
-    )
-      return true;
 
     throw new ForbiddenException({ error: { message: "Origin not allowed" } });
   }

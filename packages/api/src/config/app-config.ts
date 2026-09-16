@@ -43,6 +43,7 @@ export type AppConfig = {
   // SSH security
   sshHostKeyPins: Record<string, string | string[]>;
   sshHostKeyPolicy: "strict" | "permissive";
+  terminal?: { global: number; perDashboard: number; perVps: number; openTimeoutMs: number; idleTimeoutMs: number; lifetimeMs: number; revocationPollMs: number; heartbeatMs: number; outputBufferBytes: number; inputBufferBytes: number; slowConsumerTimeoutMs: number; pendingLimit: number };
 };
 
 const booleanSchema = z
@@ -122,6 +123,18 @@ const envSchema = z.object({
     z.string().optional(),
   ),
   SSH_HOST_KEY_POLICY: z.enum(["strict", "permissive"]).default("strict"),
+  TERMINAL_GLOBAL_LIMIT: z.coerce.number().int().min(1).max(100).default(10),
+  TERMINAL_DASHBOARD_LIMIT: z.coerce.number().int().min(1).max(20).default(3),
+  TERMINAL_VPS_LIMIT: z.coerce.number().int().min(1).max(20).default(2),
+  TERMINAL_OPEN_TIMEOUT_MS: z.coerce.number().int().positive().max(120000).default(10000),
+  TERMINAL_IDLE_TIMEOUT_MS: z.coerce.number().int().positive().max(86400000).default(900000),
+  TERMINAL_LIFETIME_MS: z.coerce.number().int().positive().max(86400000).default(7200000),
+  TERMINAL_REVOCATION_POLL_MS: z.coerce.number().int().positive().max(3600000).default(5000),
+  TERMINAL_HEARTBEAT_MS: z.coerce.number().int().positive().max(3600000).default(30000),
+  TERMINAL_OUTPUT_BUFFER_BYTES: z.coerce.number().int().positive().max(16 * 1024 * 1024).default(1024 * 1024),
+  TERMINAL_INPUT_BUFFER_BYTES: z.coerce.number().int().positive().max(1024 * 1024).default(64 * 1024),
+  TERMINAL_SLOW_CONSUMER_TIMEOUT_MS: z.coerce.number().int().positive().max(600000).default(10000),
+  TERMINAL_PENDING_LIMIT: z.coerce.number().int().positive().max(1000).default(10),
 });
 
 export function parseAppConfig(
@@ -168,6 +181,10 @@ export function parseAppConfig(
 
   if (parsed.ENABLE_WEB_TERMINAL && parsed.APP_MODE !== "local") {
     throw new Error("ENABLE_WEB_TERMINAL requires APP_MODE=local");
+  }
+  if (parsed.ENABLE_WEB_TERMINAL) {
+    if (!parsed.DASHBOARD_PUBLIC_ORIGIN) throw new Error("DASHBOARD_PUBLIC_ORIGIN is required when ENABLE_WEB_TERMINAL=true");
+    try { const origin = new URL(parsed.DASHBOARD_PUBLIC_ORIGIN); if (!['http:', 'https:'].includes(origin.protocol) || origin.pathname !== '/' || origin.search || origin.hash || origin.username || origin.password) throw new Error(); } catch { throw new Error("DASHBOARD_PUBLIC_ORIGIN must be a canonical origin when ENABLE_WEB_TERMINAL=true"); }
   }
 
   if (parsed.STORAGE_DRIVER === "postgres" && !parsed.DATABASE_URL) {
@@ -231,8 +248,15 @@ export function parseAppConfig(
           return raw as Record<string, string | string[]>;
         })()
       : {},
-    sshHostKeyPolicy: parsed.SSH_HOST_KEY_POLICY,
-  };
+     sshHostKeyPolicy: parsed.SSH_HOST_KEY_POLICY,
+     terminal: {
+       global: parsed.TERMINAL_GLOBAL_LIMIT, perDashboard: parsed.TERMINAL_DASHBOARD_LIMIT, perVps: parsed.TERMINAL_VPS_LIMIT,
+       openTimeoutMs: parsed.TERMINAL_OPEN_TIMEOUT_MS, idleTimeoutMs: parsed.TERMINAL_IDLE_TIMEOUT_MS, lifetimeMs: parsed.TERMINAL_LIFETIME_MS,
+       revocationPollMs: parsed.TERMINAL_REVOCATION_POLL_MS, heartbeatMs: parsed.TERMINAL_HEARTBEAT_MS,
+       outputBufferBytes: parsed.TERMINAL_OUTPUT_BUFFER_BYTES, inputBufferBytes: parsed.TERMINAL_INPUT_BUFFER_BYTES,
+       slowConsumerTimeoutMs: parsed.TERMINAL_SLOW_CONSUMER_TIMEOUT_MS, pendingLimit: parsed.TERMINAL_PENDING_LIMIT,
+     },
+   };
 }
 
 export function loadAppConfig(): AppConfig {

@@ -1,225 +1,176 @@
-import {
-  CheckCircle2,
-  Clipboard,
-  Clock3,
-  Copy,
-  History,
-  Play,
-  Server,
-  ShieldCheck,
-  TerminalSquare,
-  Trash2,
-} from "lucide-react";
-import type { ReactNode } from "react";
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from "../../ui/card";
-import { ScrollArea } from "../../ui/scroll-area";
-import type { DashboardOverview } from "../../../lib/api";
+import { FitAddon } from "@xterm/addon-fit";
+import { Terminal } from "@xterm/xterm";
+import "@xterm/xterm/css/xterm.css";
+import { AlertTriangle, CheckCircle2, ExternalLink, LogOut, RefreshCw, ShieldCheck, TerminalSquare } from "lucide-react";
+import { useCallback, useEffect, useRef, useState } from "react";
+import type { VpsRecord } from "../../../lib/api";
+import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "../../ui/alert-dialog";
+import { Button } from "../../ui/button";
+import { Sheet, SheetContent, SheetHeader, SheetTitle } from "../../ui/sheet";
 
-const safeCommands = [
-  "uptime",
-  "df -h",
-  "free -m",
-  "systemctl status nginx",
-  "journalctl -n 20",
-];
+type Status = "disabled" | "disconnected" | "verifying" | "connecting" | "connected" | "reconnecting" | "disconnecting" | "expired" | "error";
+const labels: Record<Status, string> = { disabled: "Unavailable", disconnected: "Disconnected", verifying: "Verifying host", connecting: "Connecting", connected: "Connected", reconnecting: "Reconnecting", disconnecting: "Disconnecting", expired: "Session expired", error: "Connection error" };
+const safeError = (message: string) => /authentication|permission|unreachable|timeout|disabled|expired|identity|host/i.test(message) ? message : "The SSH session could not be opened. Check the VPS and try again.";
 
-export function TerminalPanel({
-  terminal,
-}: {
-  terminal: DashboardOverview["terminal"];
-}) {
-  const command = terminal.sessions[0]?.command || safeCommands[0];
-  const commands = terminal.commands.length ? terminal.commands : safeCommands;
-  const serverLabel = "Not tracked";
-  const actor = "Not tracked";
-  const duration = terminal.sessions.length ? "Recorded" : "Not tracked";
-  const requestId = "Not available";
-  const connectionText = terminal.sessions.length
-    ? "connected · recorded output"
-    : "idle · no output";
+type ServerMessage =
+  | { type: "ready"; terminalSessionId: string; startedAt: string; expiresAt: string }
+  | { type: "output"; data: string }
+  | { type: "error"; code: string; message: string; retryable: boolean; closeReason?: string }
+  | { type: "closed"; reason: string; exitCode?: number };
 
-  return (
-    <div className="grid min-w-0 gap-4 xl:grid-cols-[minmax(0,1fr)_20rem]">
-      <Card className="min-w-0 overflow-hidden border-white/10 bg-[#1f2228] text-[#ffffff] shadow-none shadow-black/20">
-        <CardHeader className="border-b border-white/10 bg-white/[0.03]">
-          <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
-            <div className="min-w-0">
-              <div className="mb-2 inline-flex items-center gap-2 rounded-none border border-[#a3a3a3]/25 bg-neutral-400/10 px-3 py-1 text-[11px] font-normal uppercase tracking-[0.16em] text-white/50">
-                <ShieldCheck size={14} /> Read-only whitelist
-              </div>
-              <CardTitle className="flex items-center gap-2 font-mono text-xl text-white">
-                <TerminalSquare className="text-white/50" size={22} />
-                {terminal.label}
-              </CardTitle>
-              <CardDescription className="mt-2 max-w-2xl text-white/30">
-                Safe commands only: {commands.join(", ")}. No stored password
-                and no write, restart, install, or shell escape access.
-              </CardDescription>
-            </div>
-            <div className="rounded-none border border-white/10 bg-[#1f2228]/70 px-4 py-3 font-mono text-xs text-white/50">
-              <p className="text-white/50">session</p>
-              <p className="mt-1 text-white/50">{connectionText}</p>
-              <p className="mt-1 text-white/30">server metadata not tracked</p>
-            </div>
-          </div>
-        </CardHeader>
+const isValidTimestamp = (value: unknown): value is string => typeof value === "string" && Number.isFinite(Date.parse(value));
+const hasOnly = (value: Record<string, unknown>, allowed: readonly string[]) => Object.keys(value).every((key) => allowed.includes(key));
 
-        <CardContent className="space-y-4 p-4 sm:p-5">
-          <div className="grid gap-3 rounded-none border border-white/10 bg-[#1f2228]/80 p-3 lg:grid-cols-[13rem_minmax(0,1fr)_auto] lg:items-end">
-            <label className="grid gap-1.5 text-xs font-normal uppercase tracking-[0.12em] text-white/50">
-              Server
-              <div className="flex h-11 items-center gap-2 rounded-none border border-white/10 bg-[#1f2228] px-3 font-mono text-sm normal-case tracking-normal text-[#ffffff]">
-                <Server size={15} className="text-white/50" />
-                {serverLabel}
-              </div>
-            </label>
-            <label className="grid min-w-0 gap-1.5 text-xs font-normal uppercase tracking-[0.12em] text-white/50">
-              Command preset / input
-              <div className="flex h-11 min-w-0 items-center rounded-none border border-white/10 bg-[#1f2228] px-3 font-mono text-sm text-[#ffffff] ring-1 ring-white/[0.1]/10">
-                <span className="mr-2 text-white/50">$</span>
-                <span className="truncate">{command}</span>
-              </div>
-            </label>
-            <div className="flex flex-wrap gap-2">
-              <button
-                className="inline-flex h-11 cursor-not-allowed items-center gap-2 rounded-none bg-neutral-800 px-4 text-sm font-normal text-white/30 opacity-60"
-                type="button"
-                disabled
-                title="Run is not available in read-only mode"
-              >
-                <Play size={15} /> Run
-              </button>
-              <button
-                className="inline-flex h-11 cursor-not-allowed items-center gap-2 rounded-none border border-white/10 px-3 text-sm font-normal text-white/50 opacity-60"
-                type="button"
-                disabled
-                title="Output clearing is not available in read-only mode"
-              >
-                <Trash2 size={15} /> Clear output
-              </button>
-              <button
-                className="inline-flex h-11 cursor-not-allowed items-center gap-2 rounded-none border border-white/10 px-3 text-sm font-normal text-white/50 opacity-60"
-                type="button"
-                disabled
-                title="Output copying is not available in read-only mode"
-              >
-                <Copy size={15} /> Copy output
-              </button>
-            </div>
-          </div>
-
-          <div className="flex flex-wrap gap-2">
-            {commands.map((item) => (
-              <span
-                key={item}
-                className="rounded-none border border-white/10 bg-white/[0.03] px-3 py-1.5 font-mono text-xs text-white/50"
-              >
-                {item}
-              </span>
-            ))}
-          </div>
-
-          <ScrollArea className="h-[34rem] max-w-full rounded-none border border-white/10 bg-[#1f2228] shadow-none">
-            <div className="flex items-center justify-between border-b border-white/10 bg-white/[0.03] px-4 py-2 font-mono text-xs text-white/30">
-              <span>output.log</span>
-              <span>
-                {terminal.sessions.length} session
-                {terminal.sessions.length === 1 ? "" : "s"} · no audit reference
-              </span>
-            </div>
-            <pre className="whitespace-pre-wrap break-words p-4 pr-5 font-mono text-[13px] leading-6 text-white/50">
-              {terminal.sessions
-                .map((session) => `$ ${session.command}\n${session.output}\n\n`)
-                .join("")}
-              <span className="text-white/50">$</span>
-              <span className="text-white/50">
-                {" "}
-                waiting for whitelisted command
-              </span>
-            </pre>
-          </ScrollArea>
-        </CardContent>
-      </Card>
-
-      <aside className="grid gap-4">
-        <Card className="border-white/10">
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2 text-base">
-              <History size={17} /> Command history
-            </CardTitle>
-            <CardDescription>Recent read-only terminal runs.</CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-2">
-            {commands.slice(0, 5).map((item) => (
-              <div
-                key={item}
-                className="rounded-none bg-white/[0.03] p-3 font-mono text-xs text-white/70"
-              >
-                $ {item}
-              </div>
-            ))}
-          </CardContent>
-        </Card>
-
-        <Card className="border-white/10 bg-white/[0.03]">
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2 text-base text-[#ffffff]">
-              <Clipboard size={17} /> Audit trail
-            </CardTitle>
-            <CardDescription className="text-white/70/75">
-              Session metadata is not tracked in this view.
-            </CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-3 text-sm text-[#ffffff]">
-            <Meta
-              icon={<Server size={15} />}
-              label="Server"
-              value={serverLabel}
-            />
-            <Meta
-              icon={<CheckCircle2 size={15} />}
-              label="Actor"
-              value={actor}
-            />
-            <Meta
-              icon={<Clock3 size={15} />}
-              label="Duration"
-              value={duration}
-            />
-            <Meta
-              icon={<Clipboard size={15} />}
-              label="Request id"
-              value={requestId}
-            />
-          </CardContent>
-        </Card>
-      </aside>
-    </div>
-  );
+function parseServerMessage(raw: unknown): ServerMessage | undefined {
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) return undefined;
+  const value = raw as Record<string, unknown>;
+  if (typeof value.type !== "string") return undefined;
+  if (value.type === "ready") {
+    if (!hasOnly(value, ["type", "terminalSessionId", "startedAt", "expiresAt"])) return undefined;
+    if (typeof value.terminalSessionId !== "string" || value.terminalSessionId.length === 0) return undefined;
+    if (!isValidTimestamp(value.startedAt) || !isValidTimestamp(value.expiresAt)) return undefined;
+    return value as ServerMessage;
+  }
+  if (value.type === "output") {
+    return hasOnly(value, ["type", "data"]) && typeof value.data === "string" ? value as ServerMessage : undefined;
+  }
+  if (value.type === "error") {
+    return hasOnly(value, ["type", "code", "message", "retryable", "closeReason"]) && typeof value.code === "string" && typeof value.message === "string" && typeof value.retryable === "boolean" && (value.closeReason === undefined || typeof value.closeReason === "string") ? value as ServerMessage : undefined;
+  }
+  if (value.type === "closed") {
+    return hasOnly(value, ["type", "reason", "exitCode"]) && typeof value.reason === "string" && (value.exitCode === undefined || (typeof value.exitCode === "number" && Number.isFinite(value.exitCode) && Number.isInteger(value.exitCode))) ? value as ServerMessage : undefined;
+  }
+  return undefined;
 }
 
-function Meta({
-  icon,
-  label,
-  value,
-}: {
-  icon: ReactNode;
-  label: string;
-  value: string;
-}) {
-  return (
-    <div className="flex items-center justify-between gap-3 rounded-none bg-white/[0.03] px-3 py-2">
-      <span className="inline-flex items-center gap-2 font-normal text-white/70">
-        {icon}
-        {label}
-      </span>
-      <span className="truncate font-mono text-xs">{value}</span>
+const invalidResponseNotice = "The terminal received an invalid response.";
+
+export function TerminalPanel({ vps, enabled = true }: { vps: VpsRecord; enabled?: boolean }) {
+  const host = `${vps.username}@${vps.host}:${vps.port}`;
+  const root = vps.username === "root";
+  const [status, setStatus] = useState<Status>(enabled ? "disconnected" : "disabled");
+  const [notice, setNotice] = useState("");
+  const [details, setDetails] = useState(false);
+  const [confirmClose, setConfirmClose] = useState(false);
+  const [confirmPaste, setConfirmPaste] = useState(false);
+  const [confirmNavigation, setConfirmNavigation] = useState(false);
+  const [expiresAt, setExpiresAt] = useState<string>();
+  const mountRef = useRef<HTMLDivElement>(null);
+  const terminalRef = useRef<Terminal>();
+  const fitRef = useRef<FitAddon>();
+  const socketRef = useRef<WebSocket>();
+  const resizeTimer = useRef<number>();
+  const observerRef = useRef<ResizeObserver>();
+  const expiryTimer = useRef<number>();
+  const inputDisposable = useRef<{ dispose: () => void }>();
+  const manualClose = useRef(false);
+  // Sensitive clipboard contents deliberately live only in memory until accepted or cancelled.
+  const pendingPaste = useRef("");
+  const pendingLink = useRef<HTMLAnchorElement>();
+  const allowNextNavigation = useRef(false);
+  const active = status === "connected" || status === "connecting" || status === "verifying" || status === "reconnecting";
+
+  const disposeConnection = useCallback(() => {
+    if (resizeTimer.current !== undefined) window.clearTimeout(resizeTimer.current);
+    resizeTimer.current = undefined;
+    if (expiryTimer.current !== undefined) window.clearTimeout(expiryTimer.current);
+    expiryTimer.current = undefined;
+    observerRef.current?.disconnect(); observerRef.current = undefined;
+    inputDisposable.current?.dispose(); inputDisposable.current = undefined;
+    pendingPaste.current = "";
+    const socket = socketRef.current;
+    socketRef.current = undefined;
+    if (socket) {
+      socket.onopen = null;
+      socket.onmessage = null;
+      socket.onerror = null;
+      socket.onclose = null;
+      socket.close();
+    }
+    fitRef.current?.dispose(); fitRef.current = undefined;
+    terminalRef.current?.dispose(); terminalRef.current = undefined;
+  }, []);
+
+  const connect = useCallback((reconnect = false) => {
+    if (!enabled || !mountRef.current || ["connecting", "connected", "verifying", "reconnecting"].includes(status)) return;
+    disposeConnection();
+    setNotice(""); setStatus(reconnect ? "reconnecting" : "verifying"); manualClose.current = false;
+    const term = new Terminal({ convertEol: true, cursorBlink: true, scrollback: 5000, fontFamily: "ui-monospace, SFMono-Regular, Menlo, monospace", theme: { background: "#111318", foreground: "#f5f5f5", cursor: "#ffffff" } });
+    const fit = new FitAddon(); term.loadAddon(fit); term.open(mountRef.current); fit.fit();
+    terminalRef.current = term; fitRef.current = fit;
+    const scheme = window.location.protocol === "https:" ? "wss" : "ws";
+    const socket = new WebSocket(`${scheme}://${window.location.host}/api/vps/${encodeURIComponent(vps.id)}/terminal`);
+    socketRef.current = socket;
+    const current = () => socketRef.current === socket;
+    socket.onopen = () => { if (!current()) return; setStatus("connecting"); socket.send(JSON.stringify({ type: "open", version: 1, vpsId: vps.id, cols: Math.max(1, Math.min(500, term.cols)), rows: Math.max(1, Math.min(200, term.rows)) })); };
+    socket.onmessage = (event) => { if (!current()) return; try { const message = parseServerMessage(JSON.parse(event.data)); if (!message) { setNotice(invalidResponseNotice); setStatus("error"); manualClose.current = true; socket.close(); return; } if (message.type === "ready") { setStatus("connected"); setExpiresAt(message.expiresAt); if (message.expiresAt) { const remaining = Math.max(0, Date.parse(message.expiresAt) - Date.now()); if (expiryTimer.current !== undefined) window.clearTimeout(expiryTimer.current); expiryTimer.current = window.setTimeout(() => { if (!current()) return; manualClose.current = true; setStatus("expired"); setNotice("This SSH session expired. Scrollback is preserved; reconnect to start a new shell."); socket.close(); }, remaining); } term.focus(); } else if (message.type === "output") term.write(message.data); else if (message.type === "error") { setNotice(safeError(message.message || "Connection failed.")); setStatus("error"); manualClose.current = true; socket.close(); } else if (message.type === "closed") { setStatus(manualClose.current ? "disconnected" : "error"); if (!manualClose.current) setNotice("The SSH session closed unexpectedly. Scrollback is preserved."); } } catch { setNotice(invalidResponseNotice); setStatus("error"); manualClose.current = true; socket.close(); } };
+    socket.onerror = () => { if (!current()) return; setNotice("The SSH connection failed. Check the VPS and try again."); setStatus("error"); manualClose.current = true; socket.close(); };
+    socket.onclose = () => { if (!current()) return; if (!manualClose.current) { setStatus("error"); setNotice("The SSH session closed unexpectedly. Scrollback is preserved."); } };
+    inputDisposable.current = term.onData((data) => { if (current() && socket.readyState === WebSocket.OPEN) socket.send(JSON.stringify({ type: "input", data })); });
+    const pasteTarget = mountRef.current;
+    const onPaste = (event: ClipboardEvent) => {
+      const text = event.clipboardData?.getData("text") ?? "";
+      if (!/[\r\n]/.test(text)) return;
+      event.preventDefault();
+      pendingPaste.current = text;
+      setConfirmPaste(true);
+    };
+    pasteTarget.addEventListener("paste", onPaste, true);
+    const priorDispose = inputDisposable.current;
+    inputDisposable.current = { dispose: () => { pasteTarget.removeEventListener("paste", onPaste, true); priorDispose?.dispose(); } };
+    const observer = new ResizeObserver(() => { if (!current()) return; if (resizeTimer.current !== undefined) window.clearTimeout(resizeTimer.current); resizeTimer.current = window.setTimeout(() => { if (!current()) return; fit.fit(); if (socket.readyState === WebSocket.OPEN) socket.send(JSON.stringify({ type: "resize", cols: Math.max(1, Math.min(500, term.cols)), rows: Math.max(1, Math.min(200, term.rows)) })); }, 120); });
+    observer.observe(mountRef.current);
+    observerRef.current = observer;
+  }, [disposeConnection, enabled, status, vps.id]);
+
+  const disconnect = useCallback(() => { manualClose.current = true; setStatus("disconnecting"); if (socketRef.current?.readyState === WebSocket.OPEN) socketRef.current.send(JSON.stringify({ type: "disconnect" })); socketRef.current?.close(); setStatus("disconnected"); }, []);
+  useEffect(() => () => disposeConnection(), [disposeConnection]);
+  useEffect(() => { if (!enabled) { disposeConnection(); setStatus("disabled"); } }, [enabled, disposeConnection]);
+  useEffect(() => {
+    if (enabled && status === "disabled" && !socketRef.current) {
+      setStatus("disconnected");
+      setNotice("");
+      setExpiresAt(undefined);
+    }
+  }, [enabled, status]);
+  useEffect(() => {
+    if (!active) return;
+    const beforeUnload = (event: BeforeUnloadEvent) => { event.preventDefault(); event.returnValue = ""; };
+    const guardLink = (event: MouseEvent) => {
+      if (allowNextNavigation.current) { allowNextNavigation.current = false; return; }
+      if (event.defaultPrevented || event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
+      const link = (event.target as Element | null)?.closest("a[href]") as HTMLAnchorElement | null;
+      if (!link || link.target === "_blank" || link.href === window.location.href) return;
+      event.preventDefault();
+      pendingLink.current = link;
+      setConfirmNavigation(true);
+    };
+    window.addEventListener("beforeunload", beforeUnload);
+    document.addEventListener("click", guardLink, true);
+    return () => { window.removeEventListener("beforeunload", beforeUnload); document.removeEventListener("click", guardLink, true); };
+  }, [active]);
+
+  const sendPendingPaste = () => {
+    const text = pendingPaste.current;
+    pendingPaste.current = "";
+    if (text && socketRef.current?.readyState === WebSocket.OPEN) socketRef.current.send(JSON.stringify({ type: "input", data: text }));
+  };
+
+  const action = status === "connected" ? disconnect : () => connect(status === "error" || status === "expired");
+  return <div className="min-w-0 space-y-3">
+    <div className="flex flex-wrap items-center justify-between gap-3 border border-white/10 bg-[#1f2228] p-3 sm:p-4">
+      <div className="min-w-0"><div className="flex flex-wrap items-center gap-2"><TerminalSquare size={18} className="text-white/60" aria-hidden="true" /><h2 className="font-mono text-base text-white">SSH terminal</h2><StatusDot status={status} />{root && <span className="border border-amber-300/40 bg-amber-300/10 px-2 py-0.5 text-[10px] uppercase tracking-[0.14em] text-amber-200">ROOT</span>}</div><p className="mt-1 truncate font-mono text-xs text-white/50">{host}</p></div>
+      <div className="flex flex-wrap gap-2"><Button size="sm" variant="outline" onClick={() => setDetails(true)} aria-label="Connection details"><ExternalLink /> Details</Button>{status === "connected" && <Button size="sm" variant="outline" onClick={() => setConfirmClose(true)}><LogOut /> Disconnect</Button>}{status !== "connected" && status !== "disabled" && <Button size="sm" onClick={action} disabled={["connecting", "verifying", "reconnecting", "disconnecting"].includes(status)}>{status === "error" || status === "expired" ? <RefreshCw /> : <CheckCircle2 />} {status === "error" || status === "expired" ? "Reconnect" : "Connect"}</Button>}</div>
     </div>
-  );
+    {root && <div role="alert" className="flex gap-3 border border-amber-300/30 bg-amber-300/10 p-3 text-sm text-amber-100"><AlertTriangle size={18} className="shrink-0" aria-hidden="true" /><span><strong>Root shell.</strong> Commands can change or delete data on this server. Review the host identity before connecting.</span></div>}
+    {notice && <div role="alert" className="border border-red-300/30 bg-red-300/10 p-3 text-sm text-red-100">{notice}</div>}
+    <div className="overflow-hidden border border-white/10 bg-[#111318]"><div ref={mountRef} aria-label={`SSH terminal for ${host}`} role="application" tabIndex={0} className="h-[clamp(20rem,62vh,42rem)] min-h-0 p-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-300/70 sm:min-h-[28rem]" />{status === "disconnected" || status === "disabled" ? <div className="border-t border-white/10 p-3 text-xs text-white/50">{status === "disabled" ? "Web terminal is disabled for this environment." : "Connect to open a new SSH shell. Scrollback is retained after disconnect."}</div> : null}</div>
+    <div aria-live="polite" className="flex flex-wrap justify-between gap-2 font-mono text-xs text-white/40"><span>{labels[status]}</span><span>{expiresAt ? `Expires ${new Date(expiresAt).toLocaleTimeString()}` : "SSH transport · Monitoring status is shown in the dashboard header"}</span></div>
+    <AlertDialog open={confirmClose} onOpenChange={setConfirmClose}><AlertDialogContent className="border-white/10 bg-[#111318] text-white"><AlertDialogHeader><AlertDialogTitle>Close active SSH session?</AlertDialogTitle><AlertDialogDescription className="text-white/60">The shell will disconnect. Running foreground commands may continue or be interrupted remotely.</AlertDialogDescription></AlertDialogHeader><AlertDialogFooter><AlertDialogCancel>Keep session open</AlertDialogCancel><AlertDialogAction onClick={disconnect}>Disconnect and leave</AlertDialogAction></AlertDialogFooter></AlertDialogContent></AlertDialog>
+    <AlertDialog open={confirmPaste} onOpenChange={(open) => { setConfirmPaste(open); if (!open) pendingPaste.current = ""; }}><AlertDialogContent className="border-white/10 bg-[#111318] text-white"><AlertDialogHeader><AlertDialogTitle>Paste multiple lines?</AlertDialogTitle><AlertDialogDescription className="text-white/60">Multiple lines may run several commands at once. Review the clipboard content before continuing. It is not saved by this page.</AlertDialogDescription></AlertDialogHeader><AlertDialogFooter><AlertDialogCancel>Cancel paste</AlertDialogCancel><AlertDialogAction onClick={sendPendingPaste}>Paste into terminal</AlertDialogAction></AlertDialogFooter></AlertDialogContent></AlertDialog>
+    <AlertDialog open={confirmNavigation} onOpenChange={(open) => { setConfirmNavigation(open); if (!open) pendingLink.current = undefined; }}><AlertDialogContent className="border-white/10 bg-[#111318] text-white"><AlertDialogHeader><AlertDialogTitle>Leave this active session?</AlertDialogTitle><AlertDialogDescription className="text-white/60">Leaving this page disconnects the SSH session. Finish your work or disconnect first.</AlertDialogDescription></AlertDialogHeader><AlertDialogFooter><AlertDialogCancel>Stay here</AlertDialogCancel><AlertDialogAction onClick={() => { const link = pendingLink.current; pendingLink.current = undefined; allowNextNavigation.current = true; disconnect(); link?.click(); }}>Disconnect and leave</AlertDialogAction></AlertDialogFooter></AlertDialogContent></AlertDialog>
+    <Sheet open={details} onOpenChange={setDetails}><SheetContent className="border-white/10 bg-[#111318] text-white"><SheetHeader><SheetTitle>Connection details</SheetTitle></SheetHeader><div className="mt-6 space-y-4 text-sm"><Detail label="Host" value={host} /><Detail label="SSH state" value={labels[status]} /><Detail label="Identity" value={root ? "Root account" : vps.username} /><p className="text-white/50"><ShieldCheck className="mr-2 inline" size={16} />Host identity is verified by the terminal service before the shell opens.</p></div></SheetContent></Sheet>
+  </div>;
 }
+function StatusDot({ status }: { status: Status }) { return <span className="inline-flex items-center gap-1.5 text-[11px] uppercase tracking-[0.08em] text-white/60"><span className={`h-1.5 w-1.5 rounded-full ${status === "connected" ? "bg-emerald-400" : ["error", "expired"].includes(status) ? "bg-rose-400" : "bg-amber-300"}`} aria-hidden="true" />{labels[status]}</span>; }
+function Detail({ label, value }: { label: string; value: string }) { return <div className="border border-white/10 bg-white/[0.03] p-3"><div className="text-[11px] uppercase tracking-[0.14em] text-white/40">{label}</div><div className="mt-1 break-all font-mono text-white">{value}</div></div>; }

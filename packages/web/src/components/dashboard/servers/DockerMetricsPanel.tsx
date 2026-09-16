@@ -1,5 +1,15 @@
 import { useState, type ReactNode } from "react";
 import { Button } from "../../ui/button";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "../../ui/alert-dialog";
 import type { DashboardDockerContainerMetric, DashboardOverview, VpsRecord } from "../../../lib/api";
 import { vpsDisplayName } from "../../../lib/dashboard-formatters";
 import { formatBytes, formatDockerError } from "./helpers";
@@ -58,6 +68,7 @@ export function DockerMetricsPanel({ vps, dockerMetrics, busy, onToggle }: {
 }) {
   const enabled = vps.dockerMetricsEnabled === true;
   const [expanded, setExpanded] = useState(false);
+  const [enableDialogOpen, setEnableDialogOpen] = useState(false);
   const containers = dockerMetrics?.containers ?? [];
   const problems = containers.filter((container) => !isRunning(container));
   const running = containers.filter(isRunning).sort((a, b) => b.cpuPercent - a.cpuPercent);
@@ -108,11 +119,27 @@ export function DockerMetricsPanel({ vps, dockerMetrics, busy, onToggle }: {
     <div className="rounded-none border-0 bg-white/[0.03] px-3 py-2 shadow-none">
       <div className="mb-2 flex items-center justify-between gap-2">
         <span className="text-[11px] font-medium uppercase tracking-[0.14em] text-white/60">Docker</span>
-        <Button type="button" size="sm" variant={enabled ? "secondary" : "outline"} className="h-7 rounded-none px-2 text-[11px]" disabled={busy} aria-pressed={enabled} aria-label={`${enabled ? "Disable" : "Enable"} Docker metrics for ${vpsDisplayName(vps)}`} onClick={() => onToggle(vps)}>
+        <Button type="button" size="sm" variant={enabled ? "secondary" : "outline"} className="h-7 rounded-none px-2 text-[11px]" disabled={busy} aria-pressed={enabled} aria-label={`${enabled ? "Disable" : "Enable"} Docker metrics for ${vpsDisplayName(vps)}`} onClick={() => enabled ? onToggle(vps) : setEnableDialogOpen(true)}>
           {enabled ? "On" : "Off"}
         </Button>
       </div>
       {body}
+      <AlertDialog open={enableDialogOpen} onOpenChange={setEnableDialogOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Enable Docker monitoring?</AlertDialogTitle>
+            <AlertDialogDescription>
+              The agent will collect container names, images, status, and resource usage. Docker must be available to the agent. Environment variables, logs, mounts, labels, and commands are not collected.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction disabled={busy} onClick={() => { onToggle(vps); setEnableDialogOpen(false); }}>
+              Enable Docker monitoring
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }

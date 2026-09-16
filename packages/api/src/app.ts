@@ -24,12 +24,16 @@ import {
   type RateLimitStore,
 } from "./common/rate-limit-store.js";
 import { createDatabasePool } from "./db/pool.js";
+import { attachTerminalWebSocket } from "./terminal/terminal-websocket.js";
+import { TerminalSessionService } from "./terminal/terminal-session.service.js";
+import { DashboardSessionService } from "./auth/dashboard-session.service.js";
 
 export type Dependencies = AppDependencies;
 
 export async function createNestApp(
   deps: Dependencies = {},
   server: Express = express(),
+  httpServer?: import("node:http").Server,
 ): Promise<NestExpressApplication> {
   const config = deps.config ?? loadAppConfig();
   server.disable("x-powered-by");
@@ -104,6 +108,12 @@ export async function createNestApp(
   );
   nestApp.useGlobalFilters(new ApiExceptionFilter());
   await nestApp.init();
+  const terminalService = nestApp.get(TerminalSessionService);
+  // Explicit server ownership: callers supplying httpServer own the accepting
+  // Node server; otherwise Nest's server is the terminal upgrade target.
+  // createApp is an HTTP-test-only Express wrapper and does not expose listen.
+  const terminalTransport = attachTerminalWebSocket(httpServer ?? nestApp.getHttpServer(), config, nestApp.get(DashboardSessionService), terminalService);
+  terminalService.setWebSocketCloser(terminalTransport.close);
   server.get(/^\/(vps(\/.*)?)?$/, (_req, res) => {
     res.sendFile(join(process.cwd(), "public", "index.html"));
   });

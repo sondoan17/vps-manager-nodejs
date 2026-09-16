@@ -24,6 +24,7 @@ import { AuditController } from "./audit/audit.controller.js";
 import { MonitoringController } from "./monitoring/monitoring.controller.js";
 import { MonitoringService } from "./monitoring/monitoring.service.js";
 import { DashboardSessionGuard } from "./auth/dashboard-session.guard.js";
+import { DashboardSessionService } from "./auth/dashboard-session.service.js";
 import { OriginGuard } from "./auth/origin-guard.js";
 import type { AdminCredentialRepository } from "./persistence/repositories/admin-credential.repository.js";
 import type { AgentRepository } from "./persistence/repositories/agent.repository.js";
@@ -45,6 +46,7 @@ import { JobActivityService } from "./jobs/job-activity.service.js";
 import { VpsService } from "./vps/vps.service.js";
 import type { VpsRepository } from "./persistence/repositories/vps.repository.js";
 import { LocalAgentSupervisorService } from "./agents/local-agent-supervisor.service.js";
+import { TerminalSessionService } from "./terminal/terminal-session.service.js";
 import {
   ADMIN_CREDENTIAL_REPOSITORY,
   AGENT_REPOSITORY,
@@ -172,6 +174,8 @@ export function createAppModule(deps: AppDependencies = {}): DynamicModule {
         provide: ADMIN_CREDENTIAL_REPOSITORY,
         useValue: deps.adminCredential ?? repositories!.adminCredential,
       },
+      DashboardSessionService,
+      TerminalSessionService,
       DashboardSessionGuard,
       OriginGuard,
       AgentLifecycleCoordinator,

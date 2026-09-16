@@ -963,6 +963,34 @@ describe("React dashboard", () => {
       expect(sessionStorage.length).toBe(0);
     });
 
+    it("confirms Docker monitoring with the component dialog before enabling", async () => {
+      const server = { ...demoServerRecords[0], dockerMetricsEnabled: false };
+      renderAppWithLiveEvents({ dashboard: demoDashboard, servers: [server], jobs: [], metrics: [], auditEvents: [] });
+      expect(await screen.findByText("Docker monitoring is off.")).toBeInTheDocument();
+
+      fetchMock.mockClear();
+      const user = userEvent.setup();
+      await user.click(screen.getByRole("button", { name: "Enable Docker metrics for web-01" }));
+      expect(screen.getByRole("heading", { name: "Enable Docker monitoring?" })).toBeInTheDocument();
+      expect(fetchMock).not.toHaveBeenCalled();
+      expect(window.confirm).not.toHaveBeenCalled();
+
+      await user.click(screen.getByRole("button", { name: "Cancel" }));
+      expect(fetchMock).not.toHaveBeenCalled();
+
+      await user.click(screen.getByRole("button", { name: "Enable Docker metrics for web-01" }));
+      fetchMock
+        .mockResolvedValueOnce({ ok: true, status: 200, json: async () => ({ data: { ...server, dockerMetricsEnabled: true } }) })
+        .mockResolvedValueOnce({ ok: true, status: 200, json: async () => ({ data: demoDashboard }) })
+        .mockResolvedValueOnce({ ok: true, status: 200, json: async () => ({ data: [{ ...server, dockerMetricsEnabled: true }] }) })
+        .mockResolvedValueOnce({ ok: true, status: 200, json: async () => ({ data: [] }) })
+        .mockResolvedValueOnce({ ok: true, status: 200, json: async () => ({ data: [] }) })
+        .mockResolvedValueOnce({ ok: true, status: 200, json: async () => ({ data: [] }) });
+      await user.click(screen.getByRole("button", { name: "Enable Docker monitoring" }));
+      await waitFor(() => expect(fetchMock).toHaveBeenCalledWith("/api/vps/vps-1", expect.objectContaining({ method: "PATCH" })));
+      expect(window.confirm).not.toHaveBeenCalled();
+    });
+
     it("unknown event types are ignored without crashing", async () => {
       renderAppWithLiveEvents({
         dashboard: demoDashboard,

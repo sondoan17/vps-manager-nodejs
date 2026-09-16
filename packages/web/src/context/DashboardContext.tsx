@@ -663,13 +663,6 @@ export function DashboardProvider({
   async function handleToggleDockerMetrics(vps: VpsRecord) {
     const nextEnabled = !vps.dockerMetricsEnabled;
     const label = vpsDisplayName(vps);
-    if (nextEnabled) {
-      const confirmed = window.confirm(
-        "Enable Docker metrics for this server? The agent will collect container names, images, status, and resource usage. It will not collect env vars, labels, mounts, logs, or commands.",
-      );
-      if (!confirmed) return;
-    }
-
     await runAction(
       `${nextEnabled ? "Enabling" : "Disabling"} Docker metrics for ${label}...`,
       async () => {
