@@ -9,9 +9,10 @@ Provide an explicit, full interactive SSH shell at `/api/vps/:vpsId/terminal` us
 **Reviewed: 2026-09-16.** This plan is an implementation/runbook record, not a claim of production readiness.
 
 - **Implemented:** Phase 0 and Phase 1; the Phase 2 protocol, registry, service, limits, flow control, UTF-8 handling, heartbeat/pong adaptation, and lifecycle core; Phase 3 shutdown wiring; frontend confirmation, reconnect cleanup, stale-socket guards, and strict server-message validation; and Compose environment wiring with safe-disabled defaults.
-- **Evidence:** Focused backend terminal/frontend gates pass. Full typecheck/build pass after parent confirmation. The prior full suite had unrelated Windows EPERM, rate-limit flake, and filesystem-timeout failures; isolated filesystem/rate-limit reruns are recorded where available in the parent evidence.
+- **Evidence:** Focused backend terminal/frontend gates, static deployment-safety assertions, full typecheck, build, and Compose rendering pass. The full suite passed 470/471 tests; the unrelated uninstall-agent timeout passed 16/16 when rerun alone.
 - **Partial:** Comprehensive route-level browser back/programmatic navigation blocking remains partial because BrowserRouter has no safe blocker without architectural migration; REST/SSE evidence and the dedicated browser terminal hook remain separate follow-up items.
-- **Staging pending:** `nginx -t`, TLS/WSS validation, authenticated WSS smoke tests, real process/no-open-handle evidence, restart/revocation/host-key/output-flood checks, and controlled real-VPS smoke testing.
+- **Staging evidence:** App and edge `nginx -t`, public TLS/WSS routing, exact-Origin and authentication rejection, authenticated nonexistent-target failure, and one controlled real-VPS open/input/disconnect smoke pass with limits `1/1`. Three additional open/ready/disconnect cycles completed without failures, residual SSH sockets, cumulative FD growth, or meaningful memory growth. Logout revoked an active terminal as `session_expired`, removed the SSH connection, and preserved stable resources. No command/output was recorded in lifecycle audits.
+- **Staging pending:** Real process/no-open-handle evidence across restart, natural session expiry, deliberate host-key mismatch, missing-key, output-flood/slow-consumer, heartbeat, idle/lifetime, and broader browser accessibility/responsive checks. Direct-origin restriction and trusted-proxy redesign also remain pending.
 - **Not production-ready:** The feature remains safe-disabled by default until the mandatory staging gate passes; no production enablement is implied by code completion.
 
 ## Security invariants
@@ -159,13 +160,13 @@ Status: substantially code-complete; focused frontend evidence passes, with navi
 
 ## Phase 5 — Deployment and controlled rollout
 
-Status: configuration/runbook and Compose environment wiring implemented with safe-disabled defaults; deployment/staging validation pending; not production-ready.
+Status: configuration/runbook and Compose environment wiring implemented with safe-disabled defaults; static deployment-safety gates are automated; deployment/staging validation remains pending; not production-ready.
 
 ### Changes
 
-- Add a terminal-specific nginx location for `/api/vps/<vpsId>/terminal` with HTTP/1.1 upgrade headers, one-hour read/send timeouts, and buffering disabled. The ordinary `/api/` location remains unchanged for REST and SSE.
+- Add a terminal-specific nginx location for `/api/vps/<vpsId>/terminal` with HTTP/1.1 upgrade headers, one-hour read/send timeouts, and buffering disabled. The ordinary `/api/` location remains unchanged for REST and SSE. Static assertions cover this separation and the required proxy settings.
 - Document exact `DASHBOARD_PUBLIC_ORIGIN`, secure cookie, HTTPS/WSS, and internal-only API port requirements.
-- Keep terminal disabled in default compose/environment files; Compose environment wiring passes the configurable values while preserving safe-disabled defaults.
+- Keep terminal disabled in default compose/environment files; Compose environment wiring passes the configurable values while preserving safe-disabled defaults. Static assertions cover the compose, example environment, and workflow defaults/forwarding.
 - Document conservative operator configuration for concurrency, idle timeout, and absolute lifetime.
 
 ### Deployment requirements
