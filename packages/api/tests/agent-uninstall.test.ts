@@ -214,22 +214,29 @@ describe("agent state exposure on VPS data", () => {
   });
 
   it("surfaces persisted agent state on GET /api/vps (list)", async () => {
-    const vpsId = await createVps();
-    await agentRepo().upsertState({
-      vpsId,
-      status: "online",
-      version: "1.2.0",
-      installedAt: "2026-01-01T00:00:00.000Z",
-      lastInstallJobId: "job_install_1",
-    });
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-09-14T12:00:00.000Z"));
+    try {
+      const vpsId = await createVps();
+      await agentRepo().upsertState({
+        vpsId,
+        status: "online",
+        version: "1.2.0",
+        installedAt: "2026-01-01T00:00:00.000Z",
+        lastSeenAt: "2026-09-14T11:59:59.000Z",
+        lastInstallJobId: "job_install_1",
+      });
 
-    const res = await withCookie(request(server).get("/api/vps")).expect(200);
-    const record = res.body.data.find(
-      (r: { id: string }) => r.id === vpsId,
-    );
-    expect(record).toBeDefined();
-    expect(record.agentStatus).toBe("online");
-    expect(record.lastAgentInstallJobId).toBe("job_install_1");
+      const res = await withCookie(request(server).get("/api/vps")).expect(200);
+      const record = res.body.data.find(
+        (r: { id: string }) => r.id === vpsId,
+      );
+      expect(record).toBeDefined();
+      expect(record.agentStatus).toBe("online");
+      expect(record.lastAgentInstallJobId).toBe("job_install_1");
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it("surfaces agent error and failed status on GET /api/vps/:id", async () => {
