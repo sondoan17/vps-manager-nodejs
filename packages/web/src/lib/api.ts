@@ -403,6 +403,13 @@ export function upgradeAgent(id: string) {
   }>(`${vpsPath(id)}/upgrade-agent`, { method: "POST" });
 }
 
+export function restartAgent(id: string) {
+  return request<{
+    jobId: string;
+    state: { status: string; lastInstallJobId?: string };
+  }>(`${vpsPath(id)}/restart-agent`, { method: "POST" });
+}
+
 export function deleteVps(id: string) {
   return request<null>(`${vpsPath(id)}`, { method: "DELETE" });
 }

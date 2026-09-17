@@ -41,6 +41,7 @@ import { AgentInstallerService } from "./agents/agent-installer.service.js";
 import { AgentUninstallerService } from "./agents/agent-uninstaller.service.js";
 import { AgentLifecycleCoordinator } from "./agents/agent-lifecycle-coordinator.js";
 import { AgentUpgraderService } from "./agents/agent-upgrader.service.js";
+import { AgentRestartService } from "./agents/agent-restart.service.js";
 import { AgentService } from "./agents/agent.service.js";
 import { JobActivityService } from "./jobs/job-activity.service.js";
 import { VpsService } from "./vps/vps.service.js";
@@ -182,6 +183,7 @@ export function createAppModule(deps: AppDependencies = {}): DynamicModule {
       AgentInstallerService,
       AgentUninstallerService,
       AgentUpgraderService,
+      AgentRestartService,
       LocalAgentSupervisorService,
       JobActivityService,
       {
@@ -234,6 +236,7 @@ export function createAppModule(deps: AppDependencies = {}): DynamicModule {
           AGENT_REPOSITORY,
           HostKeyPinService,
           AgentUpgraderService,
+          AgentRestartService,
         ],
         useFactory: (
           store: VpsRepository,
@@ -246,6 +249,7 @@ export function createAppModule(deps: AppDependencies = {}): DynamicModule {
           agentRepo: AgentRepository,
           hostKeyPin: HostKeyPinService,
           upgrader: AgentUpgraderService,
+          restarter: AgentRestartService,
         ) =>
           new VpsService(
             store,
@@ -258,6 +262,7 @@ export function createAppModule(deps: AppDependencies = {}): DynamicModule {
             agentRepo,
             hostKeyPin,
             upgrader,
+            restarter,
           ),
       },
     ],

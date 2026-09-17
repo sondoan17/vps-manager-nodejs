@@ -19,7 +19,7 @@ export function agentJobFor(vps: VpsRecord, jobs: DashboardJob[]) {
   const lifecycleJobs = jobs.filter(
     (job) =>
       job.vpsId === vps.id &&
-      (job.type === "install-agent" || job.type === "uninstall-agent" || job.type === "upgrade-agent"),
+      (job.type === "install-agent" || job.type === "uninstall-agent" || job.type === "upgrade-agent" || job.type === "restart-agent"),
   );
   if (vps.lastAgentInstallJobId) {
     const exact = lifecycleJobs.find((job) => job.id === vps.lastAgentInstallJobId);
@@ -47,7 +47,8 @@ export function AgentLifecycleStatus({ vps, jobs, compact = false }: {
   if (active) {
     const removing = job.type === "uninstall-agent";
     const upgrading = job.type === "upgrade-agent";
-    const label = upgrading ? "Upgrading agent" : stepLabels[job.step || ""] || (removing ? "Removing agent" : "Installing agent");
+    const restarting = job.type === "restart-agent";
+    const label = restarting ? "Restarting agent" : upgrading ? "Upgrading agent" : stepLabels[job.step || ""] || (removing ? "Removing agent" : "Installing agent");
     return (
       <div className={compact ? "min-w-[150px]" : "mt-3 border-t border-white/10 pt-3"} aria-live="polite">
         <div className="flex items-center justify-between gap-3 text-xs">
@@ -57,7 +58,7 @@ export function AgentLifecycleStatus({ vps, jobs, compact = false }: {
           </span>
           <span className="tabular-nums text-white/45">{progress}%</span>
         </div>
-        <div role="progressbar" aria-label={`${removing ? "Agent removal" : upgrading ? "Agent upgrade" : "Agent install"}: ${label}`} aria-valuemin={0} aria-valuemax={100} aria-valuenow={progress} className="mt-2 h-1.5 overflow-hidden bg-white/10">
+        <div role="progressbar" aria-label={`${removing ? "Agent removal" : restarting ? "Agent restart" : upgrading ? "Agent upgrade" : "Agent install"}: ${label}`} aria-valuemin={0} aria-valuemax={100} aria-valuenow={progress} className="mt-2 h-1.5 overflow-hidden bg-white/10">
           <div className="h-full bg-sky-400 transition-[width] duration-500" style={{ width: `${progress}%` }} />
         </div>
       </div>

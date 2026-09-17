@@ -1244,6 +1244,38 @@ describe("React dashboard", () => {
       expect(within(row).getByTitle(`Last seen: ${new Date(lastSeenAt).toLocaleString()}`)).not.toHaveTextContent("Never");
     });
 
+    it("confirms and submits one restart for an eligible offline agent", async () => {
+      const offlineRecord = { ...twoServerRecords[0], displayName: "Offline worker", agentStatus: "offline", keyProvisionedAt: "2026-01-01T00:00:00.000Z" };
+      const onlineRecord = { ...twoServerRecords[1], id: "online-worker", displayName: "Online worker", agentStatus: "online", keyProvisionedAt: "2026-01-01T00:00:00.000Z" };
+      let resolveRestart!: (value: unknown) => void;
+      const restartResponse = new Promise((resolve) => { resolveRestart = resolve; });
+      fetchMock
+        .mockResolvedValueOnce(authOk())
+        .mockResolvedValueOnce({ ok: true, status: 200, json: async () => ({ data: twoServersDashboard }) })
+        .mockResolvedValueOnce({ ok: true, status: 200, json: async () => ({ data: [offlineRecord, onlineRecord] }) })
+        .mockResolvedValueOnce({ ok: true, status: 200, json: async () => ({ data: [] }) })
+        .mockResolvedValueOnce({ ok: true, status: 200, json: async () => ({ data: [] }) })
+        .mockResolvedValueOnce({ ok: true, status: 200, json: async () => ({ data: [] }) })
+        .mockImplementationOnce(() => restartResponse);
+
+      renderApp(["/vps"]);
+      const offlineCard = await screen.findByRole("article", { name: "Server Offline worker" });
+      await userEvent.click(within(offlineCard).getByRole("button", { name: "More actions for Offline worker" }));
+      await userEvent.click(screen.getByRole("menuitem", { name: "Restart agent" }));
+      expect(screen.getByRole("heading", { name: "Restart agent on Offline worker?" })).toBeInTheDocument();
+      expect(screen.getByText("This restarts the monitoring agent only. It does not reboot the VPS.")).toBeInTheDocument();
+
+      const confirm = screen.getByRole("button", { name: "Restart agent" });
+      await userEvent.click(confirm);
+      expect(fetchMock.mock.calls.filter(([url, init]) => url === "/api/vps/vps-1/restart-agent" && init?.method === "POST")).toHaveLength(1);
+      expect(screen.queryByRole("heading", { name: "Restart agent on Offline worker?" })).not.toBeInTheDocument();
+
+      const onlineCard = screen.getByRole("article", { name: "Server Online worker" });
+      await userEvent.click(within(onlineCard).getByRole("button", { name: "More actions for Online worker" }));
+      expect(screen.queryByRole("menuitem", { name: "Restart agent" })).not.toBeInTheDocument();
+      resolveRestart({ ok: true, status: 200, json: async () => ({ data: { jobId: "restart-1", state: { status: "queued" } } }) });
+    });
+
     it("shows 404 page for unknown routes", async () => {
       fetchMock
         .mockResolvedValueOnce(authOk())

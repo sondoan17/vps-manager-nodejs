@@ -65,6 +65,7 @@ export function ServerCard({
   onInstallAgent,
   onUninstallAgent,
   onUpgradeAgent,
+  onRestartAgent,
   onToggleDockerMetrics,
   onDelete,
   mode,
@@ -83,6 +84,7 @@ export function ServerCard({
   onInstallAgent: (vps: VpsRecord) => void;
   onUninstallAgent: (vps: VpsRecord) => void;
   onUpgradeAgent: (vps: VpsRecord) => void;
+  onRestartAgent: (vps: VpsRecord) => void;
   onToggleDockerMetrics: (vps: VpsRecord) => void;
   onDelete: (vps: VpsRecord) => void;
   mode: "demo" | "local";
@@ -98,6 +100,7 @@ export function ServerCard({
   const [deleteTarget, setDeleteTarget] = useState<VpsRecord | null>(null);
   const [uninstallTarget, setUninstallTarget] = useState<VpsRecord | null>(null);
   const [upgradeTarget, setUpgradeTarget] = useState<VpsRecord | null>(null);
+  const [restartTarget, setRestartTarget] = useState<VpsRecord | null>(null);
   const displayName = vpsDisplayName(vps);
   const hostId = vpsHostId(vps);
   const osLabel =
@@ -115,6 +118,8 @@ export function ServerCard({
     vps.agentStatus !== "offline";
   const canUpgrade = mode !== "demo" && !isLocalHost && !agentActionRunning &&
     (vps.agentStatus === "online" || vps.agentStatus === "offline" || vps.agentStatus === "failed");
+  const canRestart = mode !== "demo" && !isLocalHost && isReady && !agentActionRunning &&
+    (vps.agentStatus === "offline" || vps.agentStatus === "failed");
 
   const handlePasswordKeyDown = (e: React.KeyboardEvent) => {
     if (e.key === "Enter") {
@@ -259,9 +264,11 @@ export function ServerCard({
             isLocalHost={isLocalHost}
             onRotate={() => setShowPassword(true)}
             canUpgrade={canUpgrade}
+            canRestart={canRestart}
             onRequestUpgrade={() => {
               window.setTimeout(() => setUpgradeTarget(vps), 0);
             }}
+            onRequestRestart={() => window.setTimeout(() => setRestartTarget(vps), 0)}
             onRequestUninstall={() => {
               window.setTimeout(() => setUninstallTarget(vps), 0);
             }}
@@ -305,6 +312,9 @@ export function ServerCard({
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
+      </AlertDialog>
+      <AlertDialog open={restartTarget?.id === vps.id} onOpenChange={(open) => { if (!open) setRestartTarget(null); }}>
+        <AlertDialogContent><AlertDialogHeader><AlertDialogTitle>Restart agent on {displayName}?</AlertDialogTitle><AlertDialogDescription>This restarts the monitoring agent only. It does not reboot the VPS.</AlertDialogDescription></AlertDialogHeader><AlertDialogFooter><AlertDialogCancel>Cancel</AlertDialogCancel><AlertDialogAction disabled={busy} onClick={() => { if (!busy) onRestartAgent(vps); setRestartTarget(null); }}>Restart agent</AlertDialogAction></AlertDialogFooter></AlertDialogContent>
       </AlertDialog>
       {/* Uninstall confirmation – outside DropdownMenu so focus is restored cleanly */}
       <AlertDialog open={upgradeTarget?.id === vps.id} onOpenChange={(open) => { if (!open) setUpgradeTarget(null); }}>
@@ -651,7 +661,9 @@ function ServerOverflow({
   isLocalHost,
   onRotate,
   canUpgrade,
+  canRestart,
   onRequestUpgrade,
+  onRequestRestart,
   onRequestUninstall,
   onRequestDelete,
   mode,
@@ -662,7 +674,9 @@ function ServerOverflow({
   isLocalHost: boolean;
   onRotate: () => void;
   canUpgrade: boolean;
+  canRestart: boolean;
   onRequestUpgrade: () => void;
+  onRequestRestart: () => void;
   onRequestUninstall: () => void;
   onRequestDelete: () => void;
   mode: "demo" | "local";
@@ -686,6 +700,7 @@ function ServerOverflow({
           <RotateCw size={15} />
           Upgrade agent
         </DropdownMenuItem>
+        {canRestart ? <DropdownMenuItem disabled={busy} onClick={onRequestRestart}><RotateCw size={15} />Restart agent</DropdownMenuItem> : null}
         <DropdownMenuItem onClick={onRotate} disabled={busy || isLocalHost}>
           <KeyRound size={15} />
           Reinstall SSH key

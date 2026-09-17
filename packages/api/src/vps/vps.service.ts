@@ -23,6 +23,7 @@ import {
 import { AgentInstallerService } from "../agents/agent-installer.service.js";
 import { AgentUninstallerService } from "../agents/agent-uninstaller.service.js";
 import { AgentUpgraderService } from "../agents/agent-upgrader.service.js";
+import { AgentRestartService } from "../agents/agent-restart.service.js";
 import { AGENT_REPOSITORY } from "../tokens.js";
 import type { AgentRepository } from "../persistence/repositories/agent.repository.js";
 import { HostKeyPinService } from "../ssh/host-key-pin.service.js";
@@ -42,6 +43,7 @@ export class VpsService {
     @Inject(AGENT_REPOSITORY) private readonly agentRepository: AgentRepository,
     private readonly hostKeyPin: HostKeyPinService,
     private readonly agentUpgrader?: AgentUpgraderService,
+    private readonly agentRestarter?: AgentRestartService,
   ) {}
 
   async list() {
@@ -391,5 +393,13 @@ export class VpsService {
     this.assertRemoteUserManaged(vps);
     if (!this.agentUpgrader) throw new Error("Agent upgrade service is unavailable");
     return this.agentUpgrader.upgrade(vps.id);
+  }
+
+  async restartAgent(id: string) {
+    this.assertNotDemo();
+    const vps = await this.get(id);
+    this.assertRemoteUserManaged(vps);
+    if (!this.agentRestarter) throw new Error("Agent restart service is unavailable");
+    return this.agentRestarter.restart(vps.id);
   }
 }

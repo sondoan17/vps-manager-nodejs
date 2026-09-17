@@ -38,6 +38,7 @@ export type ServersPanelProps = {
   onInstallAgent: (vps: VpsRecord) => void;
   onUninstallAgent: (vps: VpsRecord) => void;
   onUpgradeAgent: (vps: VpsRecord) => void;
+  onRestartAgent: (vps: VpsRecord) => void;
   onToggleDockerMetrics: (vps: VpsRecord) => void;
   onEdit: (vps: VpsRecord, payload: UpdateVpsPayload) => Promise<void>;
   onDelete: (vps: VpsRecord) => void;

@@ -26,9 +26,9 @@ async function fixture(options: { lock?: string; ownership?: string; observation
     execCommand: vi.fn(async (_vps: unknown, command: string) => {
       commands.push(command);
       if (command.includes("$HOME")) return { stdout: "/home/deploy\n", stderr: "" };
-      if (command.includes("mkdir --") && command.includes("upgrade.lock")) return { stdout: options.lock ?? "acquired", stderr: "" };
+      if (command.includes("mkdir --") && command.includes("lifecycle.lock")) return { stdout: options.lock ?? "acquired", stderr: "" };
       if (command.endsWith(" -version")) return { stdout: "2.0.0\n", stderr: "" };
-      if (command.includes("_matches=0")) return { stdout: options.ownership ?? "ok:42\n", stderr: "" };
+      if (command.includes("_matches=0")) return { stdout: options.ownership ?? "owned:42:9001\n", stderr: "" };
       if (command.includes("_pid=$(cat") && command.includes("printf '%s")) return { stdout: "43\n", stderr: "" };
       return { stdout: "", stderr: "" };
     }),
@@ -85,8 +85,8 @@ describe("AgentUpgraderService", () => {
     const f = await fixture({ observations: [fState("1.0.0", 0), preflight, preflight, preflight, preflight] });
     // Rollback never observes a newer old-version ingest.
     await expect(f.task()).rejects.toThrow(/recovery artifacts were preserved/i);
-    const cleanupAfterRollback = f.commands.filter((c) => c.includes("rmdir --") && c.includes("upgrade.lock"));
-    expect(cleanupAfterRollback).toHaveLength(0);
+    const lockRelease = f.commands.filter((c) => c.includes("rmdir --") && c.includes("lifecycle.lock"));
+    expect(lockRelease).toHaveLength(1);
     expect(f.commands.some((c) => c.includes("mv -f --") && c.includes("backup-"))).toBe(true);
   });
 

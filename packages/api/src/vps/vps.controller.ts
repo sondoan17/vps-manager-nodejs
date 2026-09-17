@@ -123,6 +123,12 @@ export class VpsController {
     return { data: { jobId: result.jobId, state: result.state } };
   }
 
+  @Post(":id/restart-agent")
+  async restartAgent(@Param("id") id: string) {
+    const result = await this.vps.restartAgent(id);
+    return { data: { jobId: result.jobId, state: result.state } };
+  }
+
   // ── Scoped VPS endpoints ───────────────────────────────────────────────
 
   /**

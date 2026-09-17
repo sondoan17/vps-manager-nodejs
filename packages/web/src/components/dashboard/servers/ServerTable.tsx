@@ -37,6 +37,7 @@ export function ServerTable({
   onInstallAgent,
   onUninstallAgent,
   onUpgradeAgent,
+  onRestartAgent,
   jobs,
   onDelete,
   mode,
@@ -50,6 +51,7 @@ export function ServerTable({
   onInstallAgent: (vps: VpsRecord) => void;
   onUninstallAgent: (vps: VpsRecord) => void;
   onUpgradeAgent: (vps: VpsRecord) => void;
+  onRestartAgent: (vps: VpsRecord) => void;
   jobs: DashboardJob[];
   onDelete: (vps: VpsRecord) => void;
   mode: "demo" | "local";
@@ -58,6 +60,7 @@ export function ServerTable({
   const [deleteTarget, setDeleteTarget] = useState<VpsRecord | null>(null);
   const [uninstallTarget, setUninstallTarget] = useState<VpsRecord | null>(null);
   const [upgradeTarget, setUpgradeTarget] = useState<VpsRecord | null>(null);
+  const [restartTarget, setRestartTarget] = useState<VpsRecord | null>(null);
   const [now, setNow] = useState(() => Date.now());
   useEffect(() => {
     const timer = window.setInterval(() => setNow(Date.now()), 30_000);
@@ -98,6 +101,7 @@ export function ServerTable({
               const agentActionRunning = Boolean(agentJob && (agentJob.status === "queued" || agentJob.status === "running"));
               const canUninstall = vps.agentStatus === "online" || vps.agentStatus === "offline" || vps.agentStatus === "failed";
               const canUpgrade = mode !== "demo" && !isLocal && !agentActionRunning && canUninstall;
+              const canRestart = mode !== "demo" && !isLocal && Boolean(vps.keyProvisionedAt) && !agentActionRunning && (vps.agentStatus === "offline" || vps.agentStatus === "failed");
               const accessProblem = !isLocal && (!vps.keyProvisionedAt || vps.status === "unreachable");
               return (
                 <tr
@@ -171,6 +175,7 @@ export function ServerTable({
                         <DropdownMenuContent align="end" className="w-48 rounded-none">
                           {!accessProblem ? <DropdownMenuItem disabled={busy || isLocal} onClick={() => onVerify(vps)}><ShieldCheck size={14} /> Verify access</DropdownMenuItem> : null}
                           <DropdownMenuItem disabled={busy || !canUpgrade} onClick={() => window.setTimeout(() => setUpgradeTarget(vps), 0)}><RotateCw size={14} /> Upgrade agent</DropdownMenuItem>
+                          {canRestart ? <DropdownMenuItem disabled={busy} onClick={() => window.setTimeout(() => setRestartTarget(vps), 0)}><RotateCw size={14} /> Restart agent</DropdownMenuItem> : null}
                           <DropdownMenuItem disabled={busy || isLocal || !provisionPasswords[vps.id]?.trim()} onClick={() => onProvision(vps)}><KeyRound size={14} /> Reinstall SSH key</DropdownMenuItem>
                           <DropdownMenuItem
                             disabled={busy || isLocal || mode === "demo"}
@@ -203,6 +208,9 @@ export function ServerTable({
           <AlertDialogHeader><AlertDialogTitle>Upgrade agent on {upgradeTarget ? vpsDisplayName(upgradeTarget) : "server"}?</AlertDialogTitle><AlertDialogDescription>Monitoring will pause briefly while the agent is upgraded. If the upgrade cannot complete, the previous version is restored automatically. Existing credentials are preserved and are not changed or stored again.</AlertDialogDescription></AlertDialogHeader>
           <AlertDialogFooter><AlertDialogCancel>Cancel</AlertDialogCancel><AlertDialogAction onClick={() => { if (upgradeTarget) onUpgradeAgent(upgradeTarget); setUpgradeTarget(null); }}>Upgrade agent</AlertDialogAction></AlertDialogFooter>
         </AlertDialogContent>
+      </AlertDialog>
+      <AlertDialog open={restartTarget !== null} onOpenChange={(open) => { if (!open) setRestartTarget(null); }}>
+        <AlertDialogContent><AlertDialogHeader><AlertDialogTitle>Restart agent on {restartTarget ? vpsDisplayName(restartTarget) : "server"}?</AlertDialogTitle><AlertDialogDescription>This restarts the monitoring agent only. It does not reboot the VPS.</AlertDialogDescription></AlertDialogHeader><AlertDialogFooter><AlertDialogCancel>Cancel</AlertDialogCancel><AlertDialogAction disabled={busy} onClick={() => { if (restartTarget && !busy) onRestartAgent(restartTarget); setRestartTarget(null); }}>Restart agent</AlertDialogAction></AlertDialogFooter></AlertDialogContent>
       </AlertDialog>
       <AlertDialog
         open={deleteTarget !== null}

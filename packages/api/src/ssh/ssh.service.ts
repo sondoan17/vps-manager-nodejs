@@ -146,4 +146,15 @@ export class SshService {
     const security = await this.assertRealSshAllowed(vps);
     return execCommand(vps, command, auth, timeoutMs, security);
   }
+
+  /** Execute only with a configured trusted host-key pin. */
+  async execCommandStrict(
+    vps: VpsRecord,
+    command: string,
+    auth: { password?: string; privateKey?: string },
+    timeoutMs = 30_000,
+  ): Promise<{ stdout: string; stderr: string }> {
+    const security = await this.assertRealSshAllowed(vps, true);
+    return execCommand(vps, command, auth, timeoutMs, security);
+  }
 }

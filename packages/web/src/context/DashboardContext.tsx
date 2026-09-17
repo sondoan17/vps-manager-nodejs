@@ -31,6 +31,7 @@ import {
   installAgent,
   logoutDashboard,
   provisionKey,
+  restartAgent,
   trustSshHostKey,
   uninstallAgent,
   upgradeAgent,
@@ -100,6 +101,7 @@ export type DashboardCtx = {
   onInstallAgent: (vps: VpsRecord) => void;
   onUninstallAgent: (vps: VpsRecord) => void;
   onUpgradeAgent: (vps: VpsRecord) => void;
+  onRestartAgent: (vps: VpsRecord) => void;
   onToggleDockerMetrics: (vps: VpsRecord) => void;
   onEdit: (vps: VpsRecord, payload: UpdateVpsPayload) => Promise<void>;
   onDelete: (vps: VpsRecord) => void;
@@ -155,7 +157,7 @@ function applyAgentJobState(records: VpsRecord[], jobs: DashboardOverview["jobs"
     const lifecycleJobs = jobs.filter(
       (candidate) =>
         candidate.vpsId === vps.id &&
-        (candidate.type === "install-agent" || candidate.type === "uninstall-agent" || candidate.type === "upgrade-agent"),
+        (candidate.type === "install-agent" || candidate.type === "uninstall-agent" || candidate.type === "upgrade-agent" || candidate.type === "restart-agent"),
     );
     const job = lifecycleJobs.sort((a, b) => {
       const aTime = Date.parse(a.finishedAt || a.startedAt || "") || 0;
@@ -164,17 +166,18 @@ function applyAgentJobState(records: VpsRecord[], jobs: DashboardOverview["jobs"
     })[0];
     if (!job) return vps;
     const isUninstall = job.type === "uninstall-agent";
+    const isRestart = job.type === "restart-agent";
     if (job.status === "queued" || job.status === "running") {
       return {
         ...vps,
-        agentStatus: "installing" as const,
+        agentStatus: isRestart ? vps.agentStatus : "installing" as const,
         lastAgentInstallJobId: job.id,
       };
     }
     if (job.status === "succeeded") {
       return {
         ...vps,
-        agentStatus: (isUninstall ? "not_installed" : "online") as VpsRecord["agentStatus"],
+        agentStatus: (isRestart ? vps.agentStatus : isUninstall ? "not_installed" : "online") as VpsRecord["agentStatus"],
         lastAgentInstallJobId: job.id,
         agentLastError: undefined,
       };
@@ -660,6 +663,21 @@ export function DashboardProvider({
     });
   }
 
+  async function handleRestartAgent(vps: VpsRecord) {
+    const label = vpsDisplayName(vps);
+    await runAction(`Starting agent restart for ${label}...`, async () => {
+      const result = await restartAgent(vps.id);
+      setOverview((current) => ({
+        ...current,
+        jobs: mergeJobs(current.jobs, [{ id: result.jobId, vpsId: vps.id, type: "restart-agent", status: "queued", step: "queued", progress: 0 }]),
+      }));
+      setRecords((current) => current.map((record) => record.id === vps.id
+        ? { ...record, lastAgentInstallJobId: result.jobId }
+        : record));
+      setStatus({ message: `Agent restart queued for ${label}. Job ${result.jobId} is running in the background.`, kind: "success" });
+    });
+  }
+
   async function handleToggleDockerMetrics(vps: VpsRecord) {
     const nextEnabled = !vps.dockerMetricsEnabled;
     const label = vpsDisplayName(vps);
@@ -771,6 +789,7 @@ export function DashboardProvider({
     onInstallAgent: handleInstallAgent,
     onUninstallAgent: handleUninstallAgent,
     onUpgradeAgent: handleUpgradeAgent,
+    onRestartAgent: handleRestartAgent,
     onToggleDockerMetrics: handleToggleDockerMetrics,
     onEdit: handleEdit,
     onDelete: handleDelete,

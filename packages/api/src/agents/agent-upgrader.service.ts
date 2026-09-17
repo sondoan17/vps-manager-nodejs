@@ -15,6 +15,7 @@ import type { AgentState } from "./agent.models.js";
 import type { VpsRecord } from "../vps/vps.models.js";
 import { APP_CONFIG, AGENT_REPOSITORY, VPS_REPOSITORY, KEY_SERVICE } from "../tokens.js";
 import { VpsNotFoundError } from "../common/errors.js";
+import { AGENT_LIFECYCLE_LOCK, buildLifecycleLockAcquireCommand, buildLifecycleLockReleaseCommand, buildManagedProcessInspectCommand, buildManagedProcessStopCommand, buildTransactionalStartCommand } from "./agent-lifecycle-remote.js";
 
 const DIR = ".vps-manager-agent";
 const VERSION_RE = /^[A-Za-z0-9][A-Za-z0-9._+-]{0,63}$/;
@@ -86,12 +87,12 @@ export class AgentUpgraderService {
     const home = (await this.ssh.execCommand(vps, "printf '%s\\n' \"$HOME\"", auth, 10_000)).stdout.trim();
     if (!validHome(home)) throw new Error("Invalid remote home directory");
     const dir = `${home}/${DIR}`, binary = `${dir}/vps-agent`, config = `${dir}/config.json`;
-    const pidFile = `${dir}/vps-agent.pid`, lock = `${dir}/upgrade.lock`;
+    const pidFile = `${dir}/vps-agent.pid`, lock = `${dir}/${AGENT_LIFECYCLE_LOCK}`;
     const nonce = randomBytes(12).toString("hex");
     const staged = `${dir}/vps-agent.stage-${nonce}`, backup = `${dir}/vps-agent.backup-${nonce}`;
-    const lockResult = await this.ssh.execCommand(vps, `umask 077; mkdir -- ${q(lock)} 2>/dev/null && printf acquired || printf conflict`, auth, 10_000);
+    const lockResult = await this.ssh.execCommand(vps, buildLifecycleLockAcquireCommand(lock), auth, 10_000);
     if (lockResult.stdout.trim() !== "acquired") throw new ConflictException("Agent upgrade lock is already held");
-    let swapped = false, oldPid = "", candidateVersion = "";
+    let swapped = false, candidateVersion = "";
     try {
       await ctx.update("staging", 15);
       await this.ssh.uploadFile(vps, staged, candidate, 0o700, auth);
@@ -104,39 +105,25 @@ export class AgentUpgraderService {
       // The staged -once uses the live credential/config and can itself ingest.
       // Snapshot only after it finishes so that observation cannot prove the
       // subsequently started background process is healthy.
-      const postPreflightBaseline =
-        (await this.agents.getState(vps.id))?.lastSeenAt ?? prior.lastSeenAt;
-
       await ctx.update("identifying-process", 40);
-      const inspect = [
-        `_pf=${q(pidFile)}; _bin=${q(binary)}; _cfg=${q(config)};`,
-        `_matches=0; _owned=''; for _p in /proc/[0-9]*; do _p=${"${_p##*/}"};`,
-        `test \"$(readlink -f /proc/$_p/exe 2>/dev/null)\" = \"$_bin\" || continue;`,
-        `_n=$(tr '\\0' '\\n' < /proc/$_p/cmdline 2>/dev/null | awk -v c=\"$_cfg\" 'p==1&&$0==c{n++}{p=($0==\"-config\")}END{print n+0}');`,
-        `test \"$_n\" = 1 || continue; _matches=$((_matches+1)); _owned=$_p; done;`,
-        `test \"$_matches\" = 1 || { echo ambiguous; exit 0; };`,
-        `test -f \"$_pf\" || { echo none; exit 0; }; _pid=$(cat \"$_pf\");`,
-        `case \"$_pid\" in (''|*[!0-9]*) echo invalid; exit 0;; esac;`,
-        `test \"$(readlink -f /proc/$_pid/exe 2>/dev/null)\" = \"$_bin\" || { echo mismatch; exit 0; };`,
-        `_n=$(tr '\\0' '\\n' < /proc/$_pid/cmdline | awk -v c=\"$_cfg\" 'p==1&&$0==c{n++}{p=($0==\"-config\")}END{print n+0}');`,
-        `test \"$_n\" = 1 || { echo ambiguous; exit 0; }; test \"$_pid\" = \"$_owned\" || { echo mismatch; exit 0; }; printf 'ok:%s\\n' \"$_pid\"`,
-      ].join(" ");
+      const inspect = buildManagedProcessInspectCommand(binary, config, pidFile);
       const ownership = (await this.ssh.execCommand(vps, inspect, auth, 10_000)).stdout.trim();
-      if (!/^ok:[1-9][0-9]*$/.test(ownership)) throw new Error("Managed agent process ownership is missing or ambiguous");
-      oldPid = ownership.slice(3);
+      const owned = /^owned:([1-9][0-9]*):([1-9][0-9]*)$/.exec(ownership);
+      if (!owned) throw new Error("Managed agent process ownership is missing or ambiguous");
       await ctx.update("stopping", 50);
-      await this.stopPid(vps, auth, binary, config, oldPid);
+      await this.stopPid(vps, auth, binary, config, owned[1], owned[2]);
+      const postStopBaseline = (await this.agents.getState(vps.id))?.lastSeenAt ?? prior.lastSeenAt;
       await ctx.update("swapping", 60);
       await this.ssh.execCommand(vps, `test -f ${q(binary)} && mv -- ${q(binary)} ${q(backup)} && mv -- ${q(staged)} ${q(binary)}`, auth, 10_000);
       swapped = true;
       await this.start(vps, auth, binary, config, pidFile);
       await ctx.update("verifying-ingest", 80);
-      await this.waitForObservation(vps.id, postPreflightBaseline, candidateVersion);
-      await this.ssh.execCommand(vps, `rm -f -- ${q(backup)}; rmdir -- ${q(lock)}`, auth, 10_000);
+      await this.waitForObservation(vps.id, postStopBaseline, candidateVersion);
+      await this.ssh.execCommand(vps, `rm -f -- ${q(backup)}`, auth, 10_000);
       return candidateVersion;
     } catch (candidateError) {
       if (!swapped) {
-        await this.ssh.execCommand(vps, `rm -f -- ${q(staged)}; rmdir -- ${q(lock)}`, auth, 10_000).catch(() => undefined);
+        await this.ssh.execCommand(vps, `rm -f -- ${q(staged)}`, auth, 10_000).catch(() => undefined);
         throw candidateError;
       }
       try {
@@ -146,34 +133,24 @@ export class AgentUpgraderService {
         const beforeRollback = (await this.agents.getState(vps.id))?.lastSeenAt;
         await this.start(vps, auth, binary, config, pidFile);
         await this.waitForObservation(vps.id, beforeRollback, prior.version!);
-        await this.ssh.execCommand(vps, `rm -f -- ${q(staged)}; rmdir -- ${q(lock)}`, auth, 10_000);
+        await this.ssh.execCommand(vps, `rm -f -- ${q(staged)}`, auth, 10_000);
       } catch { throw new Error("Agent upgrade failed and rollback could not be verified; recovery artifacts were preserved"); }
       throw candidateError;
-    }
+    } finally { await this.ssh.execCommand(vps, buildLifecycleLockReleaseCommand(lock), auth, 10_000).catch(() => undefined); }
   }
 
   private async start(vps: VpsRecord, auth: { privateKey: string }, binary: string, config: string, pidFile: string) {
-    const cmd = `umask 077; test ! -e ${q(`${pidFile}.tmp`)}; nohup ${q(binary)} -config ${q(config)} >/dev/null 2>&1 & _pid=$!; printf '%s\\n' \"$_pid\" > ${q(`${pidFile}.tmp`)} && mv -- ${q(`${pidFile}.tmp`)} ${q(pidFile)}; sleep .2; kill -0 \"$_pid\"; test \"$(readlink -f /proc/$_pid/exe)\" = ${q(binary)}; test \"$(tr '\\0' '\\n' < /proc/$_pid/cmdline | awk -v c=${q(config)} 'p==1&&$0==c{n++}{p=($0==\"-config\")}END{print n+0}')\" = 1`;
+    const cmd = buildTransactionalStartCommand(binary, config, pidFile);
     await this.ssh.execCommand(vps, cmd, auth, 10_000);
   }
   private async stopOwned(vps: VpsRecord, auth: { privateKey: string }, binary: string, config: string, pidFile: string) {
-    const result = await this.ssh.execCommand(vps, `_pid=$(cat ${q(pidFile)} 2>/dev/null); case \"$_pid\" in (''|*[!0-9]*) exit 1;; esac; printf '%s\\n' \"$_pid\"`, auth, 10_000);
-    const pid = result.stdout.trim();
-    if (!/^[1-9][0-9]*$/.test(pid)) throw new Error("Managed agent PID file is invalid");
-    await this.stopPid(vps, auth, binary, config, pid);
+    const result = await this.ssh.execCommand(vps, buildManagedProcessInspectCommand(binary, config, pidFile), auth, 10_000);
+    const owned = /^owned:([1-9][0-9]*):([1-9][0-9]*)$/.exec(result.stdout.trim());
+    if (!owned) throw new Error("Managed agent PID file is invalid");
+    await this.stopPid(vps, auth, binary, config, owned[1], owned[2]);
   }
-  private async stopPid(vps: VpsRecord, auth: { privateKey: string }, binary: string, config: string, pid: string) {
-    // owns() is repeated immediately before TERM and again before KILL. If the
-    // PID is reused at either boundary, no signal is sent to the new process.
-    const cmd = [
-      `_pid=${q(pid)}; _bin=${q(binary)}; _cfg=${q(config)};`,
-      `owns(){ test \"$(readlink -f /proc/$_pid/exe 2>/dev/null)\" = \"$_bin\" && test \"$(tr '\\0' '\\n' < /proc/$_pid/cmdline 2>/dev/null | awk -v c=\"$_cfg\" 'p==1&&$0==c{n++}{p=($0==\"-config\")}END{print n+0}')\" = 1; };`,
-      `owns || exit 1; owns && kill -TERM \"$_pid\";`,
-      `_i=0; while owns && [ $_i -lt 50 ]; do sleep .1; _i=$((_i+1)); done;`,
-      `if owns; then owns && kill -KILL \"$_pid\"; fi;`,
-      `_i=0; while owns && [ $_i -lt 20 ]; do sleep .1; _i=$((_i+1)); done; ! owns`,
-    ].join(" ");
-    await this.ssh.execCommand(vps, cmd, auth, 10_000);
+  private async stopPid(vps: VpsRecord, auth: { privateKey: string }, binary: string, config: string, pid: string, starttime: string) {
+    await this.ssh.execCommand(vps, buildManagedProcessStopCommand(binary, config, pid, starttime), auth, 10_000);
   }
   private async waitForObservation(vpsId: string, baseline: string | undefined, version: string) {
     const base = baseline ? Date.parse(baseline) : 0;
