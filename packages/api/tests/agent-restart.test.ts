@@ -10,6 +10,7 @@ import {
 import {
   buildLifecycleLockAcquireCommand,
   buildLifecycleLockReleaseCommand,
+  classifyManagedProcessInspection,
 } from "../src/agents/agent-lifecycle-remote.js";
 import type { AgentState } from "../src/agents/agent.models.js";
 import type { AppConfig } from "../src/config/app-config.js";
@@ -182,6 +183,47 @@ describe("AgentRestartService", () => {
     const failure = f.audit.record.mock.calls.find(([event]) => event.action === "agent.restart.failure")?.[0];
     expect(JSON.stringify(failure)).not.toContain("SUPER-SECRET");
     expect(failure?.metadata.error).toContain("[REDACTED]");
+  });
+
+  it("classifies stale PID files as recoverable none without signaling", () => {
+    // Staging case: numeric PID file, PID absent under /proc, zero exact matches.
+    expect(classifyManagedProcessInspection(0, null, { exists: true, content: "424242" }, () => false)).toBe("none");
+    expect(classifyManagedProcessInspection(0, null, { exists: false }, () => false)).toBe("none");
+    // Zero exact matches but the PID file points at a live unrelated process: never overwrite/signal.
+    expect(classifyManagedProcessInspection(0, null, { exists: true, content: "1234" }, () => true)).toBe("mismatch");
+    expect(classifyManagedProcessInspection(0, null, { exists: true, content: "1234" }, (pid) => pid === "1234")).toBe("mismatch");
+    // Malformed PID files are safe failures, never none.
+    expect(classifyManagedProcessInspection(0, null, { exists: true, content: "" }, () => false)).toBe("invalid");
+    expect(classifyManagedProcessInspection(0, null, { exists: true, content: "abc" }, () => false)).toBe("invalid");
+    expect(classifyManagedProcessInspection(0, null, { exists: true, content: "12a3" }, () => false)).toBe("invalid");
+    expect(classifyManagedProcessInspection(1, { pid: "42", starttime: "9001" }, { exists: true, content: "12a3" }, () => false)).toBe("invalid");
+    // Owned process.
+    expect(classifyManagedProcessInspection(1, { pid: "42", starttime: "9001" }, { exists: true, content: "42" }, () => true)).toBe("owned:42:9001");
+    // Single exact process but PID file missing/different.
+    expect(classifyManagedProcessInspection(1, { pid: "42", starttime: "9001" }, { exists: false }, () => true)).toBe("ambiguous");
+    expect(classifyManagedProcessInspection(1, { pid: "42", starttime: "9001" }, { exists: true, content: "43" }, () => true)).toBe("mismatch");
+    expect(classifyManagedProcessInspection(1, { pid: "42", starttime: "9001" }, { exists: true, content: "43" }, () => false)).toBe("mismatch");
+    // Multiple exact processes are always ambiguous.
+    expect(classifyManagedProcessInspection(2, null, { exists: false }, () => false)).toBe("ambiguous");
+    expect(classifyManagedProcessInspection(2, null, { exists: true, content: "42" }, () => true)).toBe("ambiguous");
+    expect(classifyManagedProcessInspection(3, { pid: "42", starttime: "9001" }, { exists: true, content: "42" }, () => true)).toBe("ambiguous");
+  });
+
+  it("deploys an inspect command that recovers stale dead PIDs via /proc liveness", () => {
+    const command = buildRestartInspectCommand("/opt/agent", "/opt/config.json", "/run/agent.pid");
+    // Stale dead PID (zero matches + absent /proc/<pid>) must map to none; live unrelated PID must map to mismatch.
+    expect(command).toContain('test -d "/proc/$_pid"');
+    expect(command).toContain("&& echo mismatch || echo none");
+    // Malformed PID files stay safe failures, never none.
+    expect(command).toContain("echo invalid");
+    // Exact-match ownership and ambiguity semantics preserved.
+    expect(command).toContain("echo ambiguous");
+    expect(command).toContain("echo mismatch");
+    expect(command).toContain("owned:%s:%s");
+    // Stale branch must not signal any process.
+    expect(command).not.toContain("kill");
+    expect(command).not.toContain("pkill");
+    assertBashSyntax(command);
   });
 
   it("generates Bash-valid lifecycle commands (regression: function definitions need `};` separators)", () => {

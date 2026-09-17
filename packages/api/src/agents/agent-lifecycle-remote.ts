@@ -39,11 +39,31 @@ export const REMOTE_ST_HELPER = `st(){ sed 's/^.*) //' "/proc/$1/stat" 2>/dev/nu
 
 const EXACT_ARGV = `test "$(tr '\\0' '\\n' < /proc/$_pid/cmdline 2>/dev/null | awk -v b="$_bin" -v c="$_cfg" 'NR==1{ok=($0==b)} NR==2{ok=ok&&($0=="-config")} NR==3{ok=ok&&($0==c)} NR>3{ok=0} END{print ok&&NR==3?1:0}')" = 1`;
 
+/**
+ * Pure mirror of the tail classification in {@link buildManagedProcessInspectCommand}.
+ * Exists so the stale-PID policy is unit-testable without a live /proc.
+ * Shell remains the source of truth on hosts; this must stay in sync with it.
+ */
+export function classifyManagedProcessInspection(
+  matches: number,
+  owned: { pid: string; starttime: string } | null,
+  pidFile: { exists: boolean; content?: string },
+  pidAlive: (pid: string) => boolean,
+): string {
+  if (matches > 1) return "ambiguous";
+  if (!pidFile.exists) return matches === 0 ? "none" : "ambiguous";
+  const pid = pidFile.content ?? "";
+  if (pid === "" || /[^0-9]/.test(pid)) return "invalid";
+  if (matches === 0) return pidAlive(pid) ? "mismatch" : "none";
+  if (owned && pid === owned.pid) return `owned:${pid}:${owned.starttime}`;
+  return "mismatch";
+}
+
 export function buildManagedProcessInspectCommand(binary: string, config: string, pidFile: string): string {
   const b = shellQuote(binary), c = shellQuote(config), p = shellQuote(pidFile);
   return [`_pf=${p}; _bin=${b}; _cfg=${c}; _matches=0; _owned=''; _ost=''; ${REMOTE_ST_HELPER}`,
     `for _d in /proc/[0-9]*; do _pid=\${_d##*/}; test "$(readlink -f /proc/$_pid/exe 2>/dev/null)" = "$_bin" || continue; ${EXACT_ARGV} || continue; _st=$(st "$_pid"); test -n "$_st" || continue; _matches=$((_matches+1)); _owned=$_pid; _ost=$_st; done;`,
-    `test "$_matches" -le 1 || { echo ambiguous; exit 0; }; test -f "$_pf" || { test "$_matches" = 0 && echo none || echo ambiguous; exit 0; }; _pid=$(cat "$_pf" 2>/dev/null); case "$_pid" in (''|*[!0-9]*) echo invalid; exit 0;; esac; test "$_matches" = 1 && test "$_pid" = "$_owned" || { echo mismatch; exit 0; }; printf 'owned:%s:%s\n' "$_pid" "$_ost"`].join(" ");
+    `test "$_matches" -le 1 || { echo ambiguous; exit 0; }; test -f "$_pf" || { test "$_matches" = 0 && echo none || echo ambiguous; exit 0; }; _pid=$(cat "$_pf" 2>/dev/null); case "$_pid" in (''|*[!0-9]*) echo invalid; exit 0;; esac; if test "$_matches" = 0; then test -d "/proc/$_pid" && echo mismatch || echo none; exit 0; fi; test "$_pid" = "$_owned" || { echo mismatch; exit 0; }; printf 'owned:%s:%s\n' "$_pid" "$_ost"`].join(" ");
 }
 
 /** Revalidates identity before every signal; a check-to-kill syscall race remains. */
