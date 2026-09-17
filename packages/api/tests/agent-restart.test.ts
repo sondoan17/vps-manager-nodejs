@@ -1,3 +1,4 @@
+import { spawnSync } from "node:child_process";
 import { describe, expect, it, vi } from "vitest";
 import { AgentLifecycleCoordinator } from "../src/agents/agent-lifecycle-coordinator.js";
 import {
@@ -6,8 +7,41 @@ import {
   buildRestartStartCommand,
   buildRestartStopCommand,
 } from "../src/agents/agent-restart.service.js";
+import {
+  buildLifecycleLockAcquireCommand,
+  buildLifecycleLockReleaseCommand,
+} from "../src/agents/agent-lifecycle-remote.js";
 import type { AgentState } from "../src/agents/agent.models.js";
 import type { AppConfig } from "../src/config/app-config.js";
+
+function bashPath(): string | undefined {
+  const candidates = process.platform === "win32"
+    ? [
+        "C:\\Program Files\\Git\\bin\\bash.exe",
+        "C:\\Program Files\\Git\\usr\\bin\\bash.exe",
+        "C:\\Program Files (x86)\\Git\\bin\\bash.exe",
+        "C:\\Program Files (x86)\\Git\\usr\\bin\\bash.exe",
+      ]
+    : ["bash"];
+  if (process.platform === "win32") {
+    const located = spawnSync("where.exe", ["bash"], { encoding: "utf8" });
+    if (!located.error && located.status === 0) {
+      candidates.push(...located.stdout.split(/\r?\n/).filter(Boolean));
+    }
+  }
+  for (const candidate of candidates) {
+    const result = spawnSync(candidate, ["-n", "-c", ":"], { stdio: "ignore" });
+    if (!result.error && result.status === 0) return candidate;
+  }
+  return undefined;
+}
+
+function assertBashSyntax(command: string): void {
+  const bash = bashPath();
+  if (!bash) return;
+  const result = spawnSync(bash, ["-n", "-c", command], { encoding: "utf8" });
+  expect(result.status, result.stderr).toBe(0);
+}
 
 function fixture(options: {
   state?: AgentState | undefined;
@@ -148,5 +182,27 @@ describe("AgentRestartService", () => {
     const failure = f.audit.record.mock.calls.find(([event]) => event.action === "agent.restart.failure")?.[0];
     expect(JSON.stringify(failure)).not.toContain("SUPER-SECRET");
     expect(failure?.metadata.error).toContain("[REDACTED]");
+  });
+
+  it("generates Bash-valid lifecycle commands (regression: function definitions need `};` separators)", () => {
+    const binary = "/home/deploy/.vps-manager-agent/vps-agent";
+    const config = "/home/deploy/.vps-manager-agent/config.json";
+    const pidFile = "/home/deploy/.vps-manager-agent/vps-agent.pid";
+    const commands = [
+      buildLifecycleLockAcquireCommand(`${binary}.lock`),
+      buildLifecycleLockReleaseCommand(`${binary}.lock`),
+      buildRestartInspectCommand(binary, config, pidFile),
+      buildRestartStopCommand(binary, config, "42", "9001"),
+      buildRestartStartCommand(binary, config, pidFile),
+    ];
+    for (const command of commands) assertBashSyntax(command);
+    // Exact regression shape: the st() helper must terminate with `};`
+    // so the following `for`/function token parses under Bash.
+    for (const command of commands) {
+      expect(command).not.toMatch(/\}\sfor\s/);
+      expect(command).not.toMatch(/\}\sif\s/);
+      expect(command).not.toMatch(/\}\s[a-zA-Z_][a-zA-Z0-9_]*\(\)\{/);
+    }
+    expect(buildRestartInspectCommand(binary, config, pidFile)).toContain("}; for _d");
   });
 });
