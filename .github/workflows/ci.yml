@@ -203,7 +203,7 @@ jobs:
         # run even if this image has findings; the final gate below fails.
         # always() keeps this independent of the web scan/SBOM step outcomes.
         if: always() && steps.effective.outputs.api_changed == 'true'
-        uses: aquasecurity/trivy-action@0.28.0
+        uses: aquasecurity/trivy-action@v0.36.0
         with:
           scan-type: image
           scan-ref: vps-manager-nodejs-api:ci
@@ -217,7 +217,7 @@ jobs:
       - name: Scan web image for critical fixable vulnerabilities
         # Independent of the API scan result; final gate aggregates both.
         if: always() && steps.effective.outputs.web_changed == 'true'
-        uses: aquasecurity/trivy-action@0.28.0
+        uses: aquasecurity/trivy-action@v0.36.0
         with:
           scan-type: image
           scan-ref: vps-manager-nodejs-web:ci
