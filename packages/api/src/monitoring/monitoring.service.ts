@@ -21,7 +21,10 @@ import {
   type JobActivityListener,
 } from "../jobs/job-activity.service.js";
 import { APP_CONFIG, METRIC_REPOSITORY } from "../tokens.js";
-import { HOST_FRESHNESS_THRESHOLD_MS } from "../common/host-health.js";
+import {
+  HOST_FRESHNESS_THRESHOLD_MS,
+  isFreshTimestamp as isFreshTimestampShared,
+} from "../common/host-health.js";
 
 // ── Event envelope types ──────────────────────────────────────────────
 
@@ -40,6 +43,7 @@ type SnapshotPayload = {
   jobs: DashboardJob[];
   metrics: DashboardMetricSample[];
   auditEvents: AuditEvent[];
+  dockerMetrics: AgentDockerMetrics[];
 };
 type MetricsUpdatedPayload = {
   metrics: DashboardMetricSample[];
@@ -185,11 +189,16 @@ function sendEvent(res: Response, type: string, data: unknown): void {
 /** 2 minutes in ms — samples older than this are considered stale. */
 export const STALE_THRESHOLD_MS = HOST_FRESHNESS_THRESHOLD_MS;
 
+/**
+ * Shared-threshold wrapper; the canonical implementation and receivedAt-first
+ * semantics live in `common/host-health.ts`.
+ */
 export function isFreshTimestamp(
   timestamp: string,
   thresholdMs = STALE_THRESHOLD_MS,
+  now = Date.now(),
 ): boolean {
-  return Date.now() - new Date(timestamp).getTime() < thresholdMs;
+  return isFreshTimestampShared(timestamp, thresholdMs, now);
 }
 
 // ── Job change tracking per SSE stream ────────────────────────────────
@@ -309,6 +318,7 @@ export class MonitoringService {
         jobs: overview.jobs,
         metrics: overview.metrics,
         auditEvents: overview.auditEvents,
+        dockerMetrics: overview.dockerMetrics,
       };
       sendEvent(res, "monitoring.snapshot", snapshotPayload);
     } catch {
@@ -392,6 +402,11 @@ export class MonitoringService {
   }
 
   private async streamLocalLoop(res: Response): Promise<void> {
+    // Authoritative Docker state is tracked independently of host-metric
+    // volume so a present/changed snapshot (including []) is still emitted
+    // when ordinary host metrics are empty.
+    let lastDockerJson: string | undefined;
+    let isFirstTick = true;
     const interval = setInterval(async () => {
       if (res.destroyed) {
         clearInterval(interval);
@@ -411,14 +426,19 @@ export class MonitoringService {
             : "stale",
         }));
 
-        if (updatedMetrics.length > 0) {
-          const overview = await this.dashboardService.overview();
+        const overview = await this.dashboardService.overview();
+        const dockerMetrics = overview.dockerMetrics ?? [];
+        const dockerJson = JSON.stringify(dockerMetrics);
+        const dockerChanged = dockerJson !== lastDockerJson;
+        if (updatedMetrics.length > 0 || isFirstTick || dockerChanged) {
           sendEvent(res, "metrics.updated", {
             metrics: updatedMetrics,
             systemInfo: overview.systemInfo,
-            dockerMetrics: overview.dockerMetrics,
+            dockerMetrics,
           });
+          lastDockerJson = dockerJson;
         }
+        isFirstTick = false;
 
         sendEvent(res, "monitoring.heartbeat", {});
       } catch {
@@ -521,6 +541,7 @@ export class MonitoringService {
         jobs: filteredJobs,
         metrics: filteredMetrics,
         auditEvents: filteredAudit,
+        dockerMetrics: filteredDockerMetrics,
       };
       sendEvent(res, "monitoring.snapshot", snapshotPayload);
     } catch {
@@ -600,6 +621,10 @@ export class MonitoringService {
     res: Response,
     vpsId: string,
   ): Promise<void> {
+    // Scoped Docker state follows the same independent rule as the global
+    // loop, but filtering stays strictly scoped so another VPS never leaks.
+    let lastDockerJson: string | undefined;
+    let isFirstTick = true;
     const interval = setInterval(async () => {
       if (res.destroyed) {
         clearInterval(interval);
@@ -618,20 +643,24 @@ export class MonitoringService {
             : "stale",
         }));
 
-        if (updatedMetrics.length > 0) {
-          const overview = await this.dashboardService.overview();
-          const filteredSystemInfo = (overview.systemInfo ?? []).filter(
-            (s) => s.vpsId === vpsId,
-          );
-          const filteredDockerMetrics = (overview.dockerMetrics ?? []).filter(
-            (d) => d.vpsId === vpsId,
-          );
+        const overview = await this.dashboardService.overview();
+        const filteredSystemInfo = (overview.systemInfo ?? []).filter(
+          (s) => s.vpsId === vpsId,
+        );
+        const filteredDockerMetrics = (overview.dockerMetrics ?? []).filter(
+          (d) => d.vpsId === vpsId,
+        );
+        const dockerJson = JSON.stringify(filteredDockerMetrics);
+        const dockerChanged = dockerJson !== lastDockerJson;
+        if (updatedMetrics.length > 0 || isFirstTick || dockerChanged) {
           sendEvent(res, "metrics.updated", {
             metrics: updatedMetrics,
             systemInfo: filteredSystemInfo,
             dockerMetrics: filteredDockerMetrics,
           });
+          lastDockerJson = dockerJson;
         }
+        isFirstTick = false;
 
         sendEvent(res, "monitoring.heartbeat", {});
       } catch {

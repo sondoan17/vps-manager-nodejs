@@ -49,6 +49,11 @@ export type DashboardDockerMetrics = {
   agentVersion?: string;
   schemaVersion: 1;
   available: boolean;
+  freshness?: "fresh" | "stale";
+  ageSeconds?: number;
+  lastUpdatedAt?: string;
+  engineVersion?: string;
+  apiVersion?: string;
   errorCode?:
     | "socket_missing"
     | "permission_denied"

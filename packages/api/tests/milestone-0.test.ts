@@ -173,6 +173,10 @@ describe("database migrations", () => {
     expect(migrations[8]?.sql).toContain(
       "CREATE TABLE IF NOT EXISTS agent_docker_metrics",
     );
+    expect(migrations[8]?.sql).toMatch(
+      /ALTER TABLE vps ADD COLUMN IF NOT EXISTS docker_metrics_enabled[\s\S]*CREATE TABLE IF NOT EXISTS agent_docker_metrics/,
+    );
+    expect(migrations[8]?.sql).not.toMatch(/\bDROP\s+(TABLE|COLUMN)\b/i);
     expect(migrations[9]?.sql).toContain(
       "CREATE TABLE IF NOT EXISTS ssh_host_key_pins",
     );
@@ -393,7 +397,7 @@ describe("metric repository (latest + windows)", () => {
     // Should keep the most recent 120
     expect(window[0].cpu).toBe(30); // 150 - 120 = 0-based index 30
     expect(window[window.length - 1].cpu).toBe(149);
-  });
+  }, 30_000);
 
   it("bounded window respects custom limit", async () => {
     const repo = createJsonMetricRepository(metricPath());

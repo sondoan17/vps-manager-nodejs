@@ -5,13 +5,18 @@ import "time"
 // DockerMetrics is a bounded sanitized snapshot of Docker container metrics
 // sent from the Go agent to the backend.
 type DockerMetrics struct {
-	VpsId            string                  `json:"vpsId,omitempty"`
-	CollectedAt      string                  `json:"collectedAt,omitempty"`
-	ReceivedAt       string                  `json:"receivedAt,omitempty"`
-	AgentVersion     string                  `json:"agentVersion,omitempty"`
-	SchemaVersion    int                     `json:"schemaVersion"`
-	Available        bool                    `json:"available"`
-	ErrorCode        string                  `json:"errorCode,omitempty"`
+	VpsId         string `json:"vpsId,omitempty"`
+	CollectedAt   string `json:"collectedAt,omitempty"`
+	ReceivedAt    string `json:"receivedAt,omitempty"`
+	AgentVersion  string `json:"agentVersion,omitempty"`
+	SchemaVersion int    `json:"schemaVersion"`
+	Available     bool   `json:"available"`
+	ErrorCode     string `json:"errorCode,omitempty"`
+	// Engine capability fields are intentionally limited to this whitelist.
+	EngineVersion    string                  `json:"engineVersion,omitempty"`
+	APIVersion       string                  `json:"apiVersion,omitempty"`
+	OS               string                  `json:"os,omitempty"`
+	Architecture     string                  `json:"architecture,omitempty"`
 	ContainerTotal   int                     `json:"containerTotal"`
 	ContainerRunning int                     `json:"containerRunning"`
 	CPUPercent       float64                 `json:"cpuPercent"`
@@ -57,7 +62,12 @@ const (
 	MaxStatusLen                = 255
 	MaxCreatedAtLen             = 255
 	MaxErrorLen                 = 255
+	MaxEngineVersionLen         = 64
+	MaxAPIVersionLen            = 64
+	MaxDockerOSLen              = 32
+	MaxDockerArchLen            = 32
 	DefaultDockerTimeoutSeconds = 5
+	DockerVersionBudget         = 250 * time.Millisecond
 )
 
 // Sanitized Docker error codes exposed to the control plane.

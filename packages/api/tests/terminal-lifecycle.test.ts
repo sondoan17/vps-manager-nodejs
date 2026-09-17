@@ -27,7 +27,11 @@ function setup() {
   return { service, socket, channel, client, shell, sessions, ssh, keys, audit, config };
 }
 const open = { type: "open", version: 1, vpsId: "v", cols: 80, rows: 24 } as const;
-const wait = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
+// Flush the microtask queue so fire-and-forget async cleanup settles.
+// Pure microtask spinning: deterministic under fake timers, no real waiting.
+async function flushMicrotasks(ticks = 50): Promise<void> {
+  for (let i = 0; i < ticks; i++) await Promise.resolve();
+}
 beforeEach(() => vi.useFakeTimers()); afterEach(() => vi.useRealTimers());
 describe("terminal lifecycle phase 2", () => {
   it("rejects non-open and establishes ready with exact lifetime and ordered resize", async () => { /* Arrange/Act/Assert: positive ready metadata and resize; negative first-frame ordering. */ const x = setup(); await expect(x.service.open(x.socket, "d", { type: "input", data: "x" })).rejects.toMatchObject({ code: "PROTOCOL_ERROR", retryable: false }); const now = Date.now(); await x.service.open(x.socket, "d", open); const ready = JSON.parse(x.socket.messages[0]); expect(Date.parse(ready.expiresAt) - Date.parse(ready.startedAt)).toBe((x.config as any).terminal.lifetimeMs); x.socket.receive({ type: "resize", cols: 100, rows: 30 }); x.socket.receive({ type: "resize", cols: 101, rows: 31 }); expect(x.channel.windows).toEqual([[30, 100, 0, 0], [31, 101, 0, 0]]); expect(Date.parse(ready.startedAt)).toBe(now); });
@@ -39,22 +43,23 @@ describe("terminal lifecycle phase 2", () => {
   it("enforces idle and absolute timeout while output resets idle", async () => { /* Arrange */ const idle = setup(); await idle.service.open(idle.socket, "d", open); /* Act/Assert negative idle */ vi.advanceTimersByTime(51); await Promise.resolve(); expect(idle.socket.closes[0]?.[1]).toBe("idle_timeout"); const life = setup(); await life.service.open(life.socket, "d", open); for (let n=0;n<4;n++) { vi.advanceTimersByTime(40); life.channel.emit("data", Buffer.from("")); } vi.advanceTimersByTime(40); await Promise.resolve(); expect(life.socket.closes[0]?.[1]).toBe("lifetime_expired"); });
   it("handles revocation poll rejection without an unhandled interval rejection", async () => { /* Arrange */ const x = setup(); await x.service.open(x.socket, "d", open); x.sessions.authenticateById.mockRejectedValueOnce(new Error("database secret")); /* Act */ await vi.advanceTimersByTimeAsync(25); /* Assert: negative dependency failure is sanitized and closed. */ expect(x.socket.closes[0]?.[1]).toBe("session_check_error"); });
   it("times out one heartbeat period after a ping receives no pong", async () => {
-    vi.useRealTimers();
     const x = setup();
     (x.config as any).terminal.heartbeatMs = 30;
     (x.config as any).terminal.idleTimeoutMs = 500;
     await x.service.open(x.socket, "d", open);
     expect(x.socket.pingCalls).toBe(0);
-    await wait(45);
+    await vi.advanceTimersByTimeAsync(30);
     expect(x.socket.pingCalls).toBe(1);
     expect(x.socket.closes).toHaveLength(0);
-    await wait(35);
+    await vi.advanceTimersByTimeAsync(30);
+    await flushMicrotasks();
+    expect(x.socket.closes).toHaveLength(1);
     expect(x.socket.closes[0]?.[1]).toBe("heartbeat_timeout");
-    await wait(35);
+    await vi.advanceTimersByTimeAsync(60);
     expect(x.socket.pingCalls).toBe(1);
     expect(x.socket.closes).toHaveLength(1);
   });
-  it("accepts only a post-ping pong and schedules the next heartbeat", async () => { vi.useRealTimers(); const x = setup(); (x.config as any).terminal.heartbeatMs = 30; (x.config as any).terminal.idleTimeoutMs = 500; await x.service.open(x.socket, "d", open); x.socket.ponged?.(); await wait(45); expect(x.socket.pingCalls).toBe(1); await wait(35); expect(x.socket.closes[0]?.[1]).toBe("heartbeat_timeout"); const y = setup(); (y.config as any).terminal.heartbeatMs = 30; (y.config as any).terminal.idleTimeoutMs = 500; await y.service.open(y.socket, "d", open); await wait(45); y.socket.ponged?.(); await wait(25); expect(y.socket.pingCalls).toBe(2); await y.service.registry.closeAll("test_cleanup"); });
-  it("does not treat heartbeat traffic as terminal idle activity", async () => { vi.useRealTimers(); const x = setup(); (x.config as any).terminal.heartbeatMs = 30; (x.config as any).terminal.idleTimeoutMs = 85; await x.service.open(x.socket, "d", open); await wait(40); expect(x.socket.pingCalls).toBe(1); x.socket.ponged?.(); await wait(30); expect(x.socket.pingCalls).toBe(2); x.socket.ponged?.(); await wait(25); expect(x.socket.closes[0]?.[1]).toBe("idle_timeout"); });
+  it("accepts only a post-ping pong and schedules the next heartbeat", async () => { const x = setup(); (x.config as any).terminal.heartbeatMs = 30; (x.config as any).terminal.idleTimeoutMs = 500; await x.service.open(x.socket, "d", open); x.socket.ponged?.(); await vi.advanceTimersByTimeAsync(30); expect(x.socket.pingCalls).toBe(1); await vi.advanceTimersByTimeAsync(30); await flushMicrotasks(); expect(x.socket.closes).toHaveLength(1); expect(x.socket.closes[0]?.[1]).toBe("heartbeat_timeout"); const y = setup(); (y.config as any).terminal.heartbeatMs = 30; (y.config as any).terminal.idleTimeoutMs = 500; await y.service.open(y.socket, "d", open); await vi.advanceTimersByTimeAsync(30); expect(y.socket.pingCalls).toBe(1); y.socket.ponged?.(); await vi.advanceTimersByTimeAsync(30); expect(y.socket.pingCalls).toBe(2); await y.service.registry.closeAll("test_cleanup"); });
+  it("does not treat heartbeat traffic as terminal idle activity", async () => { const x = setup(); (x.config as any).terminal.heartbeatMs = 30; (x.config as any).terminal.idleTimeoutMs = 85; await x.service.open(x.socket, "d", open); await vi.advanceTimersByTimeAsync(30); expect(x.socket.pingCalls).toBe(1); x.socket.ponged?.(); await vi.advanceTimersByTimeAsync(30); expect(x.socket.pingCalls).toBe(2); x.socket.ponged?.(); await vi.advanceTimersByTimeAsync(25); await flushMicrotasks(); expect(x.socket.closes).toHaveLength(1); expect(x.socket.closes[0]?.[1]).toBe("idle_timeout"); });
   it("closeByVps and awaited shutdown close matching resources", async () => { /* Arrange */ const x = setup(); await x.service.open(x.socket, "d", open); /* Act/Assert positive bulk lifecycle */ await x.service.registry.closeByVps("v"); expect(x.socket.closes[0]?.[1]).toBe("vps_unavailable"); const y = setup(); await y.service.open(y.socket, "d", open); await y.service.onApplicationShutdown(); expect(y.socket.closes[0]?.[1]).toBe("server_shutdown"); expect(y.service.registry.size).toBe(0); });
 });

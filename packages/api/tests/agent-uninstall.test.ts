@@ -71,6 +71,22 @@ beforeEach(async () => {
 });
 
 afterEach(async () => {
+  // JobRunnerService intentionally dispatches detached work. Drain every job
+  // before removing the temp directory so Windows cannot retain open files.
+  for (let attempt = 0; attempt < 200; attempt++) {
+    let jobs: Awaited<ReturnType<typeof sharedJobRepo.list>>;
+    try {
+      jobs = await sharedJobRepo.list();
+    } catch (error: unknown) {
+      // Transient Windows file contention while jobs.json is atomically
+      // replaced (write tmp + rename). Retry the drain instead of failing.
+      if (!isTransientFsError(error)) throw error;
+      await new Promise((r) => setTimeout(r, 25));
+      continue;
+    }
+    if (jobs.every((job) => job.status === "succeeded" || job.status === "failed" || job.status === "cancelled")) break;
+    await new Promise((r) => setTimeout(r, 100));
+  }
   vi.restoreAllMocks();
   for (let attempt = 0; attempt < 5; attempt++) {
     try {
@@ -160,21 +176,37 @@ function mockSuccessfulRemoval(homeDir = "/root", homeDelayMs = 0) {
   );
 }
 
+function isTransientFsError(error: unknown): boolean {
+  const code = (error as NodeJS.ErrnoException | undefined)?.code;
+  return code === "EPERM" || code === "ENOENT" || code === "EBUSY" || code === "ENOTEMPTY";
+}
+
 async function waitUntil(
   predicate: () => Promise<boolean>,
   timeoutMs = 5_000,
 ): Promise<void> {
   const start = Date.now();
   while (Date.now() - start < timeoutMs) {
-    if (await predicate()) return;
-    await new Promise((r) => setTimeout(r, 25));
+    try {
+      if (await predicate()) return;
+    } catch (error: unknown) {
+      // jobs.json is atomically replaced (write tmp + rename); on Windows a
+      // concurrent read can transiently surface EPERM/ENOENT/EBUSY. Retry
+      // polling instead of failing the test.
+      if (!isTransientFsError(error)) throw error;
+    }
+    // Poll slowly: every concurrent read holds an open handle that can make
+    // the job runner's atomic rename fail with EPERM on Windows, turning a
+    // transient harness race into a permanent job failure. 200ms keeps the
+    // 15s budget (75 polls) while minimizing open-handle overlap.
+    await new Promise((r) => setTimeout(r, 200));
   }
   throw new Error(`waitUntil timed out after ${timeoutMs}ms`);
 }
 
 async function waitForTerminalJob(
   jobId: string,
-  timeoutMs = 8_000,
+  timeoutMs = 15_000,
 ): Promise<CommandJob> {
   const jobs = sharedJobRepo;
   let terminal: CommandJob | undefined;
@@ -189,7 +221,10 @@ async function waitForTerminalJob(
   return terminal!;
 }
 
-async function waitForSuccessfulJob(jobId: string): Promise<CommandJob> {
+async function waitForSuccessfulJob(
+  jobId: string,
+  timeoutMs = 15_000,
+): Promise<CommandJob> {
   const jobs = sharedJobRepo;
   let succeeded: CommandJob | undefined;
   await waitUntil(async () => {
@@ -202,7 +237,7 @@ async function waitForSuccessfulJob(jobId: string): Promise<CommandJob> {
       return true;
     }
     return false;
-  }, 8_000);
+  }, timeoutMs);
   return succeeded!;
 }
 

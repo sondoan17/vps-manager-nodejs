@@ -5,6 +5,9 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
+	"strings"
+	"sync"
 	"testing"
 )
 
@@ -209,17 +212,64 @@ func TestSetDockerMetricsEnabled(t *testing.T) {
 }
 
 // ---------------------------------------------------------------------------
-// Docker collector with fake HTTP server (Linux-only test logic)
+// Portable Docker collection core with recording RoundTripper (cross-platform)
 // ---------------------------------------------------------------------------
 
-func TestCollectDockerWithFakeServer(t *testing.T) {
-	if !isLinux() {
-		t.Skip("Docker collector Linux logic only compiles on linux")
+// recordingRoundTripper records every request (method, path, query) and
+// delegates to the wrapped base transport. It lets tests assert the exact
+// GET-only allowlist and exact request counts on any OS.
+type recordingRoundTripper struct {
+	base     http.RoundTripper
+	mu       sync.Mutex
+	requests []*http.Request
+}
+
+func (r *recordingRoundTripper) RoundTrip(req *http.Request) (*http.Response, error) {
+	r.mu.Lock()
+	r.requests = append(r.requests, req.Clone(req.Context()))
+	r.mu.Unlock()
+	return r.base.RoundTrip(req)
+}
+
+func (r *recordingRoundTripper) count() int {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	return len(r.requests)
+}
+
+func (r *recordingRoundTripper) snapshot() []*http.Request {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	out := make([]*http.Request, len(r.requests))
+	copy(out, r.requests)
+	return out
+}
+
+func newRecordingClient(base *http.Client) (*http.Client, *recordingRoundTripper) {
+	rec := &recordingRoundTripper{base: base.Transport}
+	return &http.Client{Transport: rec}, rec
+}
+
+func assertGetRequest(t *testing.T, req *http.Request, wantPath string, wantQuery map[string]string) {
+	t.Helper()
+	if req.Method != http.MethodGet {
+		t.Errorf("request %s: method = %q, want GET", req.URL.Path, req.Method)
 	}
+	if req.URL.EscapedPath() != wantPath {
+		t.Errorf("request path = %q, want %q", req.URL.EscapedPath(), wantPath)
+	}
+	q := req.URL.Query()
+	for k, want := range wantQuery {
+		if got := q.Get(k); got != want {
+			t.Errorf("request %s: query %q = %q, want %q", wantPath, k, got, want)
+		}
+	}
+	if len(q) != len(wantQuery) {
+		t.Errorf("request %s: query = %v, want exactly %v", wantPath, q, wantQuery)
+	}
+}
 
-	c := NewCollector()
-	c.SetDockerMetricsEnabled(true)
-
+func TestCollectDockerWithFakeServer(t *testing.T) {
 	// Start a fake Docker API server.
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
@@ -255,13 +305,12 @@ func TestCollectDockerWithFakeServer(t *testing.T) {
 	}))
 	defer server.Close()
 
-	// Inject the fake HTTP client (bypasses Unix socket).
-	c.dockerHTTPClient = server.Client()
-	c.dockerBaseURL = server.URL
+	// Portable core with a recording transport (bypasses Unix socket).
+	client, rec := newRecordingClient(server.Client())
 
-	dm := c.collectDocker(context.Background())
+	dm := collectDockerFromAPI(context.Background(), client, server.URL)
 	if dm == nil {
-		t.Fatal("collectDocker returned nil")
+		t.Fatal("collectDockerFromAPI returned nil")
 	}
 	if !dm.Available {
 		t.Fatalf("expected available=true, got errorCode=%q", dm.ErrorCode)
@@ -275,6 +324,14 @@ func TestCollectDockerWithFakeServer(t *testing.T) {
 	if len(dm.Containers) != 2 {
 		t.Fatalf("len(Containers) = %d, want 2", len(dm.Containers))
 	}
+
+	// Exact GET allowlist and request count: version + list + stats.
+	if len(rec.requests) != 3 {
+		t.Fatalf("request count = %d, want 3", len(rec.requests))
+	}
+	assertGetRequest(t, rec.requests[0], "/version", map[string]string{})
+	assertGetRequest(t, rec.requests[1], "/containers/json", map[string]string{"all": "1", "size": "false"})
+	assertGetRequest(t, rec.requests[2], "/containers/abc123def4567890/stats", map[string]string{"stream": "false"})
 
 	// Check first container (running, with stats).
 	c0 := dm.Containers[0]
@@ -310,31 +367,62 @@ func TestCollectDockerWithFakeServer(t *testing.T) {
 	}
 }
 
-func TestCollectDocker_FakeServerError(t *testing.T) {
-	if !isLinux() {
-		t.Skip("Docker collector Linux logic only compiles on linux")
+func TestCollectDocker_StatsIDIsEscaped(t *testing.T) {
+	rawID := "abc/def?id=1&x=2"
+	escapedID := url.PathEscape(rawID)
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/containers/json":
+			_, _ = w.Write([]byte(`[{"Id":"` + rawID + `","Names":["/web"],"Image":"img","State":"running","Created":1000000}]`))
+		case "/containers/" + escapedID + "/stats":
+			_, _ = w.Write([]byte(`{"cpu_stats":{"cpu_usage":{"total_usage":0},"system_cpu_usage":0},"precpu_stats":{"cpu_usage":{"total_usage":0},"system_cpu_usage":0},"memory_stats":{"usage":0,"limit":0}}`))
+		default:
+			w.WriteHeader(http.StatusNotFound)
+		}
+	}))
+	defer server.Close()
+
+	client, rec := newRecordingClient(server.Client())
+
+	dm := collectDockerFromAPI(context.Background(), client, server.URL)
+	if dm == nil {
+		t.Fatal("collectDockerFromAPI returned nil")
+	}
+	if !dm.Available {
+		t.Fatalf("expected available=true, got errorCode=%q", dm.ErrorCode)
 	}
 
+	// Exact GET allowlist and request count: version + list + escaped stats.
+	if len(rec.requests) != 3 {
+		t.Fatalf("request count = %d, want 3", len(rec.requests))
+	}
+	assertGetRequest(t, rec.requests[0], "/version", map[string]string{})
+	assertGetRequest(t, rec.requests[1], "/containers/json", map[string]string{"all": "1", "size": "false"})
+	assertGetRequest(t, rec.requests[2], "/containers/"+escapedID+"/stats", map[string]string{"stream": "false"})
+	if !strings.Contains(rec.requests[2].URL.EscapedPath(), escapedID) {
+		t.Errorf("stats escaped path = %q, want it to contain %q", rec.requests[2].URL.EscapedPath(), escapedID)
+	}
+}
+
+func TestCollectDocker_FakeServerError(t *testing.T) {
 	// Test that Docker collection returns unavailable when the socket is
 	// unreachable. We set up an httptest server but then close it immediately
 	// so connections fail.
-	c := NewCollector()
-	c.SetDockerMetricsEnabled(true)
-
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusInternalServerError)
 	}))
+	serverURL := server.URL
 	server.Close() // close so client gets connection refused
 
 	// Inject a client that points to the closed server.
-	client := server.Client()
-	client.Timeout = 0 // disable timeout to avoid masking the error
-	c.dockerHTTPClient = client
-	c.dockerBaseURL = server.URL
+	base := server.Client()
+	base.Timeout = 0 // disable timeout to avoid masking the error
+	client, rec := newRecordingClient(base)
 
-	dm := c.collectDocker(context.Background())
+	dm := collectDockerFromAPI(context.Background(), client, serverURL)
 	if dm == nil {
-		t.Fatal("collectDocker returned nil")
+		t.Fatal("collectDockerFromAPI returned nil")
 	}
 	if dm.Available {
 		t.Error("expected available=false on server error")
@@ -342,17 +430,16 @@ func TestCollectDocker_FakeServerError(t *testing.T) {
 	if dm.ErrorCode == "" {
 		t.Error("expected non-empty error code")
 	}
+	// Exactly version + list attempts; stats are never fetched on list failure.
+	if len(rec.requests) != 2 {
+		t.Fatalf("request count = %d, want 2", len(rec.requests))
+	}
+	assertGetRequest(t, rec.requests[0], "/version", map[string]string{})
+	assertGetRequest(t, rec.requests[1], "/containers/json", map[string]string{"all": "1", "size": "false"})
 }
 
 func TestCollectDocker_ContainerLimit(t *testing.T) {
-	if !isLinux() {
-		t.Skip("Docker collector Linux logic only compiles on linux")
-	}
-
 	// Test that we cap containers at MaxContainers.
-	c := NewCollector()
-	c.SetDockerMetricsEnabled(true)
-
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
 		case "/containers/json":
@@ -375,12 +462,11 @@ func TestCollectDocker_ContainerLimit(t *testing.T) {
 	}))
 	defer server.Close()
 
-	c.dockerHTTPClient = server.Client()
-	c.dockerBaseURL = server.URL
+	client, rec := newRecordingClient(server.Client())
 
-	dm := c.collectDocker(context.Background())
+	dm := collectDockerFromAPI(context.Background(), client, server.URL)
 	if dm == nil {
-		t.Fatal("collectDocker returned nil")
+		t.Fatal("collectDockerFromAPI returned nil")
 	}
 	if dm.ContainerTotal != 25 {
 		t.Errorf("ContainerTotal = %d, want 25", dm.ContainerTotal)
@@ -388,6 +474,12 @@ func TestCollectDocker_ContainerLimit(t *testing.T) {
 	if len(dm.Containers) > MaxContainers {
 		t.Errorf("len(Containers) = %d, want <= %d", len(dm.Containers), MaxContainers)
 	}
+	// Exactly version + list requests; exited containers never trigger stats calls.
+	if len(rec.requests) != 2 {
+		t.Fatalf("request count = %d, want 2", len(rec.requests))
+	}
+	assertGetRequest(t, rec.requests[0], "/version", map[string]string{})
+	assertGetRequest(t, rec.requests[1], "/containers/json", map[string]string{"all": "1", "size": "false"})
 }
 
 func TestCollectDocker_Disabled(t *testing.T) {

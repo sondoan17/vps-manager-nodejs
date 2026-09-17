@@ -145,17 +145,14 @@ export class VpsService {
         return vps;
       }
 
+      // Delete first: if cleanup fails, leave the toggle enabled so the
+      // persisted configuration remains consistent and the request is retryable.
+      if (!newValue) await this.agentRepository.deleteDockerMetrics(id);
+
       const updated = await this.store.update(id, {
         dockerMetricsEnabled: newValue,
       });
       if (!updated) throw new VpsNotFoundError();
-
-      // Clear Docker metrics on disable
-      if (!newValue) {
-        await this.agentRepository.deleteDockerMetrics(id).catch(() => {
-          // Best effort clear
-        });
-      }
 
       await this.audit.record({
         actor: "system",
@@ -189,16 +186,16 @@ export class VpsService {
       const oldValue = vps.dockerMetricsEnabled ?? false;
       const newValue = parsedBody.dockerMetricsEnabled as boolean;
 
-      // Clear Docker metrics on disable
+      // Delete first. A failed cleanup leaves the original VPS record and all
+      // combined update fields untouched, making the request safely retryable.
       if (oldValue && !newValue) {
-        await this.agentRepository.deleteDockerMetrics(id).catch(() => {
-          // Best effort clear
-        });
+        await this.agentRepository.deleteDockerMetrics(id);
       }
 
-       const updated = await this.store.update(id, parsedBody);
-       if (!updated) throw new VpsNotFoundError();
-       if (endpointChanged) await this.hostKeyPin.revokeTrust(id);
+      const updated = await this.store.update(id, parsedBody);
+      if (!updated) throw new VpsNotFoundError();
+
+      if (endpointChanged) await this.hostKeyPin.revokeTrust(id);
 
        await this.audit.record({
         actor: "system",

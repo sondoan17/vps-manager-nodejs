@@ -14,12 +14,12 @@ export function formatBytes(value: number): string {
 /** Map Docker error codes to human-readable messages. */
 export function formatDockerError(errorCode?: string): string {
   const labels: Record<string, string> = {
-    socket_missing: "Docker socket missing",
-    permission_denied: "Permission denied",
-    timeout: "Docker timed out",
-    daemon_unreachable: "Docker daemon unreachable",
-    unsupported_os: "Unsupported OS",
-    bad_response: "Bad Docker response",
+    socket_missing: "Docker socket was not found. Check that Docker is installed and running.",
+    permission_denied: "The agent does not have permission to read the Docker socket.",
+    timeout: "Docker took too long to respond. We’ll try again automatically.",
+    daemon_unreachable: "The Docker daemon cannot be reached right now.",
+    unsupported_os: "Docker monitoring is not supported on this operating system.",
+    bad_response: "Docker returned a response the agent could not read.",
   };
-  return labels[errorCode || ""] || "Docker unavailable";
+  return labels[errorCode || ""] || "Docker metrics are unavailable right now.";
 }

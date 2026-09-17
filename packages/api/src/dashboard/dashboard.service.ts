@@ -13,11 +13,13 @@ import type {
   DashboardOverview,
   DashboardSummary,
 } from "../dashboard/dashboard.models.js";
+import type { AgentDockerMetrics } from "../agents/agent.models.js";
 import type { VpsRecord } from "../vps/vps.models.js";
 import { applyAgentState } from "../vps/vps.models.js";
 import {
   deriveHostStatus,
   HOST_FRESHNESS_THRESHOLD_MS,
+  isFreshTimestamp as isFreshTimestampShared,
 } from "../common/host-health.js";
 import type { AgentRepository } from "../persistence/repositories/agent.repository.js";
 import type { VpsRepository } from "../persistence/repositories/vps.repository.js";
@@ -50,11 +52,38 @@ function summarize(
   };
 }
 
-function isFreshTimestamp(
+/**
+ * Shared-threshold wrapper kept for this module's callers; the threshold and
+ * receivedAt-first semantics live in `common/host-health.ts`.
+ */
+export function isFreshTimestamp(
   timestamp: string,
   thresholdMs = STALE_THRESHOLD_MS,
+  now = Date.now(),
 ): boolean {
-  return Date.now() - new Date(timestamp).getTime() < thresholdMs;
+  return isFreshTimestampShared(timestamp, thresholdMs, now);
+}
+
+export function deriveDockerPresentation(
+  metrics: AgentDockerMetrics,
+  now = Date.now(),
+): AgentDockerMetrics {
+  const received = Date.parse(metrics.receivedAt);
+  const ageSeconds = Number.isFinite(received)
+    ? Math.max(0, Math.floor((now - received) / 1000))
+    : undefined;
+  return {
+    ...metrics,
+    freshness: isFreshTimestampShared(
+      metrics.receivedAt,
+      STALE_THRESHOLD_MS,
+      now,
+    )
+      ? "fresh"
+      : "stale",
+    ...(ageSeconds === undefined ? {} : { ageSeconds }),
+    lastUpdatedAt: metrics.receivedAt,
+  };
 }
 
 @Injectable()
@@ -126,9 +155,9 @@ export class DashboardService {
     const enabledIds = new Set(
       servers.filter((s) => s.dockerMetricsEnabled === true).map((s) => s.id),
     );
-    const dockerMetrics = allDockerMetrics.filter((dm) =>
-      enabledIds.has(dm.vpsId),
-    );
+    const dockerMetrics = allDockerMetrics
+      .filter((dm) => enabledIds.has(dm.vpsId))
+      .map((dm) => deriveDockerPresentation(dm));
 
     return {
       mode: "local",

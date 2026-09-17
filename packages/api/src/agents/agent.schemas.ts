@@ -93,6 +93,10 @@ const agentDockerMetricsInputSchema = z
         { message: "docker.collectedAt must be within -10m / +2m of now" },
       ),
     agentVersion: z.string().max(255).optional(),
+    engineVersion: z.string().max(64).optional(),
+    apiVersion: z.string().max(64).optional(),
+    os: z.string().max(32).optional(),
+    architecture: z.string().max(32).optional(),
     schemaVersion: z.literal(1),
     available: z.boolean(),
     errorCode: z

@@ -348,7 +348,13 @@ function dockerMetricsToValues(metrics: AgentDockerMetrics): unknown[] {
     metrics.blockReadBytes,
     metrics.blockWriteBytes,
     metrics.pids,
-    JSON.stringify({ containers: metrics.containers }),
+    JSON.stringify({
+      containers: metrics.containers,
+      engineVersion: metrics.engineVersion,
+      apiVersion: metrics.apiVersion,
+      os: metrics.os,
+      architecture: metrics.architecture,
+    }),
   ];
 }
 
@@ -356,15 +362,26 @@ function rowToDockerMetrics(row: AgentDockerMetricsRow): AgentDockerMetrics {
   const data =
     typeof row.data === "string"
       ? JSON.parse(row.data)
-      : (row.data as Record<string, unknown>);
+      : ((row.data ?? {}) as Record<string, unknown>);
   const containers = Array.isArray(data?.containers)
     ? (data.containers as AgentDockerMetrics["containers"])
     : [];
+  const engineVersion =
+    typeof data?.engineVersion === "string" ? data.engineVersion : undefined;
+  const apiVersion =
+    typeof data?.apiVersion === "string" ? data.apiVersion : undefined;
+  const os = typeof data?.os === "string" ? data.os : undefined;
+  const architecture =
+    typeof data?.architecture === "string" ? data.architecture : undefined;
   return {
     vpsId: row.vps_id,
     collectedAt: requiredIsoString(row.collected_at),
     receivedAt: requiredIsoString(row.received_at),
     agentVersion: row.agent_version ?? undefined,
+    ...(engineVersion === undefined ? {} : { engineVersion }),
+    ...(apiVersion === undefined ? {} : { apiVersion }),
+    ...(os === undefined ? {} : { os }),
+    ...(architecture === undefined ? {} : { architecture }),
     schemaVersion: row.schema_version as 1,
     available: row.available,
     errorCode: (row.error_code as AgentDockerMetrics["errorCode"]) ?? undefined,

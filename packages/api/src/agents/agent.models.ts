@@ -93,6 +93,10 @@ export type AgentDockerContainerMetric = {
 export type AgentDockerMetricsInput = {
   collectedAt: string;
   agentVersion?: string;
+  engineVersion?: string;
+  apiVersion?: string;
+  os?: string;
+  architecture?: string;
   schemaVersion: 1;
   available: boolean;
   errorCode?:
@@ -115,9 +119,15 @@ export type AgentDockerMetricsInput = {
   containers: AgentDockerContainerMetric[];
 };
 
+export type DockerMetricsFreshness = "fresh" | "stale";
+
+/** Derived at read time; freshness is intentionally never persisted. */
 export type AgentDockerMetrics = AgentDockerMetricsInput & {
   vpsId: string;
   receivedAt: string;
+  freshness?: DockerMetricsFreshness;
+  ageSeconds?: number;
+  lastUpdatedAt?: string;
 };
 
 export type AgentMetricPayload = {

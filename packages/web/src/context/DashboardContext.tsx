@@ -370,7 +370,7 @@ export function DashboardProvider({
           const updatedMetrics = mergeMetrics(prev.metrics, payload.metrics);
           const dockerMetrics =
             payload.dockerMetrics !== undefined
-              ? mergeMetrics(prev.dockerMetrics ?? [], payload.dockerMetrics)
+              ? payload.dockerMetrics
               : (prev.dockerMetrics ?? []);
           return {
             ...prev,

@@ -5,7 +5,10 @@ import type { MetricSample } from "../metrics/metrics.models.js";
 import type { MetricRepository } from "../persistence/repositories/metric.repository.js";
 import type { PaginationParams } from "../common/pagination.js";
 import { APP_CONFIG, METRIC_REPOSITORY } from "../tokens.js";
-import { HOST_FRESHNESS_THRESHOLD_MS } from "../common/host-health.js";
+import {
+  HOST_FRESHNESS_THRESHOLD_MS,
+  isFreshTimestamp as isFreshTimestampShared,
+} from "../common/host-health.js";
 
 const STALE_THRESHOLD_MS = HOST_FRESHNESS_THRESHOLD_MS;
 
@@ -15,10 +18,9 @@ function withFreshness<T extends MetricSample>(
   const timestamp = sample.receivedAt ?? sample.collectedAt;
   return {
     ...sample,
-    freshness:
-      Date.now() - new Date(timestamp).getTime() < STALE_THRESHOLD_MS
-        ? "fresh"
-        : "stale",
+    freshness: isFreshTimestampShared(timestamp, STALE_THRESHOLD_MS)
+      ? "fresh"
+      : "stale",
   };
 }
 

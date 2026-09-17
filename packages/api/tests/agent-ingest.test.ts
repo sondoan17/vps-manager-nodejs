@@ -685,16 +685,18 @@ describe("rate limiting", () => {
     const { service } = makeService();
     const { token } = await service.createCredential(vpsId);
 
-    // Use a low rateLimitMax so the agent limit (max * 5) is easy to exceed
-    // With max=1 → agent limit = 5 per 500ms window
+    // Use a low rateLimitMax so the agent limit (max * 5) is easy to exceed.
+    // Keep the window comfortably longer than the request loop so Windows
+    // scheduling cannot reset the bucket while the requests are in flight.
     const limitedConfig: AppConfig = {
       ...demoConfig,
       rateLimitMax: 1,
-      rateLimitWindowMs: 500,
+      rateLimitWindowMs: 60_000,
     };
     const limitedApp = app(limitedConfig);
 
-    // Send 7 requests rapidly — later ones should 429
+    // Send 7 requests rapidly — the first 5 fill the agent bucket (max*5),
+    // the rest must 429. The 60s window keeps the bucket stable on Windows.
     const results: number[] = [];
     for (let i = 0; i < 7; i++) {
       const res = await request(limitedApp)
@@ -704,10 +706,8 @@ describe("rate limiting", () => {
       results.push(res.status);
     }
 
-    const fours = results.filter((s) => s === 429);
-    expect(fours.length).toBeGreaterThan(0);
-    // The first request should succeed
-    expect(results[0]).toBe(201);
+    expect(results.slice(0, 5)).toEqual([201, 201, 201, 201, 201]);
+    expect(results.slice(5)).toEqual([429, 429]);
   });
 
   it("allows normal cadence under rate limit", async () => {
@@ -1020,6 +1020,171 @@ describe("Docker metrics ingestion", () => {
       .send(validPayload())
       .expect(201);
     expect(res.body.data.config).toEqual({ dockerMetricsEnabled: true });
+  });
+
+  it("ignores malformed docker payload when disabled (fail-closed compatibility)", async () => {
+    // A stale/buggy agent cycle may send a docker branch that would fail the
+    // strict docker schema. When disabled, ingest must still accept core
+    // metrics and silently drop the docker branch.
+    const res = await request(app())
+      .post("/api/agent/metrics")
+      .set("Authorization", `Bearer ${validToken}`)
+      .send(
+        validPayload({
+          docker: {
+            collectedAt: "not-a-date",
+            schemaVersion: 99,
+            available: "yes",
+            containerTotal: -5,
+            containers: "not-an-array",
+            extraField: "rejected",
+          },
+        }),
+      )
+      .expect(201);
+
+    expect(res.body.data.config).toEqual({ dockerMetricsEnabled: false });
+
+    const agentRepo = createJsonAgentRepository(
+      join(tempDir, "data", "agents.json"),
+    );
+    expect(await agentRepo.getDockerMetrics(vpsId)).toBeUndefined();
+  });
+
+  it("stores unavailable docker payload when enabled (fail-closed optional)", async () => {
+    await vpsRepo.update(vpsId, { dockerMetricsEnabled: true });
+
+    const res = await request(app())
+      .post("/api/agent/metrics")
+      .set("Authorization", `Bearer ${validToken}`)
+      .send(
+        validPayload({
+          docker: validDockerPayload({
+            available: false,
+            errorCode: "socket_missing",
+            containerTotal: 0,
+            containerRunning: 0,
+            cpuPercent: 0,
+            memoryUsageBytes: 0,
+            networkRxBytes: 0,
+            networkTxBytes: 0,
+            blockReadBytes: 0,
+            blockWriteBytes: 0,
+            pids: 0,
+            containers: [],
+          }),
+        }),
+      )
+      .expect(201);
+
+    expect(res.body.data.config).toEqual({ dockerMetricsEnabled: true });
+
+    const agentRepo = createJsonAgentRepository(
+      join(tempDir, "data", "agents.json"),
+    );
+    const stored = await agentRepo.getDockerMetrics(vpsId);
+    expect(stored).toBeDefined();
+    expect(stored!.available).toBe(false);
+    expect(stored!.errorCode).toBe("socket_missing");
+    expect(stored!.containers).toHaveLength(0);
+  });
+
+  it("accepts and persists optional engine metadata when enabled", async () => {
+    await vpsRepo.update(vpsId, { dockerMetricsEnabled: true });
+
+    const metadata = {
+      engineVersion: "25.0.3",
+      apiVersion: "1.44",
+      os: "linux",
+      architecture: "amd64",
+    };
+
+    await request(app())
+      .post("/api/agent/metrics")
+      .set("Authorization", `Bearer ${validToken}`)
+      .send(validPayload({ docker: validDockerPayload(metadata) }))
+      .expect(201);
+
+    const agentRepo = createJsonAgentRepository(
+      join(tempDir, "data", "agents.json"),
+    );
+    const stored = await agentRepo.getDockerMetrics(vpsId);
+    expect(stored).toBeDefined();
+    expect(stored).toMatchObject(metadata);
+  });
+
+  it("accepts engine metadata at the exact cap lengths", async () => {
+    await vpsRepo.update(vpsId, { dockerMetricsEnabled: true });
+
+    const metadata = {
+      engineVersion: "e".repeat(64),
+      apiVersion: "a".repeat(64),
+      os: "o".repeat(32),
+      architecture: "x".repeat(32),
+    };
+
+    await request(app())
+      .post("/api/agent/metrics")
+      .set("Authorization", `Bearer ${validToken}`)
+      .send(validPayload({ docker: validDockerPayload(metadata) }))
+      .expect(201);
+
+    const agentRepo = createJsonAgentRepository(
+      join(tempDir, "data", "agents.json"),
+    );
+    expect(await agentRepo.getDockerMetrics(vpsId)).toMatchObject(metadata);
+  });
+
+  it("accepts legacy docker payload without engine metadata", async () => {
+    await vpsRepo.update(vpsId, { dockerMetricsEnabled: true });
+
+    await request(app())
+      .post("/api/agent/metrics")
+      .set("Authorization", `Bearer ${validToken}`)
+      .send(validPayload({ docker: validDockerPayload() }))
+      .expect(201);
+
+    const agentRepo = createJsonAgentRepository(
+      join(tempDir, "data", "agents.json"),
+    );
+    const stored = await agentRepo.getDockerMetrics(vpsId);
+    expect(stored).toBeDefined();
+    expect(stored!.engineVersion).toBeUndefined();
+    expect(stored!.apiVersion).toBeUndefined();
+    expect(stored!.os).toBeUndefined();
+    expect(stored!.architecture).toBeUndefined();
+  });
+
+  it.each([
+    ["engineVersion", "e".repeat(65)],
+    ["apiVersion", "a".repeat(65)],
+    ["os", "o".repeat(33)],
+    ["architecture", "x".repeat(33)],
+  ])("rejects over-limit docker %s", async (field, value) => {
+    await vpsRepo.update(vpsId, { dockerMetricsEnabled: true });
+
+    await request(app())
+      .post("/api/agent/metrics")
+      .set("Authorization", `Bearer ${validToken}`)
+      .send(validPayload({ docker: validDockerPayload({ [field]: value }) }))
+      .expect(400);
+  });
+
+  it("rejects unknown docker metadata field", async () => {
+    await vpsRepo.update(vpsId, { dockerMetricsEnabled: true });
+
+    await request(app())
+      .post("/api/agent/metrics")
+      .set("Authorization", `Bearer ${validToken}`)
+      .send(
+        validPayload({
+          docker: validDockerPayload({
+            engineVersion: "25.0.3",
+            dockerEngine: "rejected",
+          }),
+        }),
+      )
+      .expect(400);
   });
 
   it("clears docker metrics when disabled via update", async () => {

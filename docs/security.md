@@ -29,6 +29,27 @@ The nginx reverse proxy adds matching CSP, `X-Content-Type-Options: nosniff`, `R
 
 Static serving is limited to root `public/`; `data/`, `private/`, `packages/api/`, and `packages/web/` are not exposed.
 
+### Host agent Docker metrics access
+
+The host systemd agent is installed without Docker access by default. The installer never changes Docker socket permissions, adds a root agent, or mounts `/var/run/docker.sock`. Docker metrics are an explicit opt-in:
+
+```bash
+sudo ./scripts/install-local-agent.sh --binary /tmp/vps-agent --config /tmp/agent-config.json --enable-docker-metrics-access
+```
+
+This option fails closed unless the host has a `docker` group, and adds only `SupplementaryGroups=docker` to the generated unit. Membership in the Docker group is effectively root-equivalent: a process with access to the Docker socket can start a privileged container and access the host filesystem. Enable it only when this risk is accepted and Docker metrics are required.
+
+To revoke access, remove the option from the unit by reinstalling without it, or remove the unit and reinstall the agent:
+
+```bash
+sudo systemctl disable --now vps-manager-agent
+sudo ./scripts/install-local-agent.sh --binary /tmp/vps-agent --config /tmp/agent-config.json
+sudo systemctl daemon-reload
+sudo systemctl restart vps-manager-agent
+```
+
+Troubleshooting: `getent group docker` confirms whether the group exists. If the opt-in install reports that it is missing, install/configure Docker first or omit the flag. Check the generated unit with `systemctl cat vps-manager-agent`; the default unit must not contain `SupplementaryGroups=docker`. Docker metrics can remain disabled in the dashboard without granting host Docker access.
+
 ### Session cookie hardening
 
 `DASHBOARD_SESSION_SECRET` must be at least 32 characters in `APP_MODE=local`. `SameSite=None` requires `Secure=true`. An HTTPS dashboard origin in local mode forces `Secure=true`.

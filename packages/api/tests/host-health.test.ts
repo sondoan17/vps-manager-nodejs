@@ -6,7 +6,9 @@ import { AgentService } from "../src/agents/agent.service.js";
 import {
   deriveHostStatus,
   HOST_FRESHNESS_THRESHOLD_MS,
+  isFreshTimestamp,
 } from "../src/common/host-health.js";
+import { deriveDockerPresentation } from "../src/dashboard/dashboard.service.js";
 import type { AppConfig } from "../src/config/app-config.js";
 import { DashboardService } from "../src/dashboard/dashboard.service.js";
 import {

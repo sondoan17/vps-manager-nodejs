@@ -835,7 +835,7 @@ describe("React dashboard", () => {
       },
     ];
 
-    it("merges Docker metrics from live updates and toggles intent safely", async () => {
+    it("treats Docker metrics from live updates as replacement state and toggles intent safely", async () => {
       const server = { ...demoServerRecords[0], dockerMetricsEnabled: true };
       renderAppWithLiveEvents({
         dashboard: demoDashboard,
@@ -910,6 +910,68 @@ describe("React dashboard", () => {
       const problemRow = screen.getByText("worker").closest("li")!;
       const runningRow = screen.getByText("api").closest("li")!;
       expect(problemRow.compareDocumentPosition(runningRow) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+
+      mockEventSourceInstance?.dispatchEvent(
+        "metrics.updated",
+        makeEnvelope("metrics.updated", { metrics: [] }),
+      );
+      expect(screen.getByText("api")).toBeInTheDocument();
+      expect(screen.getByText("worker")).toBeInTheDocument();
+
+      mockEventSourceInstance?.dispatchEvent(
+        "metrics.updated",
+        makeEnvelope("metrics.updated", {
+          metrics: [],
+          dockerMetrics: [
+            {
+              vpsId: "vps-1",
+              collectedAt: new Date().toISOString(),
+              receivedAt: new Date().toISOString(),
+              schemaVersion: 1,
+              available: true,
+              containerTotal: 1,
+              containerRunning: 1,
+              cpuPercent: 4,
+              memoryUsageBytes: 67108864,
+              networkRxBytes: 10,
+              networkTxBytes: 20,
+              blockReadBytes: 30,
+              blockWriteBytes: 40,
+              pids: 2,
+              containers: [
+                {
+                  id: "replacement123",
+                  name: "student_replacement_1",
+                  image: "replacement:latest",
+                  state: "running",
+                  status: "Up 1 minute",
+                  cpuPercent: 4,
+                  memoryUsageBytes: 67108864,
+                  networkRxBytes: 10,
+                  networkTxBytes: 20,
+                  blockReadBytes: 30,
+                  blockWriteBytes: 40,
+                  pids: 2,
+                },
+              ],
+            },
+          ],
+        }),
+      );
+      expect(
+        await screen.findByText("student_replacement_1"),
+      ).toBeInTheDocument();
+      expect(screen.queryByText("api")).not.toBeInTheDocument();
+      expect(screen.queryByText("worker")).not.toBeInTheDocument();
+
+      mockEventSourceInstance?.dispatchEvent(
+        "metrics.updated",
+        makeEnvelope("metrics.updated", { metrics: [], dockerMetrics: [] }),
+      );
+      expect(
+        await screen.findByText("Waiting for Docker-capable agent."),
+      ).toBeInTheDocument();
+      expect(screen.queryByText("student_replacement_1")).not.toBeInTheDocument();
 
       fetchMock
         .mockResolvedValueOnce({

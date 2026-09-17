@@ -89,7 +89,7 @@ The installer:
 
 Options: `--help`, `--dry-run`, `--app-dir`, `--app-port`, `--api-port`, `--api-image`, `--web-image`, `--backend-url`, `--allow-insecure-backend-url`, `--dashboard-password-file`, `--install-docker`, `--skip-pull`, `--skip-agent`, `--rotate-agent`, `--enable-docker-metrics-access`.
 
-Docker metrics are off by default and can be toggled per server from the dashboard. To let the host systemd agent read Docker metrics, install it with `--enable-docker-metrics-access`; this adds `SupplementaryGroups=docker` to the service unit. The Docker group is root-equivalent, so only enable this on hosts where you accept that permission. The Docker collector reports bounded container names, image names, status, and resource usage only; it does not collect env vars, labels, mounts, logs, or commands.
+Docker metrics are off by default and can be toggled per server from the dashboard. To let the host systemd agent read Docker metrics, install it with `--enable-docker-metrics-access`; this adds `SupplementaryGroups=docker` to the service unit. The Docker group is root-equivalent, so only enable this on hosts where you accept that permission. The installer never changes Docker socket permissions and fails safely if the `docker` group is missing. The Docker collector reports bounded container names, image names, status, and resource usage only; it does not collect env vars, labels, mounts, logs, or commands. To revoke Docker access later, reinstall the agent without the flag and restart the service (`sudo systemctl restart vps-manager-agent`). See `docs/security.md` for revoke/troubleshooting details.
 
 ### Docker App Only (without host agent)
 
