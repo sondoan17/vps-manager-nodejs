@@ -1214,6 +1214,36 @@ describe("React dashboard", () => {
       expect(screen.getByLabelText("Host status: Unknown")).toBeInTheDocument();
     });
 
+    it("renders an API-reported offline agent as Offline and preserves last-seen context", async () => {
+      const lastSeenAt = "2026-01-02T03:04:05.000Z";
+      const offlineRecord = {
+        ...twoServerRecords[0],
+        displayName: "Stale agent host",
+        agentStatus: "offline",
+        lastSeenAt,
+      };
+      fetchMock
+        .mockResolvedValueOnce(authOk())
+        .mockResolvedValueOnce({ ok: true, status: 200, json: async () => ({ data: twoServersDashboard }) })
+        .mockResolvedValueOnce({ ok: true, status: 200, json: async () => ({ data: [offlineRecord] }) })
+        .mockResolvedValueOnce({ ok: true, status: 200, json: async () => ({ data: [] }) })
+        .mockResolvedValueOnce({ ok: true, status: 200, json: async () => ({ data: [] }) })
+        .mockResolvedValueOnce({ ok: true, status: 200, json: async () => ({ data: [] }) });
+
+      renderApp(["/vps"]);
+
+      const card = await screen.findByRole("article", { name: "Server Stale agent host" });
+      expect(within(card).getByText("Agent offline")).toBeInTheDocument();
+      expect(within(card).queryByText("Agent online")).not.toBeInTheDocument();
+      expect(within(card).getByText(`Seen ${new Date(lastSeenAt).toLocaleString()}`)).toBeInTheDocument();
+
+      await userEvent.click(screen.getByRole("button", { name: "Table view" }));
+      const row = screen.getByRole("row", { name: "Server Stale agent host" });
+      expect(within(row).getByLabelText("Agent status: Offline")).toBeInTheDocument();
+      expect(within(row).queryByLabelText("Agent status: Online")).not.toBeInTheDocument();
+      expect(within(row).getByTitle(`Last seen: ${new Date(lastSeenAt).toLocaleString()}`)).not.toHaveTextContent("Never");
+    });
+
     it("shows 404 page for unknown routes", async () => {
       fetchMock
         .mockResolvedValueOnce(authOk())

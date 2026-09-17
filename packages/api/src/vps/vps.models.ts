@@ -1,4 +1,5 @@
 import type { AgentState } from "../agents/agent.models.js";
+import { HOST_FRESHNESS_THRESHOLD_MS } from "../common/host-health.js";
 
 export type VpsRecord = {
   id: string;
@@ -41,14 +42,29 @@ export type AgentStateOnVps = Pick<
  * the input; returns the input untouched when no state exists so callers can
  * safely pass demo fixtures through.
  */
+export function deriveAgentStatus(
+  status: AgentState["status"],
+  lastSeenAt: string | undefined,
+  now = Date.now(),
+): AgentState["status"] {
+  if (status !== "online") return status;
+  if (!lastSeenAt) return "offline";
+  const seen = Date.parse(lastSeenAt);
+  if (!Number.isFinite(seen) || now - seen >= HOST_FRESHNESS_THRESHOLD_MS) {
+    return "offline";
+  }
+  return "online";
+}
+
 export function applyAgentState(
   record: VpsRecord,
   state?: AgentState,
+  now = Date.now(),
 ): VpsRecord {
   if (!state) return record;
   return {
     ...record,
-    agentStatus: state.status,
+    agentStatus: deriveAgentStatus(state.status, state.lastSeenAt, now),
     lastAgentInstallJobId: state.lastInstallJobId,
     agentLastError: state.lastError,
   };
