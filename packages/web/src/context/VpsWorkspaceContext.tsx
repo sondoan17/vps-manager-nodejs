@@ -170,7 +170,8 @@ export function VpsWorkspaceLayout() {
       event.resourceId === vpsId ||
       (event.jobId != null && vpsJobIds.has(event.jobId)) ||
       (event.resourceId != null && vpsJobIds.has(event.resourceId)) ||
-      event.serverLabel === displayName || event.serverLabel === vps.name,
+      event.serverLabel === displayName ||
+      event.serverLabel === vps.name,
   );
   const auditEvents = prefill?.audit
     ? mergeById(globalAudit, prefill.audit)
@@ -275,20 +276,31 @@ export function VpsWorkspaceOverviewPage() {
 export function VpsWorkspaceDockerPage() {
   const { vps, overview } = useVpsWorkspace();
   const dashboard = useDashboard();
-  return <section aria-labelledby="server-docker-heading" className="min-w-0">
-    <div className="mb-5 max-w-2xl">
-      <p className="mb-2 text-[11px] uppercase tracking-[0.18em] text-sky-300/80">Workloads</p>
-      <h2 id="server-docker-heading" className="font-display text-xl font-normal text-white sm:text-2xl">Docker monitoring</h2>
-      <p className="mt-1.5 text-sm leading-6 text-white/50">Container health and resource use reported by this server.</p>
-    </div>
-    <DockerMetricsPanel
-      vps={vps}
-      dockerMetrics={overview.dockerMetrics[0]}
-      busy={dashboard.busy}
-      onToggle={dashboard.onToggleDockerMetrics}
-      presentation="detail"
-    />
-  </section>;
+  return (
+    <section aria-labelledby="server-docker-heading" className="min-w-0">
+      <div className="mb-5 max-w-2xl">
+        <p className="mb-2 text-[11px] uppercase tracking-[0.18em] text-sky-300/80">
+          Workloads
+        </p>
+        <h2
+          id="server-docker-heading"
+          className="font-display text-xl font-normal text-white sm:text-2xl"
+        >
+          Docker monitoring
+        </h2>
+        <p className="mt-1.5 text-sm leading-6 text-white/50">
+          Container health and resource use reported by this server.
+        </p>
+      </div>
+      <DockerMetricsPanel
+        vps={vps}
+        dockerMetrics={overview.dockerMetrics[0]}
+        busy={dashboard.busy}
+        onToggle={dashboard.onToggleDockerMetrics}
+        presentation="detail"
+      />
+    </section>
+  );
 }
 
 export function VpsWorkspaceMetricsPage() {
@@ -333,7 +345,12 @@ export function VpsWorkspaceAuditPage() {
 export function VpsWorkspaceTerminalPage() {
   const { vps, overview } = useVpsWorkspace();
   return (
-    <TerminalPanel vps={vps} enabled={overview.settings.webTerminalEnabled && overview.settings.realSshEnabled} />
+    <TerminalPanel
+      vps={vps}
+      enabled={
+        overview.settings.webTerminalEnabled && overview.settings.realSshEnabled
+      }
+    />
   );
 }
 

@@ -65,6 +65,7 @@ function createService(
     vpsRepository as never,
     config,
     new AgentLifecycleCoordinator(),
+    { ingestV2: vi.fn() } as never,
   );
   return { agentRepository, service };
 }

@@ -7,13 +7,16 @@ import (
 	"log"
 	"os"
 	"os/signal"
+	"strconv"
 	"syscall"
+	"time"
 
 	"github.com/vps-manager/agent/internal/config"
 	"github.com/vps-manager/agent/internal/geo"
 	"github.com/vps-manager/agent/internal/metrics"
 	"github.com/vps-manager/agent/internal/push"
 	"github.com/vps-manager/agent/internal/run"
+	"github.com/vps-manager/agent/internal/state"
 	"github.com/vps-manager/agent/internal/version"
 	"path/filepath"
 )
@@ -23,7 +26,28 @@ func main() {
 	stateFlag := flag.String("state", "", "path to persisted state file")
 	once := flag.Bool("once", false, "collect and push metrics once then exit")
 	showVersion := flag.Bool("version", false, "print agent version and exit")
+	provision := flag.Bool("provision-docker-state", false, "provision Docker identity and runtime keys, then exit")
+	identityPath := flag.String("docker-identity-path", "", "Docker identity output path")
+	runtimeKeysPath := flag.String("docker-runtime-keys-path", "", "Docker runtime keys output path")
+	runtimeOwnerUID := flag.String("docker-runtime-owner-uid", "", "expected runtime keys owner UID (nonnegative integer)")
 	flag.Parse()
+
+	if *provision {
+		if os.Geteuid() != 0 || *identityPath == "" || *runtimeKeysPath == "" || *runtimeOwnerUID == "" {
+			fmt.Fprintln(os.Stderr, "provisioning requires root, explicit identity/runtime-key paths, and a runtime owner UID")
+			os.Exit(1)
+		}
+		uid, err := strconv.ParseUint(*runtimeOwnerUID, 10, 0)
+		if err != nil {
+			fmt.Fprintln(os.Stderr, "runtime owner UID must be a nonnegative integer")
+			os.Exit(1)
+		}
+		runtimeUID := int(uid)
+		if err := state.Provision(*identityPath, *runtimeKeysPath, state.ProvisionOptions{RuntimeOwnerUID: &runtimeUID}); err != nil {
+			log.Fatalf("docker state provisioning failed: %v", err)
+		}
+		return
+	}
 
 	if *showVersion {
 		fmt.Println(version.String())
@@ -59,6 +83,28 @@ func main() {
 	detector := geo.New(statePath)
 	detector.Start()
 	pushClient := push.NewClient(cfg)
+
+	// Docker v2 reads only the provisioned runtime keys and its authenticated
+	// mutable delivery record. The immutable identity file is never read here.
+	base := filepath.Dir(statePath)
+	runtimeKeysFile := filepath.Join(base, "runtime-keys.json")
+	deliveryPath := filepath.Join(base, "delivery-state.json")
+	var runner *run.Runner
+	if st, e := state.LoadStore(runtimeKeysFile, deliveryPath); e != nil {
+		log.Printf("docker v2 state unavailable; continuing with host/v1 metrics: %v", e)
+		runner = run.New(cfg, collector, pushClient)
+	} else {
+		collector.SetDockerV2ContainerKeyFunc(st.ContainerKey)
+		collector.SetDockerV2FinalizeHook(run.FinalizeDockerV2(st))
+		collector.SetDockerV2EventInputProvider(func() (metrics.DockerV2EventInput, bool) {
+			if st.GetPending() != nil {
+				return metrics.DockerV2EventInput{}, false
+			}
+			return metrics.DockerV2EventInput{SinceNano: fmt.Sprint(st.GetWatermark().TimeNano), UntilNano: fmt.Sprint(time.Now().Add(-time.Second).UnixNano()), AgentInstanceID: st.InstanceID(), FromDigests: st.GetWatermark().BoundaryDigests}, true
+		})
+		collector.SetDockerV2StorageEnabled(true)
+		runner = run.NewWithState(cfg, collector, pushClient, st)
+	}
 	pushClient.SetLocationProvider(func() *metrics.Location {
 		l := detector.Location()
 		if l == nil {
@@ -71,9 +117,12 @@ func main() {
 	// collector's Docker metrics state on every successful push.
 	pushClient.SetConfigHandler(func(cfg *push.ConfigResponse) {
 		collector.SetDockerMetricsEnabled(cfg.DockerMetricsEnabled)
+		// Docker v2 is independently fail-closed and only follows the
+		// canonical capability advertisement (schema >= 2 plus all required
+		// history/events/storage flags).
+		pushClient.SetDockerV2FromConfig(cfg)
+		collector.SetDockerV2Enabled(pushClient.IsDockerV2Enabled())
 	})
-
-	runner := run.New(cfg, collector, pushClient)
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()

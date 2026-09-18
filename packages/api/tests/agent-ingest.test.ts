@@ -74,7 +74,15 @@ function makeService() {
   const metricRepo = createJsonMetricRepository(
     join(tempDir, "data", "metrics.json"),
   );
-  const service = new AgentService(agentRepo, metricRepo, vpsRepo, demoConfig, new AgentLifecycleCoordinator());
+  const dockerMonitoringService = { ingestV2: async () => undefined };
+  const service = new AgentService(
+    agentRepo,
+    metricRepo,
+    vpsRepo,
+    demoConfig,
+    new AgentLifecycleCoordinator(),
+    dockerMonitoringService as never,
+  );
   return { agentRepo, metricRepo, service };
 }
 

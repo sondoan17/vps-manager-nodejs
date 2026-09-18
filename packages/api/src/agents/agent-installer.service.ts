@@ -101,7 +101,8 @@ export class AgentInstallerService {
     @Inject(AuditService) private readonly audit: AuditService,
     @Inject(JobRunnerService) private readonly jobRunner: JobRunnerService,
     @Inject(JobService) private readonly jobs: JobService,
-    @Inject(AgentLifecycleCoordinator) private readonly lifecycle: AgentLifecycleCoordinator,
+    @Inject(AgentLifecycleCoordinator)
+    private readonly lifecycle: AgentLifecycleCoordinator,
   ) {}
 
   /**
@@ -122,189 +123,200 @@ export class AgentInstallerService {
     let job: Awaited<ReturnType<JobService["create"]>> | undefined;
     let state: AgentState | undefined;
     try {
-    // 1. VPS must exist
-    const vps = await this.vpsRepository.get(vpsId);
-    if (!vps) throw new VpsNotFoundError();
+      // 1. VPS must exist
+      const vps = await this.vpsRepository.get(vpsId);
+      if (!vps) throw new VpsNotFoundError();
 
-    // 2. Block duplicate install
-    const existingState = await this.agentRepository.getState(vpsId);
-    priorState = existingState;
-    if (existingState?.status === "installing") {
-      throw new DuplicateAgentInstallError();
-    }
+      // 2. Block duplicate install
+      const existingState = await this.agentRepository.getState(vpsId);
+      priorState = existingState;
+      if (existingState?.status === "installing") {
+        throw new DuplicateAgentInstallError();
+      }
 
-    // 3. Resolve backend URL (may throw if localhost/no config)
-    const backendUrl = resolveAgentBackendUrl(this.config);
+      // 3. Resolve backend URL (may throw if localhost/no config)
+      const backendUrl = resolveAgentBackendUrl(this.config);
 
-    // 4. Check agent binary exists locally
-    const binaryPath = this.resolveBinaryPath();
-    if (!existsSync(binaryPath)) {
-      throw new BadRequestException(
-        "Agent binary not found. Run 'npm run build:agent' first or configure AGENT_BINARY_PATH.",
+      // 4. Check agent binary exists locally
+      const binaryPath = this.resolveBinaryPath();
+      if (!existsSync(binaryPath)) {
+        throw new BadRequestException(
+          "Agent binary not found. Run 'npm run build:agent' first or configure AGENT_BINARY_PATH.",
+        );
+      }
+
+      // 5. Resolve SSH auth
+      const sshAuth = await resolveSshAuth(vps, password, this.keys);
+
+      // 6. Create pending credential (token never returned to caller)
+      const created = await this.agentService.createCredential(
+        vpsId,
+        "pending",
       );
-    }
+      credential = created.credential;
+      const token = created.token;
 
-    // 5. Resolve SSH auth
-    const sshAuth = await resolveSshAuth(vps, password, this.keys);
+      // 7. Create job
+      const now = new Date().toISOString();
+      job = await this.jobs.create({
+        vpsId,
+        type: "install-agent",
+        status: "queued",
+        step: "queued",
+        progress: 0,
+        startedAt: now,
+      });
 
-    // 6. Create pending credential (token never returned to caller)
-    const created = await this.agentService.createCredential(
-      vpsId,
-      "pending",
-    );
-    credential = created.credential;
-    const token = created.token;
+      // 8. Mark state as installing
+      state = await this.agentRepository.upsertState({
+        vpsId,
+        status: "installing",
+        lastInstallJobId: job!.id,
+      });
 
-    // 7. Create job
-    const now = new Date().toISOString();
-    job = await this.jobs.create({
-      vpsId,
-      type: "install-agent",
-      status: "queued",
-      step: "queued",
-      progress: 0,
-      startedAt: now,
-    });
-
-    // 8. Mark state as installing
-    state = await this.agentRepository.upsertState({
-      vpsId,
-      status: "installing",
-      lastInstallJobId: job!.id,
-    });
-
-    // 9. Audit: install started
-    await this.audit.record({
-      actor: "system",
-      action: "agent.install.start",
-      resourceType: "vps",
-      resourceId: vpsId,
-      result: "success",
-      metadata: { jobId: job!.id },
-    }).catch(() => undefined);
-
-    // 10. Start async install task
-    this.jobRunner.start(job, async (ctx) => {
-      try {
-        await ctx.update("connecting", 5);
-
-        // Determine remote home directory
-        const homeResult = await this.ssh.execCommand(
-          vps,
-          "echo $HOME",
-          sshAuth,
-          10_000,
-        );
-        const homeDir = homeResult.stdout.trim();
-        if (!homeDir) {
-          throw new Error("Could not determine remote home directory");
-        }
-        const remoteDir = `${homeDir}/.vps-manager-agent`;
-
-        await ctx.update("creating-directory", 10);
-        await this.ssh.makeDirectory(vps, remoteDir, 0o700, sshAuth);
-
-        await ctx.update("uploading-binary", 30);
-        const binaryContent = readFileSync(binaryPath);
-        const remoteBinary = `${remoteDir}/vps-agent`;
-        await this.ssh.uploadFile(
-          vps,
-          remoteBinary,
-          binaryContent,
-          0o700,
-          sshAuth,
-        );
-
-        // Build agent config — token embedded in config on VPS only
-        const agentConfig = {
-          backendUrl,
-          vpsId,
-          token,
-          intervalSeconds: this.config.agentInstallIntervalSeconds,
-          requestTimeoutSeconds: 10,
-        };
-        const configContent = Buffer.from(
-          JSON.stringify(agentConfig, null, 2) + "\n",
-          "utf8",
-        );
-        const remoteConfig = `${remoteDir}/config.json`;
-
-        await ctx.update("uploading-config", 50);
-        await this.ssh.uploadFile(
-          vps,
-          remoteConfig,
-          configContent,
-          0o600,
-          sshAuth,
-        );
-
-        // Run -once validation
-        await ctx.update("running-once", 70);
-        const onceCmd = `${shellQuote(remoteBinary)} -config ${shellQuote(remoteConfig)} -once`;
-        // 45s timeout for the -once run
-        await this.ssh.execCommand(vps, onceCmd, sshAuth, 45_000);
-
-        // Start background loop via nohup
-        await ctx.update("starting-background", 85);
-        const pidFile = `${remoteDir}/vps-agent.pid`;
-         const loopCmd = `umask 077; nohup ${shellQuote(remoteBinary)} -config ${shellQuote(remoteConfig)} > /dev/null 2>&1 & _pid=$!; printf '%s\\n' "$_pid" > ${shellQuote(`${pidFile}.tmp`)} && mv -f ${shellQuote(`${pidFile}.tmp`)} ${shellQuote(pidFile)}`;
-        await this.ssh.execCommand(vps, loopCmd, sshAuth, 10_000);
-
-        // Mark success
-        await this.agentRepository.upsertState({
-          vpsId,
-          status: "online",
-          version: "1.0.0",
-          installedAt: new Date().toISOString(),
-          lastSeenAt: new Date().toISOString(),
-          lastInstallJobId: job!.id,
-        });
-
-        await this.audit.record({
+      // 9. Audit: install started
+      await this.audit
+        .record({
           actor: "system",
-          action: "agent.install.success",
+          action: "agent.install.start",
           resourceType: "vps",
           resourceId: vpsId,
           result: "success",
           metadata: { jobId: job!.id },
-        });
+        })
+        .catch(() => undefined);
 
-        await ctx.succeed("complete");
-      } catch (error: unknown) {
-        await this.agentRepository.revokeCredential(credential!.id);
+      // 10. Start async install task
+      this.jobRunner.start(job, async (ctx) => {
+        try {
+          await ctx.update("connecting", 5);
 
-        // Mark state as failed
-        await this.agentRepository.upsertState({
-          vpsId,
-          status: "failed",
-          lastError: sanitiseError(error),
-          lastSeenAt: priorState?.lastSeenAt,
-          lastInstallJobId: job!.id,
-        });
+          // Determine remote home directory
+          const homeResult = await this.ssh.execCommand(
+            vps,
+            "echo $HOME",
+            sshAuth,
+            10_000,
+          );
+          const homeDir = homeResult.stdout.trim();
+          if (!homeDir) {
+            throw new Error("Could not determine remote home directory");
+          }
+          const remoteDir = `${homeDir}/.vps-manager-agent`;
 
-        await this.audit.record({
-          actor: "system",
-          action: "agent.install.failure",
-          resourceType: "vps",
-          resourceId: vpsId,
-          result: "failure",
-          metadata: { jobId: job!.id },
-        });
+          await ctx.update("creating-directory", 10);
+          await this.ssh.makeDirectory(vps, remoteDir, 0o700, sshAuth);
 
-        // Re-throw so JobRunnerService can also update job status
-        throw error;
-      } finally {
-        releaseLifecycle();
-      }
-    });
+          await ctx.update("uploading-binary", 30);
+          const binaryContent = readFileSync(binaryPath);
+          const remoteBinary = `${remoteDir}/vps-agent`;
+          await this.ssh.uploadFile(
+            vps,
+            remoteBinary,
+            binaryContent,
+            0o700,
+            sshAuth,
+          );
 
-    handedOff = true;
-    return { jobId: job!.id, state: state! };
+          // Build agent config — token embedded in config on VPS only
+          const agentConfig = {
+            backendUrl,
+            vpsId,
+            token,
+            intervalSeconds: this.config.agentInstallIntervalSeconds,
+            requestTimeoutSeconds: 10,
+          };
+          const configContent = Buffer.from(
+            JSON.stringify(agentConfig, null, 2) + "\n",
+            "utf8",
+          );
+          const remoteConfig = `${remoteDir}/config.json`;
+
+          await ctx.update("uploading-config", 50);
+          await this.ssh.uploadFile(
+            vps,
+            remoteConfig,
+            configContent,
+            0o600,
+            sshAuth,
+          );
+
+          // Run -once validation
+          await ctx.update("running-once", 70);
+          const onceCmd = `${shellQuote(remoteBinary)} -config ${shellQuote(remoteConfig)} -once`;
+          // 45s timeout for the -once run
+          await this.ssh.execCommand(vps, onceCmd, sshAuth, 45_000);
+
+          // Start background loop via nohup
+          await ctx.update("starting-background", 85);
+          const pidFile = `${remoteDir}/vps-agent.pid`;
+          const loopCmd = `umask 077; nohup ${shellQuote(remoteBinary)} -config ${shellQuote(remoteConfig)} > /dev/null 2>&1 & _pid=$!; printf '%s\\n' "$_pid" > ${shellQuote(`${pidFile}.tmp`)} && mv -f ${shellQuote(`${pidFile}.tmp`)} ${shellQuote(pidFile)}`;
+          await this.ssh.execCommand(vps, loopCmd, sshAuth, 10_000);
+
+          // Mark success
+          await this.agentRepository.upsertState({
+            vpsId,
+            status: "online",
+            version: "1.0.0",
+            installedAt: new Date().toISOString(),
+            lastSeenAt: new Date().toISOString(),
+            lastInstallJobId: job!.id,
+          });
+
+          await this.audit.record({
+            actor: "system",
+            action: "agent.install.success",
+            resourceType: "vps",
+            resourceId: vpsId,
+            result: "success",
+            metadata: { jobId: job!.id },
+          });
+
+          await ctx.succeed("complete");
+        } catch (error: unknown) {
+          await this.agentRepository.revokeCredential(credential!.id);
+
+          // Mark state as failed
+          await this.agentRepository.upsertState({
+            vpsId,
+            status: "failed",
+            lastError: sanitiseError(error),
+            lastSeenAt: priorState?.lastSeenAt,
+            lastInstallJobId: job!.id,
+          });
+
+          await this.audit.record({
+            actor: "system",
+            action: "agent.install.failure",
+            resourceType: "vps",
+            resourceId: vpsId,
+            result: "failure",
+            metadata: { jobId: job!.id },
+          });
+
+          // Re-throw so JobRunnerService can also update job status
+          throw error;
+        } finally {
+          releaseLifecycle();
+        }
+      });
+
+      handedOff = true;
+      return { jobId: job!.id, state: state! };
     } catch (error) {
-      if (credential) await this.agentRepository.revokeCredential(credential.id);
-      if (job) await this.jobs.update(job.id, { status: "failed", step: "setup", errorMessage: sanitiseError(error), finishedAt: new Date().toISOString() });
+      if (credential)
+        await this.agentRepository.revokeCredential(credential.id);
+      if (job)
+        await this.jobs.update(job.id, {
+          status: "failed",
+          step: "setup",
+          errorMessage: sanitiseError(error),
+          finishedAt: new Date().toISOString(),
+        });
       throw error;
-    } finally { if (!handedOff) releaseLifecycle(); }
+    } finally {
+      if (!handedOff) releaseLifecycle();
+    }
   }
 
   private resolveBinaryPath(): string {

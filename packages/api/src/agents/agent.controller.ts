@@ -16,6 +16,7 @@ type AgentIngestResponse = {
     config: {
       dockerMetricsEnabled: boolean;
     };
+    docker?: IngestMetricResult["docker"];
   };
 };
 
@@ -43,7 +44,7 @@ export class AgentController {
     // 2. Ingest the metric payload
     // ZodError from schema validation propagates to the global exception filter
     // and results in a 400 Bad Request.
-    const { sample, config } = await this.agentService.ingestMetric(
+    const { sample, config, docker } = await this.agentService.ingestMetric(
       credential,
       body,
       req.ip,
@@ -53,9 +54,10 @@ export class AgentController {
       data: {
         ok: true,
         vpsId: sample.vpsId,
-        receivedAt: sample.receivedAt!,
-        config,
-      },
+         receivedAt: sample.receivedAt!,
+         config,
+         ...(docker ? { docker } : {}),
+       },
     };
   }
 }

@@ -152,12 +152,18 @@ function mergeJobs(
   return [...byId.values()];
 }
 
-function applyAgentJobState(records: VpsRecord[], jobs: DashboardOverview["jobs"]) {
+function applyAgentJobState(
+  records: VpsRecord[],
+  jobs: DashboardOverview["jobs"],
+) {
   return records.map((vps) => {
     const lifecycleJobs = jobs.filter(
       (candidate) =>
         candidate.vpsId === vps.id &&
-        (candidate.type === "install-agent" || candidate.type === "uninstall-agent" || candidate.type === "upgrade-agent" || candidate.type === "restart-agent"),
+        (candidate.type === "install-agent" ||
+          candidate.type === "uninstall-agent" ||
+          candidate.type === "upgrade-agent" ||
+          candidate.type === "restart-agent"),
     );
     const job = lifecycleJobs.sort((a, b) => {
       const aTime = Date.parse(a.finishedAt || a.startedAt || "") || 0;
@@ -170,14 +176,18 @@ function applyAgentJobState(records: VpsRecord[], jobs: DashboardOverview["jobs"
     if (job.status === "queued" || job.status === "running") {
       return {
         ...vps,
-        agentStatus: isRestart ? vps.agentStatus : "installing" as const,
+        agentStatus: isRestart ? vps.agentStatus : ("installing" as const),
         lastAgentInstallJobId: job.id,
       };
     }
     if (job.status === "succeeded") {
       return {
         ...vps,
-        agentStatus: (isRestart ? vps.agentStatus : isUninstall ? "not_installed" : "online") as VpsRecord["agentStatus"],
+        agentStatus: (isRestart
+          ? vps.agentStatus
+          : isUninstall
+            ? "not_installed"
+            : "online") as VpsRecord["agentStatus"],
         lastAgentInstallJobId: job.id,
         agentLastError: undefined,
       };
@@ -260,7 +270,9 @@ export function DashboardProvider({
   const unsubscribeRef = useRef<(() => void) | null>(null);
   const [initialLoadDone, setInitialLoadDone] = useState(false);
   const [refreshToastVisible, setRefreshToastVisible] = useState(false);
-  const refreshToastTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const refreshToastTimerRef = useRef<ReturnType<typeof setTimeout> | null>(
+    null,
+  );
 
   // ── Data loading ───────────────────────────────────────────────────
 
@@ -344,7 +356,8 @@ export function DashboardProvider({
 
   useEffect(() => {
     return () => {
-      if (refreshToastTimerRef.current) clearTimeout(refreshToastTimerRef.current);
+      if (refreshToastTimerRef.current)
+        clearTimeout(refreshToastTimerRef.current);
     };
   }, []);
 
@@ -427,7 +440,8 @@ export function DashboardProvider({
     setBusy(true);
     setStatus({ message: "Refreshing VPS list...", kind: "default" });
     setRefreshToastVisible(false);
-    if (refreshToastTimerRef.current) clearTimeout(refreshToastTimerRef.current);
+    if (refreshToastTimerRef.current)
+      clearTimeout(refreshToastTimerRef.current);
     try {
       await loadVps();
       setStatus(null);
@@ -552,21 +566,27 @@ export function DashboardProvider({
   async function confirmHostKeyTrust() {
     const pending = pendingHostKeyTrust;
     if (!pending?.fingerprint) return;
-    await runAction(`Trusting SSH host key for ${pending.vpsName}...`, async () => {
-      await trustSshHostKey(pending.vpsId, {
-        fingerprint: pending.fingerprint!,
-        keyType: pending.keyType,
-      });
-      await provisionKey(pending.vpsId, pending.password);
-      setProvisionPasswords((current) => ({ ...current, [pending.vpsId]: "" }));
-      setPendingHostKeyTrust(null);
-      setCreateForm(initialCreateForm);
-      setStatus({
-        message: `Trusted host key and installed SSH key for ${pending.vpsName}. Password was not stored.`,
-        kind: "success",
-      });
-      if (pending.afterTrustPath) navigate(pending.afterTrustPath);
-    });
+    await runAction(
+      `Trusting SSH host key for ${pending.vpsName}...`,
+      async () => {
+        await trustSshHostKey(pending.vpsId, {
+          fingerprint: pending.fingerprint!,
+          keyType: pending.keyType,
+        });
+        await provisionKey(pending.vpsId, pending.password);
+        setProvisionPasswords((current) => ({
+          ...current,
+          [pending.vpsId]: "",
+        }));
+        setPendingHostKeyTrust(null);
+        setCreateForm(initialCreateForm);
+        setStatus({
+          message: `Trusted host key and installed SSH key for ${pending.vpsName}. Password was not stored.`,
+          kind: "success",
+        });
+        if (pending.afterTrustPath) navigate(pending.afterTrustPath);
+      },
+    );
   }
 
   function cancelHostKeyTrust() {
@@ -593,19 +613,25 @@ export function DashboardProvider({
       const result = await installAgent(vps.id, password || undefined);
       setOverview((current) => ({
         ...current,
-        jobs: mergeJobs(current.jobs, [{
-          id: result.jobId,
-          vpsId: vps.id,
-          type: "install-agent",
-          status: "queued",
-          step: "queued",
-          progress: 0,
-        }]),
+        jobs: mergeJobs(current.jobs, [
+          {
+            id: result.jobId,
+            vpsId: vps.id,
+            type: "install-agent",
+            status: "queued",
+            step: "queued",
+            progress: 0,
+          },
+        ]),
       }));
       setRecords((current) =>
         current.map((record) =>
           record.id === vps.id
-            ? { ...record, agentStatus: "installing", lastAgentInstallJobId: result.jobId }
+            ? {
+                ...record,
+                agentStatus: "installing",
+                lastAgentInstallJobId: result.jobId,
+              }
             : record,
         ),
       );
@@ -625,19 +651,25 @@ export function DashboardProvider({
       const result = await uninstallAgent(vps.id);
       setOverview((current) => ({
         ...current,
-        jobs: mergeJobs(current.jobs, [{
-          id: result.jobId,
-          vpsId: vps.id,
-          type: "uninstall-agent",
-          status: "queued",
-          step: "queued",
-          progress: 0,
-        }]),
+        jobs: mergeJobs(current.jobs, [
+          {
+            id: result.jobId,
+            vpsId: vps.id,
+            type: "uninstall-agent",
+            status: "queued",
+            step: "queued",
+            progress: 0,
+          },
+        ]),
       }));
       setRecords((current) =>
         current.map((record) =>
           record.id === vps.id
-            ? { ...record, agentStatus: "installing", lastAgentInstallJobId: result.jobId }
+            ? {
+                ...record,
+                agentStatus: "installing",
+                lastAgentInstallJobId: result.jobId,
+              }
             : record,
         ),
       );
@@ -654,12 +686,32 @@ export function DashboardProvider({
       const result = await upgradeAgent(vps.id);
       setOverview((current) => ({
         ...current,
-        jobs: mergeJobs(current.jobs, [{ id: result.jobId, vpsId: vps.id, type: "upgrade-agent", status: "queued", step: "queued", progress: 0 }]),
+        jobs: mergeJobs(current.jobs, [
+          {
+            id: result.jobId,
+            vpsId: vps.id,
+            type: "upgrade-agent",
+            status: "queued",
+            step: "queued",
+            progress: 0,
+          },
+        ]),
       }));
-      setRecords((current) => current.map((record) => record.id === vps.id
-        ? { ...record, agentStatus: "installing", lastAgentInstallJobId: result.jobId }
-        : record));
-      setStatus({ message: `Agent upgrade queued for ${label}. Job ${result.jobId} is running in the background.`, kind: "success" });
+      setRecords((current) =>
+        current.map((record) =>
+          record.id === vps.id
+            ? {
+                ...record,
+                agentStatus: "installing",
+                lastAgentInstallJobId: result.jobId,
+              }
+            : record,
+        ),
+      );
+      setStatus({
+        message: `Agent upgrade queued for ${label}. Job ${result.jobId} is running in the background.`,
+        kind: "success",
+      });
     });
   }
 
@@ -669,12 +721,28 @@ export function DashboardProvider({
       const result = await restartAgent(vps.id);
       setOverview((current) => ({
         ...current,
-        jobs: mergeJobs(current.jobs, [{ id: result.jobId, vpsId: vps.id, type: "restart-agent", status: "queued", step: "queued", progress: 0 }]),
+        jobs: mergeJobs(current.jobs, [
+          {
+            id: result.jobId,
+            vpsId: vps.id,
+            type: "restart-agent",
+            status: "queued",
+            step: "queued",
+            progress: 0,
+          },
+        ]),
       }));
-      setRecords((current) => current.map((record) => record.id === vps.id
-        ? { ...record, lastAgentInstallJobId: result.jobId }
-        : record));
-      setStatus({ message: `Agent restart queued for ${label}. Job ${result.jobId} is running in the background.`, kind: "success" });
+      setRecords((current) =>
+        current.map((record) =>
+          record.id === vps.id
+            ? { ...record, lastAgentInstallJobId: result.jobId }
+            : record,
+        ),
+      );
+      setStatus({
+        message: `Agent restart queued for ${label}. Job ${result.jobId} is running in the background.`,
+        kind: "success",
+      });
     });
   }
 
@@ -695,13 +763,15 @@ export function DashboardProvider({
 
   async function handleEdit(vps: VpsRecord, payload: UpdateVpsPayload) {
     if (busy) throw new Error("Another action is still running.");
-    if (overview.mode === "demo") throw new Error("Editing is unavailable in demo mode.");
+    if (overview.mode === "demo")
+      throw new Error("Editing is unavailable in demo mode.");
     setBusy(true);
     try {
       await updateVps(vps.id, payload);
       await loadVps(`Updated ${payload.displayName || vpsDisplayName(vps)}.`);
     } catch (error) {
-      const message = error instanceof Error ? error.message : "Could not update server.";
+      const message =
+        error instanceof Error ? error.message : "Could not update server.";
       setStatus({ message, kind: "destructive" });
       throw new Error(message);
     } finally {
@@ -806,7 +876,9 @@ export function DashboardProvider({
           aria-atomic="true"
           className="fixed right-4 top-4 z-50 max-w-[calc(100vw-2rem)] border border-white/10 bg-[#111318] px-4 py-3 text-sm font-medium text-white shadow-2xl shadow-black/40 sm:right-6 sm:top-6"
         >
-          <span aria-hidden="true" className="mr-2 text-emerald-400">✓</span>
+          <span aria-hidden="true" className="mr-2 text-emerald-400">
+            ✓
+          </span>
           <span>VPS list refreshed</span>
         </div>
       ) : null}
@@ -820,8 +892,8 @@ export function DashboardProvider({
           <AlertDialogHeader>
             <AlertDialogTitle>Trust SSH host key?</AlertDialogTitle>
             <AlertDialogDescription className="text-white/60">
-              Only trust this fingerprint if it matches your VPS provider console
-              or your own ssh-keyscan result.
+              Only trust this fingerprint if it matches your VPS provider
+              console or your own ssh-keyscan result.
             </AlertDialogDescription>
           </AlertDialogHeader>
           {pendingHostKeyTrust ? (

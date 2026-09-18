@@ -98,7 +98,10 @@ export class TerminalSessionService implements OnApplicationShutdown {
       while (inputQueue.length && state === "ready") {
         const value = inputQueue.shift()!;
         inputBytes -= Buffer.byteLength(value);
-        if (!shell?.channel.write(value)) { inputBlocked = true; break; }
+        if (!shell?.channel.write(value)) {
+          inputBlocked = true;
+          break;
+        }
       }
     };
     let channelCleanup: (() => void) | undefined;
@@ -308,14 +311,47 @@ export class TerminalSessionService implements OnApplicationShutdown {
             .catch(() => cleanup("session_check_error"));
       }, cfg.revocationPollMs);
       intervals.add(revokeTimer);
-      const onClose = () => { if (channelClosing || state !== "ready") return; channelClosing = true; const tail = decoder.end(); if (tail) { const encoded = Buffer.from(tail, "utf8"); if (outputBytes + encoded.length <= high) { outputQueue.push(encoded); outputBytes += encoded.length; } } try { shell?.channel.pause(); } catch {} flush(); const finish = () => { if (closeDrainTimer) { clearTimeout(closeDrainTimer); closeDrainTimer = undefined; } void cleanup("channel_closed"); }; finishChannelCloseIfDrained(); if (channelClosing && state === "ready") closeDrainTimer = setTimeout(() => { if (channelClosing && state === "ready") finish(); }, Math.max(1, Math.min(cfg.slowConsumerTimeoutMs, 250))); };
+      const onClose = () => {
+        if (channelClosing || state !== "ready") return;
+        channelClosing = true;
+        const tail = decoder.end();
+        if (tail) {
+          const encoded = Buffer.from(tail, "utf8");
+          if (outputBytes + encoded.length <= high) {
+            outputQueue.push(encoded);
+            outputBytes += encoded.length;
+          }
+        }
+        try {
+          shell?.channel.pause();
+        } catch {}
+        flush();
+        const finish = () => {
+          if (closeDrainTimer) {
+            clearTimeout(closeDrainTimer);
+            closeDrainTimer = undefined;
+          }
+          void cleanup("channel_closed");
+        };
+        finishChannelCloseIfDrained();
+        if (channelClosing && state === "ready")
+          closeDrainTimer = setTimeout(
+            () => {
+              if (channelClosing && state === "ready") finish();
+            },
+            Math.max(1, Math.min(cfg.slowConsumerTimeoutMs, 250)),
+          );
+      };
       const onError = () => void cleanup("channel_error");
       const drainInput = () => {
         inputBlocked = false;
         while (inputQueue.length && state === "ready") {
           const value = inputQueue.shift()!;
           inputBytes -= Buffer.byteLength(value);
-          if (!shell?.channel.write(value)) { inputBlocked = true; break; }
+          if (!shell?.channel.write(value)) {
+            inputBlocked = true;
+            break;
+          }
         }
       };
       const onDrain = () => drainInput();
@@ -331,32 +367,111 @@ export class TerminalSessionService implements OnApplicationShutdown {
       const high = Math.max(1, cfg.outputBufferBytes);
       const low = Math.floor(high / 2);
       let slow: ReturnType<typeof setTimeout> | undefined;
-      const clearSlow = () => { if (slow) { clearTimeout(slow); slow = undefined; } };
-      const armSlow = () => { if (!slow) slow = setTimeout(() => void cleanup("slow_consumer"), cfg.slowConsumerTimeoutMs); };
+      const clearSlow = () => {
+        if (slow) {
+          clearTimeout(slow);
+          slow = undefined;
+        }
+      };
+      const armSlow = () => {
+        if (!slow)
+          slow = setTimeout(
+            () => void cleanup("slow_consumer"),
+            cfg.slowConsumerTimeoutMs,
+          );
+      };
       const finishChannelCloseIfDrained = () => {
-        if (!channelClosing || state !== "ready" || pendingSends !== 0 || outputQueue.length !== 0) return;
-        if (closeDrainTimer) { clearTimeout(closeDrainTimer); closeDrainTimer = undefined; }
+        if (
+          !channelClosing ||
+          state !== "ready" ||
+          pendingSends !== 0 ||
+          outputQueue.length !== 0
+        )
+          return;
+        if (closeDrainTimer) {
+          clearTimeout(closeDrainTimer);
+          closeDrainTimer = undefined;
+        }
         void cleanup("channel_closed");
       };
-      const resumeIfDrained = () => { if (state !== "ready" || channelClosing) return; if (!outputQueue.length && (socket.bufferedAmount ?? 0) <= low) { const wasPaused = outputPaused; outputPaused = false; clearSlow(); if (wasPaused) { try { shell?.channel.resume(); } catch {} } } };
+      const resumeIfDrained = () => {
+        if (state !== "ready" || channelClosing) return;
+        if (!outputQueue.length && (socket.bufferedAmount ?? 0) <= low) {
+          const wasPaused = outputPaused;
+          outputPaused = false;
+          clearSlow();
+          if (wasPaused) {
+            try {
+              shell?.channel.resume();
+            } catch {}
+          }
+        }
+      };
       const flush = () => {
-        if (flushing) { flushRequested = true; return; }
+        if (flushing) {
+          flushRequested = true;
+          return;
+        }
         flushing = true;
         try {
           do {
             flushRequested = false;
             if (state !== "ready") return;
-            while (state === "ready" && outputQueue.length && (socket.bufferedAmount ?? 0) <= low) {
-              const chunk = outputQueue.shift()!; outputBytes -= chunk.length; pendingSends++;
-              try { socket.send(encodeTerminalMessage({ type: "output", data: chunk.toString("utf8") }), (error) => { pendingSends--; if (state !== "ready" && !channelClosing) return; if (error) void cleanup("socket_error"); else { clearSlow(); if (state === "ready") { flushRequested = true; queueMicrotask(flush); resumeIfDrained(); } finishChannelCloseIfDrained(); } }); } catch { void cleanup("socket_error"); return; }
+            while (
+              state === "ready" &&
+              outputQueue.length &&
+              (socket.bufferedAmount ?? 0) <= low
+            ) {
+              const chunk = outputQueue.shift()!;
+              outputBytes -= chunk.length;
+              pendingSends++;
+              try {
+                socket.send(
+                  encodeTerminalMessage({
+                    type: "output",
+                    data: chunk.toString("utf8"),
+                  }),
+                  (error) => {
+                    pendingSends--;
+                    if (state !== "ready" && !channelClosing) return;
+                    if (error) void cleanup("socket_error");
+                    else {
+                      clearSlow();
+                      if (state === "ready") {
+                        flushRequested = true;
+                        queueMicrotask(flush);
+                        resumeIfDrained();
+                      }
+                      finishChannelCloseIfDrained();
+                    }
+                  },
+                );
+              } catch {
+                void cleanup("socket_error");
+                return;
+              }
             }
-            if (outputQueue.length) { if (!outputPaused) { outputPaused = true; try { shell?.channel.pause(); } catch {} } armSlow(); } else { resumeIfDrained(); finishChannelCloseIfDrained(); }
+            if (outputQueue.length) {
+              if (!outputPaused) {
+                outputPaused = true;
+                try {
+                  shell?.channel.pause();
+                } catch {}
+              }
+              armSlow();
+            } else {
+              resumeIfDrained();
+              finishChannelCloseIfDrained();
+            }
           } while (flushRequested && state === "ready");
-        } finally { flushing = false; }
+        } finally {
+          flushing = false;
+        }
       };
       const onData = (data: Buffer) => {
         resetIdle();
-        const text = decoder.write(data); const encoded = Buffer.from(text, "utf8");
+        const text = decoder.write(data);
+        const encoded = Buffer.from(text, "utf8");
         if (outputBytes + encoded.length > high) {
           outputPaused = true;
           try {
@@ -369,7 +484,11 @@ export class TerminalSessionService implements OnApplicationShutdown {
             );
           return;
         }
-        if (encoded.length) { outputQueue.push(encoded); outputBytes += encoded.length; flush(); }
+        if (encoded.length) {
+          outputQueue.push(encoded);
+          outputBytes += encoded.length;
+          flush();
+        }
       };
       shell.channel.on("data", onData);
       shell.channel.on("close", onClose);

@@ -9,8 +9,11 @@ import (
 	"net/url"
 	"os"
 	"strings"
+	"sync/atomic"
 	"time"
 )
+
+var dockerSampleCycle uint64
 
 // collectDockerFromAPI performs portable Docker metrics collection against an
 // already-configured HTTP client and base URL. It is behavior-preserving:
@@ -52,9 +55,12 @@ func collectDockerFromAPI(ctx context.Context, client *http.Client, baseURL stri
 		}
 	}
 
-	// Cap containers stored/statted at MaxContainers.
+	// Keep the complete bounded list internally, then rotate the stats/public
+	// sample so large fleets are eventually covered without changing v1's cap.
 	if len(containers) > MaxContainers {
-		containers = containers[:MaxContainers]
+		start := int(atomic.AddUint64(&dockerSampleCycle, 1)-1) % len(containers)
+		rotated := append(append([]dockerContainerRaw(nil), containers[start:]...), containers[:start]...)
+		containers = rotated[:MaxContainers]
 	}
 
 	now := time.Now().UTC().Format(time.RFC3339)
@@ -358,6 +364,7 @@ func dockerRawToContainer(raw dockerContainerRaw) DockerContainerMetric {
 
 	return DockerContainerMetric{
 		ID:        cappedString(raw.ID, MaxIDLen),
+		fullID:    raw.ID,
 		Name:      cappedString(name, MaxNameLen),
 		Image:     cappedString(raw.Image, MaxImageLen),
 		State:     cappedString(raw.State, MaxStateLen),

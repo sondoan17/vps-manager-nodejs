@@ -36,6 +36,8 @@ CONFIG_DIR="/etc/vps-manager-agent"
 CONFIG_FILE="${CONFIG_DIR}/config.json"
 STATE_DIR="/var/lib/vps-manager-agent"
 STATE_FILE="${STATE_DIR}/state.json"
+DOCKER_IDENTITY_FILE="${CONFIG_DIR}/docker-identity.json"
+DOCKER_RUNTIME_KEYS_FILE="${STATE_DIR}/runtime-keys.json"
 SERVICE_NAME_DEFAULT="vps-manager-agent"
 SERVICE_USER_DEFAULT="vps-manager-agent"
 UNIT_FILE="/etc/systemd/system/${SERVICE_NAME_DEFAULT}.service"
@@ -276,6 +278,15 @@ else
   mkdir -p "$STATE_DIR"
   chown "${SERVICE_USER}:${SERVICE_USER}" "$STATE_DIR"
   chmod 0750 "$STATE_DIR"
+  SERVICE_UID="$(id -u "$SERVICE_USER")"
+  if [[ ! "$SERVICE_UID" =~ ^[0-9]+$ ]]; then
+    echo "Error: Could not resolve numeric UID for service user: ${SERVICE_USER}" >&2
+    exit 1
+  fi
+  "$BINARY_DEST" -provision-docker-state -docker-identity-path "$DOCKER_IDENTITY_FILE" -docker-runtime-keys-path "$DOCKER_RUNTIME_KEYS_FILE" -docker-runtime-owner-uid "$SERVICE_UID"
+  chown root:root "$DOCKER_IDENTITY_FILE"
+  chmod 0600 "$DOCKER_IDENTITY_FILE"
+  chmod 0600 "$DOCKER_RUNTIME_KEYS_FILE"
   echo "  Installed config: ${CONFIG_FILE}"
 fi
 

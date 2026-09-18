@@ -157,6 +157,14 @@ jobs:
             test -f /app/db/migrations/003_timescale_optional.sql
             test -f /app/db/migrations/004_dashboard_sessions.sql
             test -f /app/db/migrations/005_dashboard_admin_credentials.sql
+            test -f /app/db/migrations/006_rate_limit_buckets.sql
+            test -f /app/db/migrations/007_local_host_fields.sql
+            test -f /app/db/migrations/008_system_info.sql
+            test -f /app/db/migrations/009_docker_metrics.sql
+            test -f /app/db/migrations/010_ssh_host_key_pins.sql
+            test -f /app/db/migrations/011_vps_display_name.sql
+            test -f /app/db/migrations/012_vps_location.sql
+            test -f /app/db/migrations/013_docker_monitoring.sql
             test -x /app/agent/vps-agent-linux-amd64
           '
 
@@ -301,6 +309,37 @@ jobs:
         env:
           VPS_MANAGER_TEST_POSTGRES_URL: postgres://vps_manager:vps_manager@localhost:5432/vps_manager
         run: npx vitest run packages/api/tests/docker-migration-009.postgres.test.ts
+
+  docker-monitoring-postgres16:
+    name: Docker monitoring PostgreSQL 16
+    needs: verify
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_DB: vps_manager
+          POSTGRES_USER: vps_manager
+          POSTGRES_PASSWORD: vps_manager
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U vps_manager -d vps_manager"
+          --health-interval 10s --health-timeout 5s --health-retries 10
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+      - name: Install Node dependencies
+        run: npm ci
+      - name: Run Docker monitoring PostgreSQL 16 tests
+        env:
+          VPS_MANAGER_TEST_POSTGRES_URL: postgres://vps_manager:vps_manager@localhost:5432/vps_manager
+        run: npx vitest run packages/api/tests/docker-migration-013.postgres.test.ts packages/api/tests/docker-migration-014.postgres.test.ts packages/api/tests/docker-monitoring-repository.postgres.test.ts
 
   publish:
     name: Publish Docker image

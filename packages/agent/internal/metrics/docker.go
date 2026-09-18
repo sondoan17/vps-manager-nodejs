@@ -33,6 +33,8 @@ type DockerMetrics struct {
 // DockerContainerMetric is a bounded sanitized per-container metric snapshot.
 type DockerContainerMetric struct {
 	ID               string  `json:"id"`
+	fullID           string  // daemon ID retained internally for v2 derivation
+
 	Name             string  `json:"name"`
 	Image            string  `json:"image"`
 	State            string  `json:"state"`

@@ -48,12 +48,16 @@ import { VpsService } from "./vps/vps.service.js";
 import type { VpsRepository } from "./persistence/repositories/vps.repository.js";
 import { LocalAgentSupervisorService } from "./agents/local-agent-supervisor.service.js";
 import { TerminalSessionService } from "./terminal/terminal-session.service.js";
+import { DockerMonitoringController } from "./docker/docker-monitoring.controller.js";
+import { DockerMonitoringService } from "./docker/docker-monitoring.service.js";
+import type { DockerMonitoringRepository } from "./persistence/repositories/docker-monitoring.repository.js";
 import {
   ADMIN_CREDENTIAL_REPOSITORY,
   AGENT_REPOSITORY,
   APP_CONFIG,
   AUDIT_REPOSITORY,
   DATABASE_POOL,
+  DOCKER_MONITORING_REPOSITORY,
   HOST_KEY_PIN_REPOSITORY,
   JOB_REPOSITORY,
   KEY_SERVICE,
@@ -68,6 +72,7 @@ export {
   APP_CONFIG,
   AUDIT_REPOSITORY,
   DATABASE_POOL,
+  DOCKER_MONITORING_REPOSITORY,
   HOST_KEY_PIN_REPOSITORY,
   JOB_REPOSITORY,
   KEY_SERVICE,
@@ -89,6 +94,7 @@ export type AppDependencies = {
   sessions?: SessionRepository;
   adminCredential?: AdminCredentialRepository;
   hostKeyPins?: HostKeyPinRepository;
+  dockerMonitoring?: DockerMonitoringRepository;
   /** Optional pre-created DB pool. Caller owns lifecycle unless ownsPool=true. */
   pool?: Pool;
   ownsPool?: boolean;
@@ -121,7 +127,8 @@ export function createAppModule(deps: AppDependencies = {}): DynamicModule {
     !deps.agent ||
     !deps.sessions ||
     !deps.adminCredential ||
-    !deps.hostKeyPins;
+    !deps.hostKeyPins ||
+    !deps.dockerMonitoring;
   const repositories = needsRepositories
     ? createRepositories(config, deps.pool)
     : undefined;
@@ -142,6 +149,7 @@ export function createAppModule(deps: AppDependencies = {}): DynamicModule {
       MonitoringController,
       AgentController,
       AuthController,
+      DockerMonitoringController,
     ],
     providers: [
       { provide: APP_CONFIG, useValue: config },
@@ -194,6 +202,7 @@ export function createAppModule(deps: AppDependencies = {}): DynamicModule {
           VPS_REPOSITORY,
            APP_CONFIG,
            AgentLifecycleCoordinator,
+           DockerMonitoringService,
          ],
         useFactory: (
           agentRepo: AgentRepository,
@@ -201,7 +210,8 @@ export function createAppModule(deps: AppDependencies = {}): DynamicModule {
           vpsRepo: VpsRepository,
            appConfig: AppConfig,
            lifecycle: AgentLifecycleCoordinator,
-         ) => new AgentService(agentRepo, metricRepo, vpsRepo, appConfig, lifecycle),
+           dockerMonitoringService: DockerMonitoringService,
+         ) => new AgentService(agentRepo, metricRepo, vpsRepo, appConfig, lifecycle, dockerMonitoringService),
       },
       AuditService,
       DashboardService,
@@ -222,6 +232,11 @@ export function createAppModule(deps: AppDependencies = {}): DynamicModule {
         provide: HOST_KEY_PIN_REPOSITORY,
         useValue: deps.hostKeyPins ?? repositories!.hostKeyPins,
       },
+      {
+        provide: DOCKER_MONITORING_REPOSITORY,
+        useValue: deps.dockerMonitoring ?? repositories!.dockerMonitoring,
+      },
+      DockerMonitoringService,
       HostKeyPinService,
       {
         provide: VpsService,

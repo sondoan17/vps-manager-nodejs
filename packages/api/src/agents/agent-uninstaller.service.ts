@@ -13,7 +13,10 @@ import type { VpsRepository } from "../persistence/repositories/vps.repository.j
 import type { AgentRepository } from "../persistence/repositories/agent.repository.js";
 import type { KeyService } from "../ssh/keyService.js";
 import { AuditService } from "../audit/audit.service.js";
-import { JobRunnerService, type JobTaskContext } from "../jobs/job-runner.service.js";
+import {
+  JobRunnerService,
+  type JobTaskContext,
+} from "../jobs/job-runner.service.js";
 import { JobService } from "../jobs/job.service.js";
 import { AgentLifecycleCoordinator } from "./agent-lifecycle-coordinator.js";
 import { sanitiseError } from "../jobs/job-runner.service.js";
@@ -72,7 +75,8 @@ export class AgentUninstallerService {
     @Inject(AuditService) private readonly audit: AuditService,
     @Inject(JobRunnerService) private readonly jobRunner: JobRunnerService,
     @Inject(JobService) private readonly jobs: JobService,
-    @Inject(AgentLifecycleCoordinator) private readonly lifecycle: AgentLifecycleCoordinator,
+    @Inject(AgentLifecycleCoordinator)
+    private readonly lifecycle: AgentLifecycleCoordinator,
   ) {}
 
   /**
@@ -89,7 +93,10 @@ export class AgentUninstallerService {
   async uninstall(
     vpsId: string,
   ): Promise<{ jobId: string; state: AgentState }> {
-    const releaseLifecycle = await this.lifecycle.tryAcquire(vpsId, "uninstall");
+    const releaseLifecycle = await this.lifecycle.tryAcquire(
+      vpsId,
+      "uninstall",
+    );
     let handedOff = false;
     let priorState: AgentState | undefined;
     let job: CommandJob | undefined;
@@ -145,14 +152,16 @@ export class AgentUninstallerService {
       stateOverwritten = true;
 
       // 6. Audit is best-effort and must not prevent dispatch.
-      await this.audit.record({
-        actor: "system",
-        action: "agent.uninstall.start",
-        resourceType: "vps",
-        resourceId: vpsId,
-        result: "success",
-        metadata: { jobId: dispatchedJob.id },
-      }).catch(() => undefined);
+      await this.audit
+        .record({
+          actor: "system",
+          action: "agent.uninstall.start",
+          resourceType: "vps",
+          resourceId: vpsId,
+          result: "success",
+          metadata: { jobId: dispatchedJob.id },
+        })
+        .catch(() => undefined);
 
       // 7. Start async removal task
       this.jobRunner.start(dispatchedJob, async (ctx) => {
@@ -163,8 +172,9 @@ export class AgentUninstallerService {
           const credentials =
             await this.agentRepository.listCredentialsByVps(vpsId);
           for (const credential of credentials) {
-            const revoked =
-              await this.agentRepository.revokeCredential(credential.id);
+            const revoked = await this.agentRepository.revokeCredential(
+              credential.id,
+            );
             if (!revoked) throw new Error("Credential revocation failed");
           }
           const remaining =
@@ -172,7 +182,8 @@ export class AgentUninstallerService {
           if (
             remaining.some(
               (credential) =>
-                credential.status === "active" || credential.status === "pending",
+                credential.status === "active" ||
+                credential.status === "pending",
             )
           ) {
             throw new Error("Active agent credentials remain");
@@ -232,12 +243,14 @@ export class AgentUninstallerService {
     } catch (error: unknown) {
       const message = sanitiseError(error);
       if (job) {
-        await this.jobs.update(job.id, {
-          status: "failed",
-          step: "setup",
-          errorMessage: message,
-          finishedAt: new Date().toISOString(),
-        }).catch(() => undefined);
+        await this.jobs
+          .update(job.id, {
+            status: "failed",
+            step: "setup",
+            errorMessage: message,
+            finishedAt: new Date().toISOString(),
+          })
+          .catch(() => undefined);
       }
       if (stateOverwritten) {
         const recoveryState = priorState ?? {
@@ -246,14 +259,18 @@ export class AgentUninstallerService {
           lastError: message,
           lastInstallJobId: job?.id,
         };
-        await this.agentRepository.upsertState(recoveryState).catch(() => undefined);
+        await this.agentRepository
+          .upsertState(recoveryState)
+          .catch(() => undefined);
       } else if (job && !priorState) {
-        await this.agentRepository.upsertState({
-          vpsId,
-          status: "failed",
-          lastError: message,
-          lastInstallJobId: job.id,
-        }).catch(() => undefined);
+        await this.agentRepository
+          .upsertState({
+            vpsId,
+            status: "failed",
+            lastError: message,
+            lastInstallJobId: job.id,
+          })
+          .catch(() => undefined);
       }
       throw error;
     } finally {
@@ -270,9 +287,19 @@ export class AgentUninstallerService {
 
     // Determine remote home directory (same approach as the installer).
     await ctx.update("connecting", 5);
-    const homeResult = await this.ssh.execCommand(vps, "echo $HOME", auth, 10_000);
+    const homeResult = await this.ssh.execCommand(
+      vps,
+      "echo $HOME",
+      auth,
+      10_000,
+    );
     const homeDir = homeResult.stdout.trim();
-    if (!homeDir || /[\r\n]/.test(homeDir) || !/^\/(?:[^\/]+\/)*[^\/]+$/.test(homeDir) || homeDir === "/") {
+    if (
+      !homeDir ||
+      /[\r\n]/.test(homeDir) ||
+      !/^\/(?:[^\/]+\/)*[^\/]+$/.test(homeDir) ||
+      homeDir === "/"
+    ) {
       throw new Error("Invalid remote home directory");
     }
     const remoteDir = `${homeDir}/${AGENT_DIR}`;

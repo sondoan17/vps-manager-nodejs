@@ -20,7 +20,8 @@ export type VpsRecord = {
   kind?: "remote" | "local";
   managedBy?: "user" | "system";
   dockerMetricsEnabled?: boolean;
-  agentStatus?: "not_installed" | "installing" | "online" | "offline" | "failed";
+  agentStatus?:
+    "not_installed" | "installing" | "online" | "offline" | "failed";
   lastAgentInstallJobId?: string;
   agentLastError?: string;
 };
@@ -203,7 +204,10 @@ export type CreateVpsPayload = {
   username: string;
 };
 
-type ApiResponse<T> = { data?: T; error?: { message?: string; [key: string]: unknown } };
+type ApiResponse<T> = {
+  data?: T;
+  error?: { message?: string; [key: string]: unknown };
+};
 const REQUEST_TIMEOUT_MS = 45_000;
 
 export type SshHostKeyTrustRequired = {
@@ -226,7 +230,9 @@ export class ApiError extends Error {
   }
 }
 
-export function getHostKeyTrustRequired(error: unknown): SshHostKeyTrustRequired | undefined {
+export function getHostKeyTrustRequired(
+  error: unknown,
+): SshHostKeyTrustRequired | undefined {
   if (!(error instanceof ApiError)) return undefined;
   if (error.payload?.error !== "SSH_HOST_KEY_TRUST_REQUIRED") return undefined;
   return error.payload as SshHostKeyTrustRequired;
@@ -276,7 +282,10 @@ async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
   if (response.status === 204) return null as T;
   const payload = (await response.json().catch(() => ({}))) as ApiResponse<T>;
   if (!response.ok) {
-    throw new ApiError(payload.error?.message || "Request failed", payload.error);
+    throw new ApiError(
+      payload.error?.message || "Request failed",
+      payload.error,
+    );
   }
   return payload.data as T;
 }
@@ -327,10 +336,7 @@ function vpsPath(id: string): string {
   return `/api/vps/${encodeURIComponent(id)}`;
 }
 
-export function updateVps(
-  id: string,
-  payload: UpdateVpsPayload,
-) {
+export function updateVps(id: string, payload: UpdateVpsPayload) {
   return request<VpsRecord>(`${vpsPath(id)}`, {
     method: "PATCH",
     body: JSON.stringify(payload),

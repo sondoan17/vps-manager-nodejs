@@ -43,6 +43,9 @@ func (c *Collector) collectDocker(ctx context.Context) *DockerMetrics {
 	if baseURL == "" {
 		baseURL = "http://localhost"
 	}
+	// Persist production defaults so v2 event/storage calls reuse the exact
+	// client and base URL initialized for v1.
+	c.dockerBaseURL = baseURL
 	if client == nil {
 		client = newDefaultDockerHTTPClient(socketPath, DefaultDockerTimeoutSeconds*time.Second)
 		c.dockerHTTPClient = client
@@ -62,9 +65,5 @@ func (c *Collector) collectDocker(ctx context.Context) *DockerMetrics {
 		return unavailableDocker(DockerErrorSocketMissing)
 	}
 
-	// Use a sub-context with timeout for the entire Docker collection.
-	collectCtx, cancel := context.WithTimeout(ctx, DefaultDockerTimeoutSeconds*time.Second)
-	defer cancel()
-
-	return collectDockerFromAPI(collectCtx, client, baseURL)
+	return collectDockerFromAPI(ctx, client, baseURL)
 }

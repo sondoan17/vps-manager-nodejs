@@ -40,6 +40,11 @@ import {
   type HostKeyPinRepository,
 } from "../../ssh/host-key-pin.repository.js";
 import { createPostgresHostKeyPinRepository } from "../../ssh/host-key-pin.postgres.repository.js";
+import {
+  createJsonDockerMonitoringRepository,
+  type DockerMonitoringRepository,
+} from "./docker-monitoring.repository.js";
+import { createPostgresDockerMonitoringRepository } from "./docker-monitoring.postgres.repository.js";
 
 export type RepositorySet = {
   vps: VpsRepository;
@@ -50,6 +55,7 @@ export type RepositorySet = {
   sessions: SessionRepository;
   adminCredential: AdminCredentialRepository;
   hostKeyPins: HostKeyPinRepository;
+  dockerMonitoring: DockerMonitoringRepository;
   pool?: Pool;
 };
 
@@ -75,6 +81,7 @@ export function createRepositories(
       sessions: createPostgresSessionRepository(pool),
       adminCredential: createPostgresAdminCredentialRepository(pool),
       hostKeyPins: createPostgresHostKeyPinRepository(pool),
+      dockerMonitoring: createPostgresDockerMonitoringRepository(pool),
     };
   }
 
@@ -92,6 +99,9 @@ export function createRepositories(
     ),
     hostKeyPins: createJsonHostKeyPinRepository(
       join(config.dataDir, "host-key-pins.json"),
+    ),
+    dockerMonitoring: createJsonDockerMonitoringRepository(
+      join(config.dataDir, "docker-monitoring.json"),
     ),
   };
 }

@@ -187,7 +187,6 @@ export class AuthController {
       };
     }
 
-
     return {
       data: {
         mode: "local",

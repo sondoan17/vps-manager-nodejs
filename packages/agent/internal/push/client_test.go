@@ -62,9 +62,15 @@ func TestPush_Success(t *testing.T) {
 		Uptime:      12345,
 	}
 
-	err := client.Push(context.Background(), m)
+	res, err := client.Push(context.Background(), m)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
+	}
+	if res == nil {
+		t.Fatal("expected non-nil result")
+	}
+	if res.Docker != nil {
+		t.Errorf("expected nil Docker ack for old response, got %+v", res.Docker)
 	}
 }
 
@@ -79,7 +85,7 @@ func TestPush_UnauthorizedFatal(t *testing.T) {
 	client := NewClient(cfg)
 
 	m := &metrics.SystemMetrics{CPU: 10}
-	err := client.Push(context.Background(), m)
+	_, err := client.Push(context.Background(), m)
 
 	if !isAuthErr(err) {
 		t.Fatalf("expected ErrAuth, got %T: %v", err, err)
@@ -105,7 +111,7 @@ func TestPush_ForbiddenFatal(t *testing.T) {
 	client := NewClient(cfg)
 
 	m := &metrics.SystemMetrics{CPU: 10}
-	err := client.Push(context.Background(), m)
+	_, err := client.Push(context.Background(), m)
 
 	if !isAuthErr(err) {
 		t.Fatalf("expected ErrAuth, got %T: %v", err, err)
@@ -124,7 +130,7 @@ func TestPush_RetryableServerError(t *testing.T) {
 	client := NewClient(cfg)
 
 	m := &metrics.SystemMetrics{CPU: 10}
-	err := client.Push(context.Background(), m)
+	_, err := client.Push(context.Background(), m)
 
 	if !isRetryableErr(err) {
 		t.Fatalf("expected ErrRetryable, got %T: %v", err, err)
@@ -153,9 +159,12 @@ func TestPushWithRetry_SuccessAfterRetries(t *testing.T) {
 	ctxWithTimeout, cancel := context.WithTimeout(ctx, 30*time.Second)
 	defer cancel()
 
-	err := client.PushWithRetry(ctxWithTimeout, m)
+	res, err := client.PushWithRetry(ctxWithTimeout, m)
 	if err != nil {
 		t.Fatalf("expected success after retries, got: %v", err)
+	}
+	if res == nil {
+		t.Fatal("expected non-nil result")
 	}
 	if callCount < 3 {
 		t.Errorf("expected at least 3 calls, got %d", callCount)
@@ -174,7 +183,7 @@ func TestPushWithRetry_AuthFatalNoRetry(t *testing.T) {
 	client := NewClient(cfg)
 
 	m := &metrics.SystemMetrics{CPU: 10}
-	err := client.PushWithRetry(context.Background(), m)
+	_, err := client.PushWithRetry(context.Background(), m)
 
 	if !isAuthErr(err) {
 		t.Fatalf("expected ErrAuth, got %T: %v", err, err)
@@ -206,7 +215,7 @@ func TestPush_Timeout(t *testing.T) {
 	}
 
 	m := &metrics.SystemMetrics{CPU: 10}
-	err := client.Push(context.Background(), m)
+	_, err := client.Push(context.Background(), m)
 
 	if err == nil {
 		t.Fatal("expected timeout error")
@@ -239,7 +248,7 @@ func TestPush_PayloadShape(t *testing.T) {
 		Uptime:      3600,
 	}
 
-	err := client.Push(context.Background(), m)
+	_, err := client.Push(context.Background(), m)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -290,7 +299,7 @@ func TestPush_TokenNotInError(t *testing.T) {
 	client := NewClient(cfg)
 
 	m := &metrics.SystemMetrics{CPU: 10}
-	err := client.Push(context.Background(), m)
+	_, err := client.Push(context.Background(), m)
 	if err == nil {
 		t.Fatal("expected error")
 	}
@@ -346,7 +355,7 @@ func TestPushWithRetry_ExhaustRetries(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 
-	err := client.PushWithRetry(ctx, m)
+	_, err := client.PushWithRetry(ctx, m)
 	if err == nil {
 		t.Fatal("expected error after exhausting retries")
 	}
@@ -390,7 +399,7 @@ func TestPush_BadRequestFatal(t *testing.T) {
 	client := NewClient(cfg)
 
 	m := &metrics.SystemMetrics{CPU: 10}
-	err := client.Push(context.Background(), m)
+	_, err := client.Push(context.Background(), m)
 
 	if !IsFatal(err) {
 		t.Fatalf("expected IsFatal, got %T: %v", err, err)
@@ -414,7 +423,7 @@ func TestPush_NotFoundFatal(t *testing.T) {
 	client := NewClient(cfg)
 
 	m := &metrics.SystemMetrics{CPU: 10}
-	err := client.Push(context.Background(), m)
+	_, err := client.Push(context.Background(), m)
 
 	if !IsFatal(err) {
 		t.Fatalf("expected IsFatal, got %T: %v", err, err)
@@ -431,7 +440,7 @@ func TestPush_RetryOn429(t *testing.T) {
 	client := NewClient(cfg)
 
 	m := &metrics.SystemMetrics{CPU: 10}
-	err := client.Push(context.Background(), m)
+	_, err := client.Push(context.Background(), m)
 
 	if !isRetryableErr(err) {
 		t.Fatalf("expected ErrRetryable, got %T: %v", err, err)
@@ -448,7 +457,7 @@ func TestPush_RetryOn408(t *testing.T) {
 	client := NewClient(cfg)
 
 	m := &metrics.SystemMetrics{CPU: 10}
-	err := client.Push(context.Background(), m)
+	_, err := client.Push(context.Background(), m)
 
 	if !isRetryableErr(err) {
 		t.Fatalf("expected ErrRetryable, got %T: %v", err, err)
@@ -508,7 +517,7 @@ func TestPush_SystemInfoSerialized(t *testing.T) {
 		},
 	}
 
-	err := client.Push(context.Background(), m)
+	_, err := client.Push(context.Background(), m)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -562,7 +571,7 @@ func TestPush_SystemInfoOmittedWhenNil(t *testing.T) {
 		// System is nil — should be omitted from JSON
 	}
 
-	err := client.Push(context.Background(), m)
+	_, err := client.Push(context.Background(), m)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -589,7 +598,7 @@ func TestPush_EmptyVpsId(t *testing.T) {
 
 	cfg := createTestConfig(srv.URL)
 	client := NewClient(cfg)
-	err := client.Push(context.Background(), &metrics.SystemMetrics{CPU: 10})
+	_, err := client.Push(context.Background(), &metrics.SystemMetrics{CPU: 10})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -614,7 +623,7 @@ func TestPush_TokenNotInAnyErrorPath(t *testing.T) {
 	}
 
 	m := &metrics.SystemMetrics{CPU: 10}
-	err := client.Push(context.Background(), m)
+	_, err := client.Push(context.Background(), m)
 	errStr := fmt.Sprintf("%v", err)
 	if strings.Contains(errStr, token) {
 		t.Errorf("token leaked in error: %s", errStr)
@@ -643,7 +652,7 @@ func TestPush_ConfigCallbackEnabled(t *testing.T) {
 	})
 
 	m := &metrics.SystemMetrics{CPU: 10}
-	err := client.Push(context.Background(), m)
+	res, err := client.Push(context.Background(), m)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -652,6 +661,9 @@ func TestPush_ConfigCallbackEnabled(t *testing.T) {
 	}
 	if !received.DockerMetricsEnabled {
 		t.Error("expected DockerMetricsEnabled=true")
+	}
+	if res == nil || res.Config == nil || !res.Config.DockerMetricsEnabled {
+		t.Error("expected result config DockerMetricsEnabled=true")
 	}
 }
 
@@ -670,7 +682,7 @@ func TestPush_ConfigCallbackDisabled(t *testing.T) {
 	})
 
 	m := &metrics.SystemMetrics{CPU: 10}
-	err := client.Push(context.Background(), m)
+	_, err := client.Push(context.Background(), m)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -698,7 +710,7 @@ func TestPush_ConfigCallbackMissingConfig_FailsClosed(t *testing.T) {
 	})
 
 	m := &metrics.SystemMetrics{CPU: 10}
-	err := client.Push(context.Background(), m)
+	res, err := client.Push(context.Background(), m)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -707,6 +719,9 @@ func TestPush_ConfigCallbackMissingConfig_FailsClosed(t *testing.T) {
 	}
 	if received.DockerMetricsEnabled {
 		t.Error("expected DockerMetricsEnabled=false when config is missing")
+	}
+	if res == nil || res.Docker != nil {
+		t.Errorf("expected nil Docker ack for old response, got %+v", res)
 	}
 }
 
@@ -725,7 +740,7 @@ func TestPush_ConfigCallbackMalformedJSON_FailsClosed(t *testing.T) {
 	})
 
 	m := &metrics.SystemMetrics{CPU: 10}
-	err := client.Push(context.Background(), m)
+	res, err := client.Push(context.Background(), m)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -734,6 +749,9 @@ func TestPush_ConfigCallbackMalformedJSON_FailsClosed(t *testing.T) {
 	}
 	if received.DockerMetricsEnabled {
 		t.Error("expected DockerMetricsEnabled=false on malformed response")
+	}
+	if res == nil || res.Docker != nil {
+		t.Errorf("expected nil Docker ack on malformed response, got %+v", res)
 	}
 }
 
@@ -750,9 +768,12 @@ func TestPush_ConfigCallbackNotSet(t *testing.T) {
 	// No handler set — must not panic.
 
 	m := &metrics.SystemMetrics{CPU: 10}
-	err := client.Push(context.Background(), m)
+	res, err := client.Push(context.Background(), m)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
+	}
+	if res == nil {
+		t.Fatal("expected non-nil result")
 	}
 }
 
@@ -776,7 +797,7 @@ func TestPush_DockerPayloadSerialised(t *testing.T) {
 	client := NewClient(cfg)
 
 	m := &metrics.SystemMetrics{
-		CPU: 50.0,
+		CPU:    50.0,
 		Memory: 60.0,
 		Docker: &metrics.DockerMetrics{
 			SchemaVersion:  1,
@@ -786,26 +807,34 @@ func TestPush_DockerPayloadSerialised(t *testing.T) {
 		},
 	}
 
-	err := client.Push(context.Background(), m)
+	_, err := client.Push(context.Background(), m)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
 
-	var p payload
-	if err := json.Unmarshal(capturedBody, &p); err != nil {
+	var raw map[string]json.RawMessage
+	if err := json.Unmarshal(capturedBody, &raw); err != nil {
 		t.Fatalf("unmarshal payload: %v", err)
 	}
-	if p.Docker == nil {
+	dockerRaw, ok := raw["docker"]
+	if !ok {
 		t.Fatal("expected Docker field to be present in payload")
 	}
-	if !p.Docker.Available {
+	var v1 metrics.DockerMetrics
+	if err := json.Unmarshal(dockerRaw, &v1); err != nil {
+		t.Fatalf("unmarshal docker branch: %v", err)
+	}
+	if !v1.Available {
 		t.Error("expected Docker.Available=true")
 	}
-	if p.Docker.ContainerTotal != 2 {
-		t.Errorf("Docker.ContainerTotal = %d, want 2", p.Docker.ContainerTotal)
+	if v1.ContainerTotal != 2 {
+		t.Errorf("Docker.ContainerTotal = %d, want 2", v1.ContainerTotal)
 	}
-	if p.Docker.CPUPercent != 75.0 {
-		t.Errorf("Docker.CPUPercent = %f, want 75.0", p.Docker.CPUPercent)
+	if v1.CPUPercent != 75.0 {
+		t.Errorf("Docker.CPUPercent = %f, want 75.0", v1.CPUPercent)
+	}
+	if v1.SchemaVersion != 1 {
+		t.Errorf("Docker.SchemaVersion = %d, want 1", v1.SchemaVersion)
 	}
 }
 
@@ -829,7 +858,7 @@ func TestPush_DockerOmittedWhenNil(t *testing.T) {
 		Memory: 60.0,
 	}
 
-	err := client.Push(context.Background(), m)
+	_, err := client.Push(context.Background(), m)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -840,5 +869,675 @@ func TestPush_DockerOmittedWhenNil(t *testing.T) {
 	}
 	if _, ok := raw["docker"]; ok {
 		t.Error("expected 'docker' field to be omitted when nil")
+	}
+}
+
+// ---------------------------------------------------------------------------
+// I2 typed push response
+// ---------------------------------------------------------------------------
+
+func TestPush_TypedAckSuccess(t *testing.T) {
+	var received *ConfigResponse
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte(`{"data":{"ok":true,"vpsId":"vps-1","receivedAt":"2026-01-01T00:00:00Z","config":{"dockerMetricsEnabled":true,"maxSchemaVersion":2,"history":true,"containerHistory":true,"events":true,"storage":true},"docker":{"ingestStatus":"committed","batchId":"batch-1","snapshotId":"snap-1","agentInstanceId":"instance-1","committedWatermark":{"timeNano":"123456789","boundaryDigests":["abc123"]}}}}`))
+	}))
+	defer srv.Close()
+
+	cfg := createTestConfig(srv.URL)
+	client := NewClient(cfg)
+	client.SetConfigHandler(func(cr *ConfigResponse) {
+		received = cr
+	})
+
+	res, err := client.Push(context.Background(), &metrics.SystemMetrics{CPU: 10})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if res == nil {
+		t.Fatal("expected non-nil result")
+	}
+	if res.VpsId != "vps-1" {
+		t.Errorf("VpsId = %q, want vps-1", res.VpsId)
+	}
+	if res.ReceivedAt != "2026-01-01T00:00:00Z" {
+		t.Errorf("ReceivedAt = %q", res.ReceivedAt)
+	}
+	if res.Config == nil || !res.Config.DockerMetricsEnabled {
+		t.Error("expected config enabled")
+	}
+	if res.Config.MaxSchemaVersion == nil || *res.Config.MaxSchemaVersion != 2 {
+		t.Errorf("expected maxSchemaVersion=2, got %+v", res.Config)
+	}
+	if res.Docker == nil {
+		t.Fatal("expected non-nil Docker ack")
+	}
+	if res.Docker.IngestStatus != "committed" {
+		t.Errorf("IngestStatus = %q", res.Docker.IngestStatus)
+	}
+	if res.Docker.BatchId != "batch-1" || res.Docker.SnapshotId != "snap-1" || res.Docker.AgentInstanceId != "instance-1" {
+		t.Errorf("ack IDs mismatch: %+v", res.Docker)
+	}
+	if res.Docker.CommittedWatermark.TimeNano != "123456789" {
+		t.Errorf("watermark = %q", res.Docker.CommittedWatermark.TimeNano)
+	}
+	if len(res.Docker.CommittedWatermark.BoundaryDigests) != 1 {
+		t.Errorf("digests = %v", res.Docker.CommittedWatermark.BoundaryDigests)
+	}
+	if received == nil || !received.DockerMetricsEnabled {
+		t.Error("config handler should receive enabled")
+	}
+}
+
+func TestPush_TypedAckAlreadyCommitted(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte(`{"data":{"ok":true,"vpsId":"vps-1","receivedAt":"2026-01-01T00:00:00Z","config":{"dockerMetricsEnabled":true},"docker":{"ingestStatus":"already_committed","batchId":"b1","snapshotId":"s1","agentInstanceId":"i1","committedWatermark":{"timeNano":"0","boundaryDigests":[]}}}}`))
+	}))
+	defer srv.Close()
+
+	cfg := createTestConfig(srv.URL)
+	client := NewClient(cfg)
+
+	res, err := client.Push(context.Background(), &metrics.SystemMetrics{CPU: 10})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if res == nil || res.Docker == nil {
+		t.Fatal("expected non-nil Docker ack")
+	}
+	if res.Docker.IngestStatus != "already_committed" {
+		t.Errorf("IngestStatus = %q", res.Docker.IngestStatus)
+	}
+}
+
+func TestPush_TypedAckReplayIgnored(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusCreated)
+		_, _ = w.Write([]byte(`{"data":{"ok":true,"vpsId":"vps-1","receivedAt":"2026-01-01T00:00:00Z","config":{"dockerMetricsEnabled":false},"docker":{"ingestStatus":"replay_ignored","batchId":"b1","snapshotId":"s1","agentInstanceId":"i1","committedWatermark":{"timeNano":"42","boundaryDigests":[]}}}}`))
+	}))
+	defer srv.Close()
+
+	cfg := createTestConfig(srv.URL)
+	client := NewClient(cfg)
+
+	res, err := client.Push(context.Background(), &metrics.SystemMetrics{CPU: 10})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if res == nil || res.Docker == nil || res.Docker.IngestStatus != "replay_ignored" {
+		t.Fatalf("expected replay_ignored ack, got %+v", res)
+	}
+}
+
+func TestPush_OldResponseNilAck(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte(`{"data":{"ok":true,"vpsId":"vps-1","receivedAt":"2026-01-01T00:00:00Z","config":{"dockerMetricsEnabled":false}}}`))
+	}))
+	defer srv.Close()
+
+	cfg := createTestConfig(srv.URL)
+	client := NewClient(cfg)
+
+	res, err := client.Push(context.Background(), &metrics.SystemMetrics{CPU: 10})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if res == nil {
+		t.Fatal("expected non-nil result")
+	}
+	if res.Docker != nil {
+		t.Errorf("expected nil Docker ack, got %+v", res.Docker)
+	}
+}
+
+func TestPush_InvalidAckFailsClosed(t *testing.T) {
+	cases := []struct {
+		name string
+		body string
+	}{
+		{"bad enum", `{"data":{"ok":true,"config":{"dockerMetricsEnabled":true},"docker":{"ingestStatus":"bogus","batchId":"b1","snapshotId":"s1","agentInstanceId":"i1","committedWatermark":{"timeNano":"1","boundaryDigests":[]}}}}`},
+		{"empty batch", `{"data":{"ok":true,"config":{"dockerMetricsEnabled":true},"docker":{"ingestStatus":"committed","batchId":"","snapshotId":"s1","agentInstanceId":"i1","committedWatermark":{"timeNano":"1","boundaryDigests":[]}}}}`},
+		{"bad id chars", `{"data":{"ok":true,"config":{"dockerMetricsEnabled":true},"docker":{"ingestStatus":"committed","batchId":"bad id!","snapshotId":"s1","agentInstanceId":"i1","committedWatermark":{"timeNano":"1","boundaryDigests":[]}}}}`},
+		{"bad watermark", `{"data":{"ok":true,"config":{"dockerMetricsEnabled":true},"docker":{"ingestStatus":"committed","batchId":"b1","snapshotId":"s1","agentInstanceId":"i1","committedWatermark":{"timeNano":"-5","boundaryDigests":[]}}}}`},
+		{"bad digest", `{"data":{"ok":true,"config":{"dockerMetricsEnabled":true},"docker":{"ingestStatus":"committed","batchId":"b1","snapshotId":"s1","agentInstanceId":"i1","committedWatermark":{"timeNano":"1","boundaryDigests":["bad digest!"]}}}}`},
+		{"missing watermark", `{"data":{"ok":true,"config":{"dockerMetricsEnabled":true},"docker":{"ingestStatus":"committed","batchId":"b1","snapshotId":"s1","agentInstanceId":"i1"}}}`},
+		{"too many digests", ""}, // filled below
+	}
+	tooMany := `{"data":{"ok":true,"config":{"dockerMetricsEnabled":true},"docker":{"ingestStatus":"committed","batchId":"b1","snapshotId":"s1","agentInstanceId":"i1","committedWatermark":{"timeNano":"1","boundaryDigests":[`
+	digests := make([]string, 0, 257)
+	for i := 0; i < 257; i++ {
+		digests = append(digests, fmt.Sprintf(`"d%d"`, i))
+	}
+	tooMany += strings.Join(digests, ",") + `]}}}}`
+	cases[6].body = tooMany
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			var received *ConfigResponse
+			srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				w.WriteHeader(http.StatusOK)
+				_, _ = w.Write([]byte(tc.body))
+			}))
+			defer srv.Close()
+
+			cfg := createTestConfig(srv.URL)
+			client := NewClient(cfg)
+			client.SetConfigHandler(func(cr *ConfigResponse) {
+				received = cr
+			})
+			res, err := client.Push(context.Background(), &metrics.SystemMetrics{CPU: 10})
+			if err != nil {
+				t.Fatalf("invalid ack must still succeed: %v", err)
+			}
+			if res == nil {
+				t.Fatal("expected non-nil result")
+			}
+			if res.Docker != nil {
+				t.Errorf("expected nil Docker ack (fail closed), got %+v", res.Docker)
+			}
+			if received == nil || !received.DockerMetricsEnabled {
+				t.Error("config callback must still fire with enabled=true")
+			}
+		})
+	}
+}
+
+func TestPush_MismatchDockerShapeFailsClosed(t *testing.T) {
+	shapes := []string{
+		`{"data":{"ok":true,"config":{"dockerMetricsEnabled":true},"docker":[]}}`,
+		`{"data":{"ok":true,"config":{"dockerMetricsEnabled":true},"docker":"ack"}}`,
+		`{"data":{"ok":true,"config":{"dockerMetricsEnabled":true},"docker":42}}`,
+		`{"data":{"ok":true,"config":{"dockerMetricsEnabled":true},"docker":{"ingestStatus":"committed"}}}`,
+	}
+	for i, body := range shapes {
+		srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			w.WriteHeader(http.StatusOK)
+			_, _ = w.Write([]byte(body))
+		}))
+		func() {
+			defer srv.Close()
+			cfg := createTestConfig(srv.URL)
+			client := NewClient(cfg)
+			res, err := client.Push(context.Background(), &metrics.SystemMetrics{CPU: 10})
+			if err != nil {
+				t.Fatalf("shape %d: unexpected error: %v", i, err)
+			}
+			if res == nil || res.Docker != nil {
+				t.Errorf("shape %d: expected nil Docker ack, got %+v", i, res)
+			}
+		}()
+	}
+}
+
+func TestPush_Conflict(t *testing.T) {
+	callCount := 0
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		callCount++
+		w.WriteHeader(http.StatusConflict)
+		_, _ = w.Write([]byte(`conflict for vma_secret_token_xyz and more text ` + strings.Repeat("x", 500)))
+	}))
+	defer srv.Close()
+
+	cfg := createTestConfig(srv.URL)
+	client := NewClient(cfg)
+
+	_, err := client.Push(context.Background(), &metrics.SystemMetrics{CPU: 10})
+	if err == nil {
+		t.Fatal("expected conflict error")
+	}
+	var conflictErr *ErrConflict
+	if !isErrType(err, &conflictErr) {
+		t.Fatalf("expected ErrConflict, got %T: %v", err, err)
+	}
+	if conflictErr.StatusCode != 409 {
+		t.Errorf("StatusCode = %d, want 409", conflictErr.StatusCode)
+	}
+	if strings.Contains(conflictErr.Body, "vma_secret_token_xyz") {
+		t.Errorf("conflict body must be sanitized, got: %s", conflictErr.Body)
+	}
+	if len(conflictErr.Body) > 210 {
+		t.Errorf("conflict body must be bounded, got length %d", len(conflictErr.Body))
+	}
+	if IsFatal(err) {
+		t.Error("ErrConflict must not be fatal")
+	}
+	if isRetryableErr(err) {
+		t.Error("ErrConflict must not be retryable")
+	}
+}
+
+func TestPushWithRetry_ConflictNoRetry(t *testing.T) {
+	callCount := 0
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		callCount++
+		w.WriteHeader(http.StatusConflict)
+		_, _ = w.Write([]byte(`conflict`))
+	}))
+	defer srv.Close()
+
+	cfg := createTestConfig(srv.URL)
+	client := NewClient(cfg)
+
+	_, err := client.PushWithRetry(context.Background(), &metrics.SystemMetrics{CPU: 10})
+	if err == nil {
+		t.Fatal("expected conflict error")
+	}
+	var conflictErr *ErrConflict
+	if !isErrType(err, &conflictErr) {
+		t.Fatalf("expected ErrConflict, got %T", err)
+	}
+	if callCount != 1 {
+		t.Errorf("expected exactly 1 call (no blind retry on 409), got %d", callCount)
+	}
+}
+
+func TestPush_DockerStripRetryNilAck(t *testing.T) {
+	callCount := 0
+	var secondHasDocker bool
+	var secondChecked bool
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		callCount++
+		var raw map[string]json.RawMessage
+		body, _ := io.ReadAll(r.Body)
+		_ = json.Unmarshal(body, &raw)
+		_, hasDocker := raw["docker"]
+		if callCount == 1 {
+			if !hasDocker {
+				t.Error("first request should include docker")
+			}
+			w.WriteHeader(http.StatusBadRequest)
+			_, _ = w.Write([]byte(`{"error":"bad docker"}`))
+			return
+		}
+		secondHasDocker = hasDocker
+		secondChecked = true
+		w.WriteHeader(http.StatusOK)
+		// Even though the server returns a docker ack, the stripped retry
+		// result must have nil Docker ack.
+		_, _ = w.Write([]byte(`{"data":{"ok":true,"vpsId":"vps-1","receivedAt":"2026-01-01T00:00:00Z","config":{"dockerMetricsEnabled":false},"docker":{"ingestStatus":"committed","batchId":"b1","snapshotId":"s1","agentInstanceId":"i1","committedWatermark":{"timeNano":"1","boundaryDigests":[]}}}}`))
+	}))
+	defer srv.Close()
+
+	cfg := createTestConfig(srv.URL)
+	client := NewClient(cfg)
+	var configs []*ConfigResponse
+	client.SetConfigHandler(func(cr *ConfigResponse) {
+		configs = append(configs, cr)
+	})
+
+	m := &metrics.SystemMetrics{
+		CPU:    10,
+		Docker: &metrics.DockerMetrics{SchemaVersion: 1, Available: true},
+	}
+	res, err := client.Push(context.Background(), m)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if callCount != 2 {
+		t.Errorf("expected 2 calls (strip+retry once), got %d", callCount)
+	}
+	if !secondChecked || secondHasDocker {
+		t.Error("second (stripped) request must not include docker")
+	}
+	if res == nil {
+		t.Fatal("expected non-nil result")
+	}
+	if res.Docker != nil {
+		t.Errorf("stripped retry result must have nil Docker ack, got %+v", res.Docker)
+	}
+	if len(configs) == 0 || configs[0].DockerMetricsEnabled {
+		t.Error("first config callback should disable Docker (fail closed)")
+	}
+}
+
+func TestPushWithRetry_StrippedRetryResult(t *testing.T) {
+	callCount := 0
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		callCount++
+		if callCount == 1 {
+			w.WriteHeader(http.StatusBadRequest)
+			return
+		}
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte(`{"data":{"ok":true,"config":{"dockerMetricsEnabled":false}}}`))
+	}))
+	defer srv.Close()
+
+	cfg := createTestConfig(srv.URL)
+	client := NewClient(cfg)
+	m := &metrics.SystemMetrics{
+		CPU:    10,
+		Docker: &metrics.DockerMetrics{SchemaVersion: 1, Available: true},
+	}
+	res, err := client.PushWithRetry(context.Background(), m)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if res == nil || res.Docker != nil {
+		t.Errorf("expected nil Docker ack, got %+v", res)
+	}
+}
+
+// ---------------------------------------------------------------------------
+// Docker v2 serialization + capability gate
+// ---------------------------------------------------------------------------
+
+func boolPtr(b bool) *bool { return &b }
+func intPtr(i int) *int    { return &i }
+
+func advertisedConfig() *ConfigResponse {
+	return &ConfigResponse{
+		DockerMetricsEnabled: true,
+		MaxSchemaVersion:     intPtr(2),
+		History:              boolPtr(true),
+		ContainerHistory:     boolPtr(true),
+		Events:               boolPtr(true),
+		Storage:              boolPtr(true),
+	}
+}
+
+func testV2Batch() *metrics.DockerMetricsV2 {
+	return &metrics.DockerMetricsV2{
+		CollectedAt:      "2026-01-01T00:00:30Z",
+		SchemaVersion:    metrics.DockerSchemaVersionV2,
+		AgentInstanceID:  "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+		SnapshotID:       "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+		BatchID:          "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+		Available:        true,
+		ContainerTotal:   1,
+		ContainerRunning: 1,
+		Containers: []metrics.DockerContainerV2{
+			{
+				ContainerKey:     "kkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkk",
+				ID:               "abc123def456",
+				Name:             "/web",
+				Image:            "nginx:1.25",
+				State:            "running",
+				CPUPercent:       1.5,
+				MemoryUsageBytes: 1024,
+				NetworkRxBytes:   10,
+				NetworkTxBytes:   10,
+				BlockReadBytes:   10,
+				BlockWriteBytes:  10,
+				PIDs:             2,
+			},
+		},
+		Events: []metrics.DockerEventV2{
+			{
+				EventID:         "evt-1",
+				EventOccurredAt: "2026-01-01T00:00:10Z",
+				ContainerKey:    "kkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkk",
+				Action:          metrics.DockerV2ActionDie,
+				Context:         metrics.DockerEventContextV2{Version: metrics.DockerEventContextVersionV1},
+			},
+		},
+		EventWindow: &metrics.DockerEventWindowV2{
+			Since: "1",
+			Until: "2",
+		},
+		FromWatermark: &metrics.DockerEventWatermarkV2{
+			TimeNano:        "1",
+			BoundaryDigests: []string{},
+		},
+		ProposedWatermark: &metrics.DockerEventWatermarkV2{
+			TimeNano:        "2",
+			BoundaryDigests: []string{},
+		},
+	}
+}
+
+func TestPush_PayloadContainsV2WhenGateEnabled(t *testing.T) {
+	var capturedBody []byte
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var err error
+		capturedBody, err = io.ReadAll(r.Body)
+		if err != nil {
+			t.Errorf("read body: %v", err)
+		}
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte(`{"data":{"ok":true,"config":{"dockerMetricsEnabled":true,"maxSchemaVersion":2,"history":true,"containerHistory":true,"events":true,"storage":true}}}`))
+	}))
+	defer srv.Close()
+
+	cfg := createTestConfig(srv.URL)
+	client := NewClient(cfg)
+	if client.IsDockerV2Enabled() {
+		t.Fatal("v2 gate must default to false")
+	}
+	client.SetDockerV2FromConfig(advertisedConfig())
+	if !client.IsDockerV2Enabled() {
+		t.Fatal("v2 gate should be enabled after advertised config")
+	}
+
+	m := &metrics.SystemMetrics{
+		CPU: 10,
+		Docker: &metrics.DockerMetrics{
+			SchemaVersion:  1,
+			Available:      true,
+			ContainerTotal: 1,
+		},
+		DockerV2: testV2Batch(),
+	}
+	if _, err := client.Push(context.Background(), m); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	var raw map[string]json.RawMessage
+	if err := json.Unmarshal(capturedBody, &raw); err != nil {
+		t.Fatalf("unmarshal payload: %v", err)
+	}
+	dockerRaw, ok := raw["docker"]
+	if !ok {
+		t.Fatal("expected 'docker' branch in payload")
+	}
+	var branch map[string]json.RawMessage
+	if err := json.Unmarshal(dockerRaw, &branch); err != nil {
+		t.Fatalf("unmarshal docker branch: %v", err)
+	}
+	var schemaVersion int
+	if err := json.Unmarshal(branch["schemaVersion"], &schemaVersion); err != nil {
+		t.Fatalf("unmarshal schemaVersion: %v", err)
+	}
+	if schemaVersion != 2 {
+		t.Errorf("docker.schemaVersion = %d, want 2 (canonical flat v2 under `docker`)", schemaVersion)
+	}
+	var v2 metrics.DockerMetricsV2
+	if err := json.Unmarshal(dockerRaw, &v2); err != nil {
+		t.Fatalf("unmarshal v2 branch: %v", err)
+	}
+	if v2.BatchID == "" || v2.AgentInstanceID == "" {
+		t.Errorf("v2 branch missing canonical identity fields: %+v", v2)
+	}
+	if _, ok := raw["dockerV2"]; ok {
+		t.Error("must not invent a separate `dockerV2` wire field; v2 rides on `docker`")
+	}
+}
+
+func TestPush_V1PreservedWhenGateDisabled(t *testing.T) {
+	var capturedBody []byte
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var err error
+		capturedBody, err = io.ReadAll(r.Body)
+		if err != nil {
+			t.Errorf("read body: %v", err)
+		}
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte(`{"data":{"ok":true,"config":{"dockerMetricsEnabled":true}}}`))
+	}))
+	defer srv.Close()
+
+	cfg := createTestConfig(srv.URL)
+	client := NewClient(cfg)
+
+	m := &metrics.SystemMetrics{
+		CPU: 10,
+		Docker: &metrics.DockerMetrics{
+			SchemaVersion:  1,
+			Available:      true,
+			ContainerTotal: 3,
+		},
+		DockerV2: testV2Batch(),
+	}
+	if _, err := client.Push(context.Background(), m); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	var raw map[string]json.RawMessage
+	if err := json.Unmarshal(capturedBody, &raw); err != nil {
+		t.Fatalf("unmarshal payload: %v", err)
+	}
+	dockerRaw, ok := raw["docker"]
+	if !ok {
+		t.Fatal("expected legacy v1 'docker' branch")
+	}
+	var v1 metrics.DockerMetrics
+	if err := json.Unmarshal(dockerRaw, &v1); err != nil {
+		t.Fatalf("unmarshal v1 branch: %v", err)
+	}
+	if v1.SchemaVersion != 1 || v1.ContainerTotal != 3 {
+		t.Errorf("expected legacy v1 branch preserved, got %+v", v1)
+	}
+}
+
+func TestPush_OldResponseLeavesGateFalse(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte(`{"data":{"ok":true,"config":{"dockerMetricsEnabled":true}}}`))
+	}))
+	defer srv.Close()
+
+	cfg := createTestConfig(srv.URL)
+	client := NewClient(cfg)
+	if _, err := client.Push(context.Background(), &metrics.SystemMetrics{CPU: 10}); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if client.IsDockerV2Enabled() {
+		t.Error("old response without capability flags must leave v2 gate false")
+	}
+}
+
+func TestPush_MalformedResponseLeavesGateFalse(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte(`not json`))
+	}))
+	defer srv.Close()
+
+	cfg := createTestConfig(srv.URL)
+	client := NewClient(cfg)
+	client.SetDockerV2Enabled(true) // prove fail-closed resets on malformed
+	if _, err := client.Push(context.Background(), &metrics.SystemMetrics{CPU: 10}); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if client.IsDockerV2Enabled() {
+		t.Error("malformed response must fail closed to v2 gate false")
+	}
+}
+
+func TestPush_AdvertisedResponseEnablesGate(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte(`{"data":{"ok":true,"config":{"dockerMetricsEnabled":true,"maxSchemaVersion":2,"history":true,"containerHistory":true,"events":true,"storage":true}}}`))
+	}))
+	defer srv.Close()
+
+	cfg := createTestConfig(srv.URL)
+	client := NewClient(cfg)
+	if _, err := client.Push(context.Background(), &metrics.SystemMetrics{CPU: 10}); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !client.IsDockerV2Enabled() {
+		t.Error("advertised maxSchemaVersion>=2 with all capability flags must enable v2 gate")
+	}
+}
+
+func TestPush_PartialAdvertisementLeavesGateFalse(t *testing.T) {
+	cases := []struct {
+		name string
+		body string
+	}{
+		{"schema 1", `{"data":{"ok":true,"config":{"dockerMetricsEnabled":true,"maxSchemaVersion":1,"history":true,"containerHistory":true,"events":true,"storage":true}}}`},
+		{"missing flags", `{"data":{"ok":true,"config":{"dockerMetricsEnabled":true,"maxSchemaVersion":2}}}`},
+		{"one flag false", `{"data":{"ok":true,"config":{"dockerMetricsEnabled":true,"maxSchemaVersion":2,"history":true,"containerHistory":true,"events":false,"storage":true}}}`},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				w.WriteHeader(http.StatusOK)
+				_, _ = w.Write([]byte(tc.body))
+			}))
+			defer srv.Close()
+			cfg := createTestConfig(srv.URL)
+			client := NewClient(cfg)
+			if _, err := client.Push(context.Background(), &metrics.SystemMetrics{CPU: 10}); err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
+			if client.IsDockerV2Enabled() {
+				t.Errorf("partial advertisement must leave gate false: %s", tc.body)
+			}
+		})
+	}
+}
+
+func TestPush_DowngradeStripsV2(t *testing.T) {
+	callCount := 0
+	var secondHasDocker bool
+	var secondChecked bool
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		callCount++
+		var raw map[string]json.RawMessage
+		body, _ := io.ReadAll(r.Body)
+		_ = json.Unmarshal(body, &raw)
+		_, hasDocker := raw["docker"]
+		if callCount == 1 {
+			if !hasDocker {
+				t.Error("first request should include docker (v2 branch)")
+			} else {
+				var branch map[string]json.RawMessage
+				if err := json.Unmarshal(raw["docker"], &branch); err == nil {
+					var sv int
+					if err := json.Unmarshal(branch["schemaVersion"], &sv); err == nil && sv != 2 {
+						t.Errorf("first request docker.schemaVersion = %d, want 2", sv)
+					}
+				}
+			}
+			w.WriteHeader(http.StatusBadRequest)
+			_, _ = w.Write([]byte(`{"error":"bad docker"}`))
+			return
+		}
+		secondHasDocker = hasDocker
+		secondChecked = true
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte(`{"data":{"ok":true,"config":{"dockerMetricsEnabled":false}}}`))
+	}))
+	defer srv.Close()
+
+	cfg := createTestConfig(srv.URL)
+	client := NewClient(cfg)
+	client.SetDockerV2FromConfig(advertisedConfig())
+	if !client.IsDockerV2Enabled() {
+		t.Fatal("gate must be enabled before downgrade test")
+	}
+	m := &metrics.SystemMetrics{
+		CPU:      10,
+		Docker:   &metrics.DockerMetrics{SchemaVersion: 1, Available: true},
+		DockerV2: testV2Batch(),
+	}
+	res, err := client.Push(context.Background(), m)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if callCount != 2 {
+		t.Errorf("expected 2 calls (strip+retry once), got %d", callCount)
+	}
+	if !secondChecked || secondHasDocker {
+		t.Error("second (stripped) request must not include docker (neither v1 nor v2)")
+	}
+	if client.IsDockerV2Enabled() {
+		t.Error("400 downgrade must disable the v2 gate (fail closed)")
+	}
+	if res == nil || res.Docker != nil {
+		t.Errorf("stripped retry result must have nil Docker ack, got %+v", res)
 	}
 }

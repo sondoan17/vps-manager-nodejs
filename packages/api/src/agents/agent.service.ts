@@ -21,10 +21,26 @@ import {
 import { agentMetricPayloadSchema } from "./agent.schemas.js";
 import { VpsNotFoundError } from "../common/errors.js";
 import { AgentLifecycleCoordinator } from "./agent-lifecycle-coordinator.js";
+import { DockerMonitoringService } from "../docker/docker-monitoring.service.js";
+import type { DockerV2IngestResult } from "../docker/docker-monitoring.models.js";
 
 export type IngestMetricResult = {
   sample: MetricSample;
   config: { dockerMetricsEnabled: boolean };
+  docker?: {
+    ingestStatus: DockerV2IngestResult["ingestStatus"];
+    snapshotId: string;
+    agentInstanceId: string;
+    batchId?: string;
+    revision: number;
+    capabilities: {
+      maxSchemaVersion: 2;
+      history: true;
+      containerHistory: true;
+      events: true;
+      storage: true;
+    };
+  };
 };
 
 // ── Token format ────────────────────────────────────────────────────────
@@ -79,7 +95,10 @@ export class AgentService {
     private readonly metricRepository: MetricRepository,
     @Inject(VPS_REPOSITORY) private readonly vpsRepository: VpsRepository,
     @Inject(APP_CONFIG) private readonly config: AppConfig,
-    @Inject(AgentLifecycleCoordinator) private readonly lifecycle: AgentLifecycleCoordinator,
+    @Inject(AgentLifecycleCoordinator)
+    private readonly lifecycle: AgentLifecycleCoordinator,
+    @Inject(DockerMonitoringService)
+    private readonly dockerMonitoringService: DockerMonitoringService,
   ) {}
 
   /**
@@ -196,9 +215,9 @@ export class AgentService {
     const releaseIngest = await this.lifecycle.beginIngest(credential.vpsId);
     try {
       // 1. Verify the VPS still exists and get its config before validating the
-    // optional Docker branch. Docker payloads are ignored when disabled, so a
-    // stale agent cycle cannot break core metric ingest with Docker-only schema
-    // errors.
+      // optional Docker branch. Docker payloads are ignored when disabled, so a
+      // stale agent cycle cannot break core metric ingest with Docker-only schema
+      // errors.
       if (this.lifecycle.isUninstalling(credential.vpsId))
         throw new UnauthorizedException({
           error: { message: "Agent lifecycle operation in progress" },
@@ -210,129 +229,155 @@ export class AgentService {
         throw new UnauthorizedException({
           error: { message: "Token has been revoked" },
         });
-    credential = currentCredential;
-    const vps = await this.vpsRepository.get(credential.vpsId);
-    if (!vps) {
-      throw new VpsNotFoundError();
-    }
+      credential = currentCredential;
+      const vps = await this.vpsRepository.get(credential.vpsId);
+      if (!vps) {
+        throw new VpsNotFoundError();
+      }
 
-    const dockerMetricsEnabled = vps.dockerMetricsEnabled ?? false;
+      const dockerMetricsEnabled = vps.dockerMetricsEnabled ?? false;
 
-    // 2. Validate payload
-    let parsed: AgentMetricPayload;
-    try {
-      parsed = agentMetricPayloadSchema.parse(
-        dockerMetricsEnabled ? payload : omitDockerField(payload),
-      );
-    } catch (error: unknown) {
-      if (error instanceof ZodError) {
+      // 2. Validate payload
+      let parsed: AgentMetricPayload;
+      try {
+        parsed = agentMetricPayloadSchema.parse(
+          dockerMetricsEnabled ? payload : omitDockerField(payload),
+        );
+      } catch (error: unknown) {
+        if (error instanceof ZodError) {
+          throw error;
+        }
         throw error;
       }
-      throw error;
-    }
 
-    // 3. If vpsId is provided in payload, it must match the credential owner
-    if (parsed.vpsId !== undefined && parsed.vpsId !== credential.vpsId) {
-      throw new UnauthorizedException({
-        error: { message: "VPS ID mismatch" },
-      });
-    }
+      // 3. If vpsId is provided in payload, it must match the credential owner
+      if (parsed.vpsId !== undefined && parsed.vpsId !== credential.vpsId) {
+        throw new UnauthorizedException({
+          error: { message: "VPS ID mismatch" },
+        });
+      }
 
-    const now = new Date().toISOString();
+      const now = new Date().toISOString();
 
-    // 4. Auto-activate pending credentials
-    if (credential.status === "pending") {
+      // 4. Auto-activate pending credentials
+      if (credential.status === "pending") {
+        await this.agentRepository.updateCredential(credential.id, {
+          status: "active",
+          activatedAt: now,
+        });
+      }
+
+      // 5. Update credential usage (fire-and-forget style via Promise)
       await this.agentRepository.updateCredential(credential.id, {
-        status: "active",
-        activatedAt: now,
+        lastUsedAt: now,
+        lastUsedIp: ip,
       });
-    }
 
-    // 5. Update credential usage (fire-and-forget style via Promise)
-    await this.agentRepository.updateCredential(credential.id, {
-      lastUsedAt: now,
-      lastUsedIp: ip,
-    });
-
-    // 6. Upsert agent state
-    const existingState = await this.agentRepository.getState(credential.vpsId);
-    await this.agentRepository.upsertState({
-      vpsId: credential.vpsId,
-      status: "online",
-      version: parsed.agentVersion,
-      installedAt: existingState?.installedAt,
-      lastSeenAt: now,
-      lastError: undefined,
-      lastInstallJobId: existingState?.lastInstallJobId,
-    });
-
-    // 7. If system info provided, upsert it (before metric append)
-    if (parsed.system) {
-      await this.agentRepository.upsertSystemInfo({
+      // 6. Upsert agent state
+      const existingState = await this.agentRepository.getState(
+        credential.vpsId,
+      );
+      await this.agentRepository.upsertState({
         vpsId: credential.vpsId,
+        status: "online",
+        version: parsed.agentVersion,
+        installedAt: existingState?.installedAt,
+        lastSeenAt: now,
+        lastError: undefined,
+        lastInstallJobId: existingState?.lastInstallJobId,
+      });
+
+      // 7. If system info provided, upsert it (before metric append)
+      if (parsed.system) {
+        await this.agentRepository.upsertSystemInfo({
+          vpsId: credential.vpsId,
+          collectedAt: parsed.collectedAt,
+          receivedAt: now,
+          agentVersion: parsed.agentVersion,
+          ...parsed.system,
+        });
+      }
+
+      // 8. V2 Docker observations use the durable monitoring ingest path.
+      let docker: IngestMetricResult["docker"];
+      if (parsed.docker && dockerMetricsEnabled && parsed.docker.schemaVersion === 2) {
+        const result = await this.dockerMonitoringService.ingestV2(
+          credential.vpsId,
+          parsed.docker,
+          now,
+        );
+        docker = {
+          ingestStatus: result.ingestStatus,
+          snapshotId: result.snapshotId,
+          agentInstanceId: result.agentInstanceId,
+          ...(result.batchId ? { batchId: result.batchId } : {}),
+          revision: result.revision,
+          capabilities: {
+            maxSchemaVersion: 2,
+            history: true,
+            containerHistory: true,
+            events: true,
+            storage: true,
+          },
+        };
+      } else if (parsed.docker && dockerMetricsEnabled) {
+        const dockerMetrics: AgentDockerMetrics = {
+          vpsId: credential.vpsId,
+          collectedAt: parsed.docker.collectedAt,
+          receivedAt: now,
+          agentVersion: parsed.docker.agentVersion ?? parsed.agentVersion,
+          engineVersion: parsed.docker.engineVersion,
+          apiVersion: parsed.docker.apiVersion,
+          os: parsed.docker.os,
+          architecture: parsed.docker.architecture,
+          schemaVersion: 1,
+          available: parsed.docker.available,
+          errorCode: parsed.docker.errorCode,
+          containerTotal: parsed.docker.containerTotal,
+          containerRunning: parsed.docker.containerRunning,
+          cpuPercent: parsed.docker.cpuPercent,
+          memoryUsageBytes: parsed.docker.memoryUsageBytes,
+          memoryLimitBytes: parsed.docker.memoryLimitBytes,
+          networkRxBytes: parsed.docker.networkRxBytes,
+          networkTxBytes: parsed.docker.networkTxBytes,
+          blockReadBytes: parsed.docker.blockReadBytes,
+          blockWriteBytes: parsed.docker.blockWriteBytes,
+          pids: parsed.docker.pids,
+          containers: parsed.docker.containers ?? [],
+        };
+        await this.agentRepository.upsertDockerMetrics(dockerMetrics);
+      }
+      // When dockerMetricsEnabled is false, any Docker payload is silently ignored.
+
+      // Persist only agent-owned location fields through the dedicated method.
+      if (parsed.location) {
+        await this.vpsRepository.updateAgentLocation(
+          credential.vpsId,
+          parsed.location,
+        );
+      }
+
+      // 9. Build metric sample and append
+      const sample: MetricSample = {
+        vpsId: credential.vpsId,
+        cpu: parsed.cpu,
+        memory: parsed.memory,
+        disk: parsed.disk,
+        loadAverage: parsed.loadAverage,
+        networkRx: parsed.networkRx,
+        networkTx: parsed.networkTx,
+        uptime: parsed.uptime,
         collectedAt: parsed.collectedAt,
         receivedAt: now,
+        source: "agent",
         agentVersion: parsed.agentVersion,
-        ...parsed.system,
-      });
-    }
-
-    // 8. If Docker metrics provided and enabled, upsert them
-    if (parsed.docker && dockerMetricsEnabled) {
-      const dockerMetrics: AgentDockerMetrics = {
-        vpsId: credential.vpsId,
-        collectedAt: parsed.docker.collectedAt,
-        receivedAt: now,
-         agentVersion: parsed.docker.agentVersion ?? parsed.agentVersion,
-         engineVersion: parsed.docker.engineVersion,
-         apiVersion: parsed.docker.apiVersion,
-         os: parsed.docker.os,
-         architecture: parsed.docker.architecture,
-         schemaVersion: 1,
-        available: parsed.docker.available,
-        errorCode: parsed.docker.errorCode,
-        containerTotal: parsed.docker.containerTotal,
-        containerRunning: parsed.docker.containerRunning,
-        cpuPercent: parsed.docker.cpuPercent,
-        memoryUsageBytes: parsed.docker.memoryUsageBytes,
-        memoryLimitBytes: parsed.docker.memoryLimitBytes,
-        networkRxBytes: parsed.docker.networkRxBytes,
-        networkTxBytes: parsed.docker.networkTxBytes,
-        blockReadBytes: parsed.docker.blockReadBytes,
-        blockWriteBytes: parsed.docker.blockWriteBytes,
-        pids: parsed.docker.pids,
-        containers: parsed.docker.containers ?? [],
       };
-      await this.agentRepository.upsertDockerMetrics(dockerMetrics);
-    }
-    // When dockerMetricsEnabled is false, any Docker payload is silently ignored.
 
-     // Persist only agent-owned location fields through the dedicated method.
-     if (parsed.location) {
-       await this.vpsRepository.updateAgentLocation(credential.vpsId, parsed.location);
-     }
+      await this.metricRepository.append(sample, this.config.metricWindowLimit);
 
-     // 9. Build metric sample and append
-     const sample: MetricSample = {
-      vpsId: credential.vpsId,
-      cpu: parsed.cpu,
-      memory: parsed.memory,
-      disk: parsed.disk,
-      loadAverage: parsed.loadAverage,
-      networkRx: parsed.networkRx,
-      networkTx: parsed.networkTx,
-      uptime: parsed.uptime,
-      collectedAt: parsed.collectedAt,
-      receivedAt: now,
-      source: "agent",
-      agentVersion: parsed.agentVersion,
-    };
-
-    await this.metricRepository.append(sample, this.config.metricWindowLimit);
-
-    // Mark host health only after the accepted observation is durably appended.
-    await this.vpsRepository.markSeen(credential.vpsId, "healthy", now);
-    return { sample, config: { dockerMetricsEnabled } };
+      // Mark host health only after the accepted observation is durably appended.
+      await this.vpsRepository.markSeen(credential.vpsId, "healthy", now);
+      return { sample, config: { dockerMetricsEnabled }, ...(docker ? { docker } : {}) };
     } finally {
       releaseIngest();
     }

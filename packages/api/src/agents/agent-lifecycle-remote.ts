@@ -59,18 +59,40 @@ export function classifyManagedProcessInspection(
   return "mismatch";
 }
 
-export function buildManagedProcessInspectCommand(binary: string, config: string, pidFile: string): string {
-  const b = shellQuote(binary), c = shellQuote(config), p = shellQuote(pidFile);
-  return [`_pf=${p}; _bin=${b}; _cfg=${c}; _matches=0; _owned=''; _ost=''; ${REMOTE_ST_HELPER}`,
+export function buildManagedProcessInspectCommand(
+  binary: string,
+  config: string,
+  pidFile: string,
+): string {
+  const b = shellQuote(binary),
+    c = shellQuote(config),
+    p = shellQuote(pidFile);
+  return [
+    `_pf=${p}; _bin=${b}; _cfg=${c}; _matches=0; _owned=''; _ost=''; ${REMOTE_ST_HELPER}`,
     `for _d in /proc/[0-9]*; do _pid=\${_d##*/}; test "$(readlink -f /proc/$_pid/exe 2>/dev/null)" = "$_bin" || continue; ${EXACT_ARGV} || continue; _st=$(st "$_pid"); test -n "$_st" || continue; _matches=$((_matches+1)); _owned=$_pid; _ost=$_st; done;`,
-    `test "$_matches" -le 1 || { echo ambiguous; exit 0; }; test -f "$_pf" || { test "$_matches" = 0 && echo none || echo ambiguous; exit 0; }; _pid=$(cat "$_pf" 2>/dev/null); case "$_pid" in (''|*[!0-9]*) echo invalid; exit 0;; esac; if test "$_matches" = 0; then test -d "/proc/$_pid" && echo mismatch || echo none; exit 0; fi; test "$_pid" = "$_owned" || { echo mismatch; exit 0; }; printf 'owned:%s:%s\n' "$_pid" "$_ost"`].join(" ");
+    `test "$_matches" -le 1 || { echo ambiguous; exit 0; }; test -f "$_pf" || { test "$_matches" = 0 && echo none || echo ambiguous; exit 0; }; _pid=$(cat "$_pf" 2>/dev/null); case "$_pid" in (''|*[!0-9]*) echo invalid; exit 0;; esac; if test "$_matches" = 0; then test -d "/proc/$_pid" && echo mismatch || echo none; exit 0; fi; test "$_pid" = "$_owned" || { echo mismatch; exit 0; }; printf 'owned:%s:%s\n' "$_pid" "$_ost"`,
+  ].join(" ");
 }
 
 /** Revalidates identity before every signal; a check-to-kill syscall race remains. */
-export function buildManagedProcessStopCommand(binary: string, config: string, pid: string, starttime: string): string {
-  const b = shellQuote(binary), c = shellQuote(config), p = shellQuote(pid), s = shellQuote(starttime);
+export function buildManagedProcessStopCommand(
+  binary: string,
+  config: string,
+  pid: string,
+  starttime: string,
+): string {
+  const b = shellQuote(binary),
+    c = shellQuote(config),
+    p = shellQuote(pid),
+    s = shellQuote(starttime);
   const owns = `owns(){ test "$(st "$_pid")" = "$_start" && test "$(readlink -f /proc/$_pid/exe 2>/dev/null)" = "$_bin" && ${EXACT_ARGV}; };`;
-  return [`_pid=${p}; _start=${s}; _bin=${b}; _cfg=${c}; ${REMOTE_ST_HELPER} ${owns}`, `owns || exit 1; owns && kill -TERM "$_pid";`, `_i=0; while owns && [ $_i -lt 50 ]; do sleep .1; _i=$((_i+1)); done;`, `if owns; then owns && kill -KILL "$_pid"; fi;`, `_i=0; while owns && [ $_i -lt 20 ]; do sleep .1; _i=$((_i+1)); done; ! owns`].join(" ");
+  return [
+    `_pid=${p}; _start=${s}; _bin=${b}; _cfg=${c}; ${REMOTE_ST_HELPER} ${owns}`,
+    `owns || exit 1; owns && kill -TERM "$_pid";`,
+    `_i=0; while owns && [ $_i -lt 50 ]; do sleep .1; _i=$((_i+1)); done;`,
+    `if owns; then owns && kill -KILL "$_pid"; fi;`,
+    `_i=0; while owns && [ $_i -lt 20 ]; do sleep .1; _i=$((_i+1)); done; ! owns`,
+  ].join(" ");
 }
 
 /**
