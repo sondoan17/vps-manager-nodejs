@@ -9,12 +9,8 @@ FROM deps AS build
 COPY . .
 RUN npm run build
 
-FROM node:24-alpine AS prod-deps
-WORKDIR /app
-COPY package.json package-lock.json ./
-COPY packages/api/package.json packages/api/package.json
-COPY packages/web/package.json packages/web/package.json
-RUN npm ci --omit=dev
+FROM deps AS prod-deps
+RUN npm prune --omit=dev
 
 FROM golang:1.23-alpine AS agent-builder
 WORKDIR /src
