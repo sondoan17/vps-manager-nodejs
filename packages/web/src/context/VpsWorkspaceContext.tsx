@@ -21,6 +21,7 @@ import {
 } from "../lib/api";
 import { useDashboard } from "./DashboardContext";
 import { vpsDisplayName } from "../lib/dashboard-formatters";
+import { DockerMetricsPanel } from "../components/dashboard/servers/DockerMetricsPanel";
 
 // ── Context type ────────────────────────────────────────────────────
 
@@ -55,6 +56,7 @@ function mergeById<T extends { id: string }>(global: T[], bootstrap: T[]): T[] {
 const workspaceSubPages = [
   { label: "Overview", to: "", end: true },
   { label: "Metrics", to: "metrics", end: false },
+  { label: "Docker", to: "docker", end: false },
   { label: "Jobs", to: "jobs", end: false },
   { label: "Audit", to: "audit", end: false },
   { label: "Terminal", to: "terminal", end: false },
@@ -268,6 +270,25 @@ export function VpsWorkspaceLayout() {
 export function VpsWorkspaceOverviewPage() {
   const { overview } = useVpsWorkspace();
   return <OverviewPanel overview={overview} />;
+}
+
+export function VpsWorkspaceDockerPage() {
+  const { vps, overview } = useVpsWorkspace();
+  const dashboard = useDashboard();
+  return <section aria-labelledby="server-docker-heading" className="min-w-0">
+    <div className="mb-5 max-w-2xl">
+      <p className="mb-2 text-[11px] uppercase tracking-[0.18em] text-sky-300/80">Workloads</p>
+      <h2 id="server-docker-heading" className="font-display text-xl font-normal text-white sm:text-2xl">Docker monitoring</h2>
+      <p className="mt-1.5 text-sm leading-6 text-white/50">Container health and resource use reported by this server.</p>
+    </div>
+    <DockerMetricsPanel
+      vps={vps}
+      dockerMetrics={overview.dockerMetrics[0]}
+      busy={dashboard.busy}
+      onToggle={dashboard.onToggleDockerMetrics}
+      presentation="detail"
+    />
+  </section>;
 }
 
 export function VpsWorkspaceMetricsPage() {

@@ -907,9 +907,15 @@ describe("React dashboard", () => {
 
       expect(await screen.findByText("1 running")).toBeInTheDocument();
       expect(screen.getByText("1 stopped")).toBeInTheDocument();
-      const problemRow = screen.getByText("worker").closest("li")!;
-      const runningRow = screen.getByText("api").closest("li")!;
-      expect(problemRow.compareDocumentPosition(runningRow) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+      expect(screen.getByText("api")).toBeInTheDocument();
+      expect(screen.getByText("worker")).toBeInTheDocument();
+      expect(screen.queryByRole("searchbox")).not.toBeInTheDocument();
+      expect(screen.queryByLabelText("Filter containers")).not.toBeInTheDocument();
+      expect(screen.queryByLabelText("Sort containers")).not.toBeInTheDocument();
+      expect(screen.queryByText(/Saved snapshot/i)).not.toBeInTheDocument();
+      expect(
+        screen.getByRole("link", { name: "View Docker details for web-01" }),
+      ).toHaveAttribute("href", "/vps/vps-1/docker");
 
       mockEventSourceInstance?.dispatchEvent(
         "metrics.updated",
@@ -961,6 +967,8 @@ describe("React dashboard", () => {
       expect(
         await screen.findByText("student_replacement_1"),
       ).toBeInTheDocument();
+      expect(screen.getByText("1 running")).toBeInTheDocument();
+      expect(screen.getByText("0 stopped")).toBeInTheDocument();
       expect(screen.queryByText("api")).not.toBeInTheDocument();
       expect(screen.queryByText("worker")).not.toBeInTheDocument();
 
@@ -1810,6 +1818,28 @@ describe("React dashboard", () => {
       expect(
         screen.getByRole("region", { name: "Docker metrics summary" }),
       ).toHaveTextContent("1/2");
+    });
+
+    it("renders Docker monitoring as its own workspace tab", async () => {
+      mockDashboardAndScoped();
+
+      renderApp(["/vps/vps-1/docker"]);
+
+      expect(await screen.findByRole("heading", { name: "Docker monitoring" })).toBeInTheDocument();
+      expect(screen.getByText("Container snapshot")).toBeInTheDocument();
+      const dockerTab = screen.getByRole("link", { name: "Docker" });
+      expect(dockerTab).toHaveAttribute("href", "/vps/vps-1/docker");
+      expect(dockerTab).toHaveClass("border-white");
+    });
+
+    it("does not embed Docker monitoring in the workspace overview", async () => {
+      mockDashboardAndScoped();
+
+      renderApp(["/vps/vps-1"]);
+
+      expect(await screen.findByText("web-01")).toBeInTheDocument();
+      expect(screen.queryByRole("heading", { name: "Docker monitoring" })).not.toBeInTheDocument();
+      expect(screen.getByRole("link", { name: "Docker" })).toHaveAttribute("href", "/vps/vps-1/docker");
     });
 
     it("shows 404 for unknown workspace sub-route /vps/:id/unknown", async () => {
