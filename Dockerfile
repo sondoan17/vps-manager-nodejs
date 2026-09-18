@@ -12,7 +12,7 @@ RUN npm run build
 FROM deps AS prod-deps
 RUN npm prune --omit=dev
 
-FROM golang:1.23-alpine AS agent-builder
+FROM golang:1.25.13-alpine AS agent-builder
 WORKDIR /src
 COPY packages/agent/go.mod ./
 RUN go mod download
