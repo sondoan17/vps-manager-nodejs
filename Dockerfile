@@ -9,6 +9,13 @@ FROM deps AS build
 COPY . .
 RUN npm run build
 
+FROM node:24-alpine AS prod-deps
+WORKDIR /app
+COPY package.json package-lock.json ./
+COPY packages/api/package.json packages/api/package.json
+COPY packages/web/package.json packages/web/package.json
+RUN npm ci --omit=dev
+
 FROM golang:1.23-alpine AS agent-builder
 WORKDIR /src
 COPY packages/agent/go.mod ./
@@ -23,7 +30,7 @@ WORKDIR /app
 # openssh-client provides ssh-keyscan used for SSH host key provisioning
 RUN apk add --no-cache openssh-client
 RUN addgroup -S app && adduser -S app -G app
-COPY --from=deps --chown=app:app /app/node_modules ./node_modules
+COPY --from=prod-deps --chown=app:app /app/node_modules ./node_modules
 COPY --from=build --chown=app:app /app/package.json ./package.json
 COPY --from=build --chown=app:app /app/dist ./dist
 COPY --from=build --chown=app:app /app/packages/api/db ./db
