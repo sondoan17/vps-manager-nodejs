@@ -28,6 +28,8 @@ import type {
   DockerMonitoringRepository,
   DockerRollupsQuery,
   DockerMonitoringCleanup,
+  DockerMonitoringMaintenanceOptions,
+  DockerMonitoringMaintenanceResult,
 } from "./docker-monitoring.repository.js";
 import {
   optionalIsoString,
@@ -252,6 +254,24 @@ function rowToBatch(row: BatchRow): DockerIngestBatch {
   };
 }
 
+function assertMaintenanceOptions(options: DockerMonitoringMaintenanceOptions): void {
+  if (typeof options.cutoff !== "string" || Number.isNaN(Date.parse(options.cutoff))) {
+    throw new Error("Invalid maintenance cutoff: must be an ISO datetime string");
+  }
+  for (const key of ["samplesPerVps", "eventsPerVps"] as const) {
+    const value = options[key];
+    if (!Number.isInteger(value) || value < 0) {
+      throw new Error(`Invalid maintenance option ${key}: must be a non-negative integer`);
+    }
+  }
+}
+
+export type PostgresDockerMonitoringRepository = DockerMonitoringRepository & {
+  pruneSamplesEventsAndStorage(
+    options: DockerMonitoringMaintenanceOptions,
+  ): Promise<DockerMonitoringMaintenanceResult>;
+};
+
 function rowToAlert(row: AlertRow): DockerAlert {
   return {
     id: row.id,
@@ -280,7 +300,7 @@ function rowToAlert(row: AlertRow): DockerAlert {
 
 export function createPostgresDockerMonitoringRepository(
   pool: DatabasePool,
-): DockerMonitoringRepository {
+): PostgresDockerMonitoringRepository {
   return {
     async listHostSamples(query: DockerHostSamplesQuery): Promise<DockerPage<DockerHostSample>> {
       const limit = query.limit ?? 100;
@@ -697,6 +717,55 @@ export function createPostgresDockerMonitoringRepository(
         await client.query("INSERT INTO docker_snapshot_ledger (vps_id,snapshot_id,agent_instance_id,request_digest,source_sequence,received_at,result,revision) VALUES ($1,$2,$3,$4,$5,$6,$7,$8)", [unit.vpsId,unit.snapshotId,unit.agentInstanceId,unit.requestDigest,unit.sourceSequence,received,result,revision]);
         if (unit.batchId) await client.query("INSERT INTO docker_ingest_batches (vps_id,agent_instance_id,batch_id,snapshot_id,request_digest,result) VALUES ($1,$2,$3,$4,$5,$6)", [unit.vpsId,unit.agentInstanceId,unit.batchId,unit.snapshotId,unit.requestDigest,JSON.stringify(result)]);
         return result;
+      });
+    },
+
+    async pruneSamplesEventsAndStorage(
+      options: DockerMonitoringMaintenanceOptions,
+    ): Promise<DockerMonitoringMaintenanceResult> {
+      assertMaintenanceOptions(options);
+      return withTransaction(pool, async (client) => {
+        await client.query("SELECT pg_advisory_xact_lock(hashtextextended($1, 0))", [
+          "docker-monitoring-maintenance",
+        ]);
+        const cutoff = new Date(options.cutoff);
+        const oldSamples = await client.query(
+          "DELETE FROM docker_metric_samples WHERE effective_at < $1",
+          [cutoff],
+        );
+        const overCapSamples = await client.query(
+          `DELETE FROM docker_metric_samples AS s USING (
+             SELECT id FROM (
+               SELECT id, ROW_NUMBER() OVER (
+                 PARTITION BY vps_id ORDER BY effective_at DESC, id DESC
+               ) AS rn
+               FROM docker_metric_samples WHERE effective_at >= $1
+             ) ranked WHERE rn > $2
+           ) AS overcap WHERE s.id = overcap.id`,
+          [cutoff, options.samplesPerVps],
+        );
+        const oldEvents = await client.query(
+          "DELETE FROM docker_operational_events WHERE event_occurred_at < $1",
+          [cutoff],
+        );
+        const overCapEvents = await client.query(
+          `DELETE FROM docker_operational_events AS e USING (
+             SELECT id FROM (
+               SELECT id, ROW_NUMBER() OVER (
+                 PARTITION BY vps_id ORDER BY event_occurred_at DESC, id DESC
+               ) AS rn
+               FROM docker_operational_events WHERE event_occurred_at >= $1
+             ) ranked WHERE rn > $2
+           ) AS overcap WHERE e.id = overcap.id`,
+          [cutoff, options.eventsPerVps],
+        );
+        // Latest state (docker_storage_latest, docker_ingest_latest, watermarks,
+        // ledgers, batches, rollups, alerts) is authoritative, not history;
+        // preserve it.
+        return {
+          samplesRemoved: (oldSamples.rowCount ?? 0) + (overCapSamples.rowCount ?? 0),
+          eventsRemoved: (oldEvents.rowCount ?? 0) + (overCapEvents.rowCount ?? 0),
+        };
       });
     },
 
