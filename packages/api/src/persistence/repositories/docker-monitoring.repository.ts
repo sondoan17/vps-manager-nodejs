@@ -94,6 +94,13 @@ export type DockerMonitoringCleanup = {
   reason: "monitoring_disabled" | "vps_deleted" | "identity_reset_orphaned";
 };
 
+export type DockerHostGaugeRollupOptions = { vpsId: string; now?: string };
+
+/**
+ * Observed-only formula v1: closed UTC hourly buckets, unique snapshots, and
+ * no counter or availability inference. Expected equals observed; gaps are 0.
+ */
+
 // ── Repository interface ──────────────────────────────────────────────────
 // Empty reads plus future atomic ingest/cleanup contract. I3 will implement
 // the ingest/cleanup behavior; I1 JSON throws for those methods.
@@ -111,6 +118,7 @@ export type DockerMonitoringRepository = {
   ingestV2Unit(unit: DockerV2IngestUnit): Promise<DockerV2IngestResult>;
   /** Future (I3): scoped cleanup on disable/delete/identity-reset. Not implemented in I1. */
   cleanupForVps(cleanup: DockerMonitoringCleanup): Promise<void>;
+  rollupHostGauges?(options: DockerHostGaugeRollupOptions): Promise<DockerMetricRollup[]>;
 };
 
 export type DockerMonitoringSeed = Partial<DockerMonitoringStore>;
@@ -244,6 +252,16 @@ function paginateKeyset<T>(args: KeysetPage<T>): DockerPage<T> {
 
 function alertTime(a: DockerAlert): string {
   return a.lastObservedAt ?? a.openedAt;
+}
+
+const OBSERVED_HOST_GAUGES = ["cpuPercent", "memoryUsageBytes"] as const;
+function bucketStart(at: string): string {
+  const d = new Date(at);
+  d.setUTCMinutes(0, 0, 0);
+  return d.toISOString();
+}
+function rollupId(vpsId: string, agent: string, metric: string, bucket: string): string {
+  return `host-gauge-v1:${encodeURIComponent(vpsId)}:${encodeURIComponent(agent)}:${metric}:${bucket}`;
 }
 
 // ── Factory ───────────────────────────────────────────────────────────────
@@ -570,6 +588,39 @@ export function createJsonDockerMonitoringRepository(dataDirOrFile = "data"): Js
         if (cleanup.reason === "vps_deleted") { store.snapshots = store.snapshots.filter((x) => x.vpsId !== v); store.watermarks = store.watermarks.filter((x) => x.vpsId !== v); store.batches = store.batches.filter((x) => x.vpsId !== v); }
         return store;
       });
+    },
+
+    async rollupHostGauges(options) {
+      const now = new Date(options.now ?? new Date().toISOString());
+      const cutoff = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000).toISOString();
+      const closedBefore = new Date(now);
+      closedBefore.setUTCMinutes(0, 0, 0);
+      const store = await readStore();
+      const unique = new Map<string, DockerHostSample>();
+      for (const sample of store.samples) {
+        if (sample.vpsId !== options.vpsId || isContainerSample(sample) || sample.effectiveAt < cutoff || sample.effectiveAt >= closedBefore.toISOString()) continue;
+        const prior = unique.get(sample.snapshotId);
+        if (!prior || sample.effectiveAt > prior.effectiveAt || (sample.effectiveAt === prior.effectiveAt && sample.id > prior.id)) unique.set(sample.snapshotId, sample);
+      }
+      const groups = new Map<string, DockerHostSample[]>();
+      for (const sample of unique.values()) for (const metric of OBSERVED_HOST_GAUGES) {
+        if (typeof sample.metrics[metric] !== "number" || !Number.isFinite(sample.metrics[metric])) continue;
+        const key = `${sample.agentInstanceId}\0${metric}\0${bucketStart(sample.effectiveAt)}`;
+        const list = groups.get(key); if (list) list.push(sample); else groups.set(key, [sample]);
+      }
+      const result: DockerMetricRollup[] = [];
+      await readModifyWriteJsonFile<unknown>(resolved, emptyStore(), (raw) => {
+        const current = normalizeStore(raw);
+        for (const [key, samples] of groups) {
+          const [agentInstanceId, metricName, bucket] = key.split("\0") as [string, string, string];
+          const values = samples.map((s) => s.metrics[metricName]!);
+          const row: DockerMetricRollup = { id: rollupId(options.vpsId, agentInstanceId, metricName, bucket), vpsId: options.vpsId, agentInstanceId, scope: "host", metricName, bucketStart: bucket, formulaVersion: 1, firstAt: samples.map(s => s.effectiveAt).sort()[0]!, lastAt: samples.map(s => s.effectiveAt).sort().at(-1)!, sampleCount: values.length, gaugeMin: Math.min(...values), gaugeMax: Math.max(...values), gaugeSum: values.reduce((a,b) => a+b, 0), gaugeAverage: values.reduce((a,b) => a+b, 0) / values.length, resetCount: 0, expectedSamples: values.length, observedSamples: values.length, partialSampleCount: 0, gapCount: 0, coverageRatio: 1 };
+          const index = current.rollups.findIndex(r => r.id === row.id); if (index >= 0) current.rollups[index] = row; else current.rollups.push(row); result.push(row);
+        }
+        current.rollups = truncatePerVps(current.rollups, r => r.vpsId, DOCKER_MONITORING_CAPS.rollupsPerVps);
+        return current;
+      });
+      return result;
     },
   };
 }
