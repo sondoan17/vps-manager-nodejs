@@ -148,6 +148,9 @@ describe("database migrations", () => {
       "010_ssh_host_key_pins.sql",
       "011_vps_display_name.sql",
       "012_vps_location.sql",
+      "013_docker_monitoring.sql",
+      "014_docker_ingest.sql",
+      "015_docker_metric_rollup_metric_name.sql",
     ]);
     expect(migrations[0]?.sql).toContain("CREATE TABLE IF NOT EXISTS vps");
     expect(migrations[1]?.sql).toContain("metric_samples_vps_effective_idx");
@@ -192,6 +195,18 @@ describe("database migrations", () => {
     expect(migrations[11]?.sql).toContain(
       "ALTER TABLE vps ADD COLUMN IF NOT EXISTS location_detected_at",
     );
+    expect(migrations[12]?.sql).toContain(
+      "CREATE TABLE IF NOT EXISTS docker_metric_samples",
+    );
+    expect(migrations[13]?.sql).toContain(
+      "CREATE TABLE IF NOT EXISTS docker_snapshot_ledger",
+    );
+    expect(migrations[14]?.sql).toContain(
+      "ADD COLUMN IF NOT EXISTS metric_name",
+    );
+    expect(migrations[14]?.sql).toContain(
+      "docker_metric_rollups_dedupe_uidx",
+    );
   });
 
   it("excludes optional migrations unless requested", async () => {
@@ -211,6 +226,9 @@ describe("database migrations", () => {
       "010_ssh_host_key_pins.sql",
       "011_vps_display_name.sql",
       "012_vps_location.sql",
+      "013_docker_monitoring.sql",
+      "014_docker_ingest.sql",
+      "015_docker_metric_rollup_metric_name.sql",
     ]);
     expect(
       selectMigrations(migrations, true).map((migration) => migration.id),
@@ -227,6 +245,9 @@ describe("database migrations", () => {
       "010_ssh_host_key_pins.sql",
       "011_vps_display_name.sql",
       "012_vps_location.sql",
+      "013_docker_monitoring.sql",
+      "014_docker_ingest.sql",
+      "015_docker_metric_rollup_metric_name.sql",
     ]);
   });
 });
