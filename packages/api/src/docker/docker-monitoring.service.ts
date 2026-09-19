@@ -1,4 +1,5 @@
 import { BadRequestException, ConflictException, Injectable, Inject, NotImplementedException } from "@nestjs/common";
+import { VpsNotFoundError } from "../common/errors.js";
 import { createHash } from "node:crypto";
 import type { AgentDockerMetricsInputV2 } from "../agents/agent.models.js";
 import { DockerIngestConflict, type DockerV2IngestUnit } from "./docker-monitoring.models.js";
@@ -23,7 +24,9 @@ export class DockerMonitoringService {
     @Inject(VPS_REPOSITORY) private readonly vps: VpsRepository,
   ) {}
 
-  private async verify(vpsId: string) { await this.vps.get(vpsId); }
+  private async verify(vpsId: string) {
+    if (!(await this.vps.get(vpsId))) throw new VpsNotFoundError();
+  }
 
   private toBadRequest(error: unknown): never {
     if (error instanceof ZodError) throw error;

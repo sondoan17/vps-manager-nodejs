@@ -3,7 +3,8 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { createHash } from "node:crypto";
 import request from "supertest";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { ConflictException } from "@nestjs/common";
 import { createApp } from "../src/app.js";
 import type { AppConfig } from "../src/config/app-config.js";
 import type { VpsRepository } from "../src/persistence/repositories/vps.repository.js";
@@ -67,14 +68,14 @@ async function createVps(): Promise<string> {
   return record.id;
 }
 
-function makeService() {
+function makeService(dockerV2: { ingestV2: ReturnType<typeof vi.fn> } = { ingestV2: vi.fn() }) {
   const agentRepo = createJsonAgentRepository(
     join(tempDir, "data", "agents.json"),
   );
   const metricRepo = createJsonMetricRepository(
     join(tempDir, "data", "metrics.json"),
   );
-  const dockerMonitoringService = { ingestV2: async () => undefined };
+  const dockerMonitoringService = dockerV2;
   const service = new AgentService(
     agentRepo,
     metricRepo,
@@ -1213,6 +1214,138 @@ describe("Docker metrics ingestion", () => {
     await vpsRepo.update(vpsId, { dockerMetricsEnabled: false });
     await agentRepo.deleteDockerMetrics(vpsId);
 
+    expect(await agentRepo.getDockerMetrics(vpsId)).toBeUndefined();
+  });
+});
+
+describe("Docker v2 ingest via AgentService", () => {
+  function validDockerV2Payload(overrides: Record<string, unknown> = {}) {
+    return {
+      collectedAt: new Date().toISOString(),
+      schemaVersion: 2 as const,
+      agentInstanceId: "instance_abc123",
+      snapshotId: "snap_abc123",
+      sourceSequence: "1",
+      available: true,
+      containerTotal: 1,
+      containerRunning: 1,
+      cpuPercent: 5,
+      memoryUsageBytes: 1024,
+      networkRxBytes: 10,
+      networkTxBytes: 10,
+      blockReadBytes: 10,
+      blockWriteBytes: 10,
+      pids: 2,
+      containers: [
+        {
+          id: "abc123def456",
+          name: "/web-nginx",
+          image: "nginx:1.25",
+          state: "running",
+          containerKey: "ck_abc123",
+          cpuPercent: 12.3,
+          memoryUsageBytes: 65_536_000,
+          networkRxBytes: 800_000,
+          networkTxBytes: 400_000,
+          blockReadBytes: 50_000,
+          blockWriteBytes: 20_000,
+          pids: 12,
+        },
+      ],
+      ...overrides,
+    };
+  }
+
+  it("returns the accepted structured v2 acknowledgement without a legacy write", async () => {
+    const vpsId = await createVps();
+    await vpsRepo.update(vpsId, { dockerMetricsEnabled: true });
+    const dockerV2 = { ingestV2: vi.fn().mockResolvedValue({
+      ingestStatus: "committed",
+      snapshotId: "snap_abc123",
+      agentInstanceId: "instance_abc123",
+      revision: 3,
+    }) };
+    const { agentRepo, service } = makeService(dockerV2);
+    const { credential } = await service.createCredential(vpsId);
+
+    const result = await service.ingestMetric(
+      credential,
+      validPayload({ docker: validDockerV2Payload() }),
+    );
+
+    expect(dockerV2.ingestV2).toHaveBeenCalledTimes(1);
+    expect(result.docker).toEqual({
+      ingestStatus: "committed",
+      snapshotId: "snap_abc123",
+      agentInstanceId: "instance_abc123",
+      revision: 3,
+      capabilities: {
+        maxSchemaVersion: 2,
+        history: true,
+        containerHistory: true,
+        events: true,
+        storage: true,
+      },
+    });
+    expect(await agentRepo.getDockerMetrics(vpsId)).toBeUndefined();
+  });
+
+  it.each(["already_committed", "replay_ignored"] as const)(
+    "maps %s without a legacy write",
+    async (ingestStatus) => {
+      const vpsId = await createVps();
+      await vpsRepo.update(vpsId, { dockerMetricsEnabled: true });
+      const dockerV2 = { ingestV2: vi.fn().mockResolvedValue({
+        ingestStatus,
+        snapshotId: "snap_abc123",
+        agentInstanceId: "instance_abc123",
+        revision: 3,
+      }) };
+      const { agentRepo, service } = makeService(dockerV2);
+      const { credential } = await service.createCredential(vpsId);
+
+      const result = await service.ingestMetric(
+        credential,
+        validPayload({ docker: validDockerV2Payload() }),
+      );
+
+      expect(result.docker?.ingestStatus).toBe(ingestStatus);
+      expect(await agentRepo.getDockerMetrics(vpsId)).toBeUndefined();
+    },
+  );
+
+  it("propagates a v2 conflict without a legacy write", async () => {
+    const vpsId = await createVps();
+    await vpsRepo.update(vpsId, { dockerMetricsEnabled: true });
+    const dockerV2 = { ingestV2: vi.fn().mockRejectedValue(
+      new ConflictException({ error: { message: "Docker ingest conflict" } }),
+    ) };
+    const { agentRepo, service } = makeService(dockerV2);
+    const { credential } = await service.createCredential(vpsId);
+
+    await expect(
+      service.ingestMetric(
+        credential,
+        validPayload({ docker: validDockerV2Payload() }),
+      ),
+    ).rejects.toBeInstanceOf(ConflictException);
+    expect(await agentRepo.getDockerMetrics(vpsId)).toBeUndefined();
+  });
+
+  it("ignores a v2 payload when docker metrics are disabled", async () => {
+    const vpsId = await createVps();
+    const dockerV2 = { ingestV2: vi.fn() };
+    const { agentRepo, service } = makeService(dockerV2);
+    const { credential } = await service.createCredential(vpsId);
+
+    const result = await service.ingestMetric(
+      credential,
+      validPayload({ docker: validDockerV2Payload() }),
+    );
+
+    expect(result.config).toEqual({ dockerMetricsEnabled: false });
+    expect(result.docker).toBeUndefined();
+    expect(dockerV2.ingestV2).not.toHaveBeenCalled();
     expect(await agentRepo.getDockerMetrics(vpsId)).toBeUndefined();
   });
 });
