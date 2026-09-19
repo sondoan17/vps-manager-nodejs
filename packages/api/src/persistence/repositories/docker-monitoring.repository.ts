@@ -115,6 +115,21 @@ export type DockerMonitoringRepository = {
 
 export type DockerMonitoringSeed = Partial<DockerMonitoringStore>;
 
+export type DockerMonitoringMaintenanceOptions = {
+  cutoff: string;
+  samplesPerVps: number;
+  eventsPerVps: number;
+};
+
+export type DockerMonitoringMaintenanceResult = {
+  samplesRemoved: number;
+  eventsRemoved: number;
+};
+
+export type JsonDockerMonitoringRepository = DockerMonitoringRepository & {
+  pruneSamplesEventsAndStorage(options: DockerMonitoringMaintenanceOptions): Promise<DockerMonitoringMaintenanceResult>;
+};
+
 // ── Internal helpers ──────────────────────────────────────────────────────
 
 function emptyStore(): DockerMonitoringStore {
@@ -233,7 +248,43 @@ function alertTime(a: DockerAlert): string {
 
 // ── Factory ───────────────────────────────────────────────────────────────
 
-export function createJsonDockerMonitoringRepository(dataDirOrFile = "data"): DockerMonitoringRepository {
+function assertMaintenanceOptions(options: DockerMonitoringMaintenanceOptions): void {
+  if (typeof options.cutoff !== "string" || Number.isNaN(Date.parse(options.cutoff))) {
+    throw new Error("Invalid maintenance cutoff: must be an ISO datetime string");
+  }
+  for (const key of ["samplesPerVps", "eventsPerVps"] as const) {
+    const value = options[key];
+    if (!Number.isInteger(value) || value < 0) {
+      throw new Error(`Invalid maintenance option ${key}: must be a non-negative integer`);
+    }
+  }
+}
+
+function pruneToCapNewestFirst<T>(
+  rows: T[],
+  atOf: (row: T) => string,
+  idOf: (row: T) => string,
+  pickVps: (row: T) => string,
+  cap: number,
+): { kept: T[]; removed: number } {
+  const byVps = new Map<string, T[]>();
+  for (const row of rows) {
+    const key = pickVps(row);
+    const list = byVps.get(key);
+    if (list) list.push(row);
+    else byVps.set(key, [row]);
+  }
+  const kept: T[] = [];
+  let removed = 0;
+  for (const list of byVps.values()) {
+    list.sort((a, b) => compareDesc(atOf(a), idOf(a), atOf(b), idOf(b)));
+    kept.push(...list.slice(0, cap));
+    removed += Math.max(0, list.length - cap);
+  }
+  return { kept, removed };
+}
+
+export function createJsonDockerMonitoringRepository(dataDirOrFile = "data"): JsonDockerMonitoringRepository {
   const filePath = resolveFilePath(dataDirOrFile);
   const resolved = filePath;
 
@@ -485,6 +536,26 @@ export function createJsonDockerMonitoringRepository(dataDirOrFile = "data"): Do
         return enforceCaps(store);
       });
       return result!;
+    },
+
+    async pruneSamplesEventsAndStorage(options) {
+      assertMaintenanceOptions(options);
+      let result: DockerMonitoringMaintenanceResult = { samplesRemoved: 0, eventsRemoved: 0 };
+      await readModifyWriteJsonFile<unknown>(resolved, emptyStore(), (raw) => {
+        const store = normalizeStore(raw);
+        const oldSamples = store.samples.length;
+        const oldEvents = store.events.length;
+        const eligibleSamples = store.samples.filter((sample) => sample.effectiveAt >= options.cutoff);
+        const eligibleEvents = store.events.filter((event) => event.eventOccurredAt >= options.cutoff);
+        const samples = pruneToCapNewestFirst(eligibleSamples, (sample) => sample.effectiveAt, (sample) => sample.id, (sample) => sample.vpsId, options.samplesPerVps);
+        const events = pruneToCapNewestFirst(eligibleEvents, (event) => event.eventOccurredAt, (event) => event.id, (event) => event.vpsId, options.eventsPerVps);
+        store.samples = samples.kept;
+        store.events = events.kept;
+        result = { samplesRemoved: oldSamples - store.samples.length, eventsRemoved: oldEvents - store.events.length };
+        // latestStorage and latestByVps are authoritative state, not history; preserve them.
+        return store;
+      });
+      return result;
     },
 
     async cleanupForVps(cleanup) {
