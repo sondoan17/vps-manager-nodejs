@@ -364,6 +364,14 @@ func validateDockerV2Batch(m DockerMetricsV2) error {
 // validateDockerV2Metrics validates a full flat v2 wire payload against the
 // canonical API contract: IDs/digests/enums, caps, window/watermark
 // relations, event scoping, and storage shape.
+func validateDockerV2MonitoringMetadata(m *DockerMonitoringMetadataV2) error {
+	if m == nil { return nil }
+	if m.EffectiveCadenceSeconds <= 0 || m.EffectiveCadenceSeconds > 86400 { return fmt.Errorf("effective cadence out of range") }
+	if m.Availability != "available" && m.Availability != "unavailable" && m.Availability != "unknown" { return fmt.Errorf("invalid availability") }
+	if m.State != "enabled" && m.State != "disabled" && m.State != "unknown" { return fmt.Errorf("invalid monitoring state") }
+	return nil
+}
+
 func validateDockerV2Metrics(m DockerMetricsV2) error {
 	if m.SchemaVersion != DockerSchemaVersionV2 {
 		return fmt.Errorf("unsupported schema version")
@@ -420,6 +428,9 @@ func validateDockerV2Metrics(m DockerMetricsV2) error {
 	}
 	if m.Storage != nil && m.Storage.FormulaVersion != DockerStorageFormulaVersionV1 {
 		return fmt.Errorf("unsupported storage formula version")
+	}
+	if err := validateDockerV2MonitoringMetadata(m.Monitoring); err != nil {
+		return err
 	}
 	return nil
 }

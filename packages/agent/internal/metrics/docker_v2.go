@@ -217,6 +217,13 @@ type DockerStorageAggregateV2 struct {
 	BuildCache     DockerStorageCategoryV2 `json:"buildCache"`
 }
 
+// DockerMonitoringMetadataV2 is optional cadence and lifecycle metadata.
+type DockerMonitoringMetadataV2 struct {
+	EffectiveCadenceSeconds int    `json:"effectiveCadenceSeconds"`
+	Availability             string `json:"availability"`
+	State                    string `json:"state"`
+}
+
 // DockerMetricsV2 is the canonical flat API wire contract (schemaVersion 2).
 // Top-level host aggregate fields remain required as API v2 expects; event
 // batch fields are flat (batchId/snapshotId/agentInstanceId/fromWatermark/
@@ -253,4 +260,5 @@ type DockerMetricsV2 struct {
 	FromWatermark             *DockerEventWatermarkV2            `json:"fromWatermark,omitempty"`
 	ProposedWatermark         *DockerEventWatermarkV2            `json:"proposedWatermark,omitempty"`
 	Storage                   *DockerStorageAggregateV2          `json:"storage,omitempty"`
+	Monitoring                *DockerMonitoringMetadataV2         `json:"monitoring,omitempty"`
 }

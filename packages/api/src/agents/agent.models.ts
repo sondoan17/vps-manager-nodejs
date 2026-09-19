@@ -222,6 +222,12 @@ export type DockerEventWindow = {
     | "collection_deadline";
 };
 
+export type DockerMonitoringMetadata = {
+  effectiveCadenceSeconds: number;
+  availability: "available" | "unavailable" | "unknown";
+  state: "enabled" | "disabled" | "unknown";
+};
+
 export type AgentDockerMetricsInputV2 = {
   collectedAt: string;
   agentVersion?: string;
@@ -254,6 +260,7 @@ export type AgentDockerMetricsInputV2 = {
   fromWatermark?: DockerEventWatermark;
   proposedWatermark?: DockerEventWatermark;
   storage?: AgentDockerStorageAggregate;
+  monitoring?: DockerMonitoringMetadata;
 };
 
 /** Additive discriminated union for the Docker ingest branch. V1 is unchanged. */

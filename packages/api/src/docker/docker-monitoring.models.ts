@@ -15,12 +15,18 @@ export type DockerInitialWatermark = { timeNano: "0"; boundaryDigests: [] };
 export type DockerIngestEvent = DockerOperationalEvent & { sourceSequence: DockerSourceSequence };
 export type DockerCompatibilityPayload = { latest: boolean };
 export type DockerEventProtocol = { fromWatermark: DockerEventWatermark; proposedWatermark: DockerEventWatermark; eventWindow: { from: string; to: string } };
+export type DockerMonitoringMetadata = {
+  effectiveCadenceSeconds: number;
+  availability: "available" | "unavailable" | "unknown";
+  state: "enabled" | "disabled" | "unknown";
+};
 export type DockerV2IngestUnit = {
   vpsId: string; agentInstanceId: string; snapshotId: string; batchId?: string;
   requestDigest: string; requestDigestVersion: number; receivedAt: string; sourceSequence: DockerSourceSequence;
   compatibility: DockerCompatibilityPayload;
   hostSample: DockerHostSample; containerSamples?: DockerContainerSample[]; events?: DockerIngestEvent[];
   storageLatest?: DockerStorageLatest; eventProtocol?: DockerEventProtocol;
+  monitoring?: DockerMonitoringMetadata;
 };
 export type DockerIngestBatchResult = { status: "committed" | "already_committed" | "replay_ignored"; snapshotId: string; revision: number; };
 export type DockerIngestBatch = { vpsId: string; agentInstanceId: string; batchId: string; snapshotId: string; requestDigest: string; result: DockerIngestBatchResult | string; revision?: number; };

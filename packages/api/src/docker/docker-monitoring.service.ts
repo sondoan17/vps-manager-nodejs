@@ -64,10 +64,11 @@ export class DockerMonitoringService {
     const to = input.proposedWatermark ?? { timeNano: sourceSequence, boundaryDigests: [] };
     const unit: DockerV2IngestUnit = {
       vpsId, agentInstanceId: input.agentInstanceId, snapshotId: input.snapshotId, batchId: input.batchId,
-      requestDigest: dockerIngestRequestDigest({ vpsId, agentInstanceId: input.agentInstanceId, snapshotId: input.snapshotId, batchId: input.batchId, collectedAt: input.collectedAt, sourceSequence, hostMetrics, containers: containerSamples, events, storage: input.storage }),
+      requestDigest: dockerIngestRequestDigest({ vpsId, agentInstanceId: input.agentInstanceId, snapshotId: input.snapshotId, batchId: input.batchId, collectedAt: input.collectedAt, sourceSequence, hostMetrics, containers: containerSamples, events, storage: input.storage, ...(input.monitoring === undefined ? {} : { monitoring: input.monitoring }) }),
       requestDigestVersion: DOCKER_INGEST_DIGEST_VERSION, receivedAt, sourceSequence, compatibility: { latest: true }, hostSample, containerSamples, events,
       storageLatest: input.storage ? { ...input.storage, vpsId, agentInstanceId: input.agentInstanceId, snapshotId: input.snapshotId, collectedAt: input.collectedAt, receivedAt } : undefined,
       eventProtocol: { fromWatermark: { ...from, vpsId, agentInstanceId: input.agentInstanceId, updatedAt: receivedAt }, proposedWatermark: { ...to, vpsId, agentInstanceId: input.agentInstanceId, updatedAt: receivedAt }, eventWindow: { from: input.eventWindow?.since ?? from.timeNano, to: input.eventWindow?.until ?? to.timeNano } },
+      ...(input.monitoring === undefined ? {} : { monitoring: { ...input.monitoring } }),
     };
     try { return await this.repository.ingestV2Unit(unit); }
     catch (error) { if (error instanceof DockerIngestConflict) throw new ConflictException({ error: { message: "Docker ingest conflict", code: error.code } }); throw error; }

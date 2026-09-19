@@ -305,6 +305,12 @@ const dockerErrorCodeSchema = z.enum([
 
 const positiveCanonicalDecimal = z.string().regex(/^[1-9][0-9]*$/, "must be a positive canonical decimal string");
 
+const dockerMonitoringMetadataSchema = z.object({
+  effectiveCadenceSeconds: z.number().int().finite().positive().max(86400),
+  availability: z.enum(["available", "unavailable", "unknown"]),
+  state: z.enum(["enabled", "disabled", "unknown"]),
+}).strict();
+
 const agentDockerMetricsV2BaseSchema = z
   .object({
     collectedAt: dockerV2Timestamp,
@@ -337,6 +343,7 @@ const agentDockerMetricsV2BaseSchema = z
     fromWatermark: dockerWatermarkSchema.optional(),
     proposedWatermark: dockerWatermarkSchema.optional(),
     storage: dockerStorageSchema.optional(),
+    monitoring: dockerMonitoringMetadataSchema.optional(),
   })
   .strict();
 
