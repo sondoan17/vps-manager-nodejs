@@ -61,6 +61,7 @@ type RollupRow = {
   vps_id: string;
   agent_instance_id: string;
   scope: DockerMetricRollup["scope"];
+  metric_name: string | null;
   container_key: string | null;
   cohort_digest: string | null;
   bucket_start: Date | string;
@@ -184,6 +185,7 @@ function rowToRollup(row: RollupRow): DockerMetricRollup {
     vpsId: row.vps_id,
     agentInstanceId: row.agent_instance_id,
     scope: row.scope,
+    ...(row.metric_name != null && row.metric_name !== "legacy" ? { metricName: row.metric_name } : {}),
     ...(row.container_key != null ? { containerKey: row.container_key } : {}),
     ...(row.cohort_digest != null ? { cohortDigest: row.cohort_digest } : {}),
     bucketStart: requiredIsoString(row.bucket_start),
@@ -310,6 +312,28 @@ export function createPostgresDockerMonitoringRepository(
   pool: DatabasePool,
 ): PostgresDockerMonitoringRepository {
   return {
+    async rollupHostGauges(options) {
+      const now = new Date(options.now ?? new Date().toISOString());
+      const closed = new Date(now); closed.setUTCMinutes(0, 0, 0);
+      const cutoff = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
+      const result: DockerMetricRollup[] = [];
+      const metrics = ["cpuPercent", "memoryUsageBytes"] as const;
+      for (const metric of metrics) {
+        const rows = await pool.query<{ agent_instance_id: string; bucket_start: Date; first_at: Date; last_at: Date; n: number; min: number; max: number; sum: number }>(
+          `SELECT agent_instance_id, date_trunc('hour', effective_at) AS bucket_start, min(effective_at) AS first_at, max(effective_at) AS last_at, count(*)::int AS n, min((metrics->>$2)::double precision) AS min, max((metrics->>$2)::double precision) AS max, sum((metrics->>$2)::double precision) AS sum FROM docker_metric_samples WHERE vps_id=$1 AND container_key IS NULL AND effective_at >= $3 AND effective_at < $4 AND metrics ? $2 GROUP BY agent_instance_id, date_trunc('hour', effective_at)`,
+          [options.vpsId, metric, cutoff, closed],
+        );
+        for (const row of rows.rows) {
+          const bucket = row.bucket_start.toISOString();
+          const id = `host-gauge-v1:${encodeURIComponent(options.vpsId)}:${encodeURIComponent(row.agent_instance_id)}:${metric}:${bucket}`;
+          const n = Number(row.n), sum = Number(row.sum);
+          const rollup: DockerMetricRollup = { id, vpsId: options.vpsId, agentInstanceId: row.agent_instance_id, scope: "host", metricName: metric, bucketStart: bucket, formulaVersion: 1, firstAt: row.first_at.toISOString(), lastAt: row.last_at.toISOString(), sampleCount: n, gaugeMin: Number(row.min), gaugeMax: Number(row.max), gaugeSum: sum, gaugeAverage: sum / n, resetCount: 0, expectedSamples: n, observedSamples: n, partialSampleCount: 0, gapCount: 0, coverageRatio: 1 };
+          await pool.query(`INSERT INTO docker_metric_rollups (id,vps_id,agent_instance_id,scope,metric_name,bucket_start,formula_version,first_at,last_at,sample_count,gauge_min,gauge_max,gauge_sum,gauge_average,reset_count,expected_samples,observed_samples,partial_sample_count,gap_count,coverage_ratio) VALUES ($1,$2,$3,'host',$4,$5,1,$6,$7,$8,$9,$10,$11,$12,0,$8,$8,0,0,1) ON CONFLICT (id) DO UPDATE SET metric_name=EXCLUDED.metric_name,gauge_min=EXCLUDED.gauge_min,gauge_max=EXCLUDED.gauge_max,gauge_sum=EXCLUDED.gauge_sum,gauge_average=EXCLUDED.gauge_average,sample_count=EXCLUDED.sample_count,expected_samples=EXCLUDED.expected_samples,observed_samples=EXCLUDED.observed_samples`, [id, options.vpsId, row.agent_instance_id, metric, row.bucket_start, row.first_at, row.last_at, n, row.min, row.max, sum, sum / n]);
+          result.push(rollup);
+        }
+      }
+      return result;
+    },
     async listHostSamples(query: DockerHostSamplesQuery): Promise<DockerPage<DockerHostSample>> {
       const limit = query.limit ?? 100;
       const binding = {
