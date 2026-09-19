@@ -52,8 +52,17 @@ export class DockerMonitoringService {
       memoryUsageBytes: input.memoryUsageBytes, ...(input.memoryLimitBytes === undefined ? {} : { memoryLimitBytes: input.memoryLimitBytes }),
       networkRxBytes: input.networkRxBytes, networkTxBytes: input.networkTxBytes,
       blockReadBytes: input.blockReadBytes, blockWriteBytes: input.blockWriteBytes, pids: input.pids,
+      ...(input.sampledContainerAggregate === undefined ? {} : {
+        sampledContainerAggregateCpuPercent: input.sampledContainerAggregate.cpuPercent,
+        sampledContainerAggregateMemoryUsageBytes: input.sampledContainerAggregate.memoryUsageBytes,
+        sampledContainerAggregateNetworkRxBytes: input.sampledContainerAggregate.networkRxBytes,
+        sampledContainerAggregateNetworkTxBytes: input.sampledContainerAggregate.networkTxBytes,
+        sampledContainerAggregateBlockReadBytes: input.sampledContainerAggregate.blockReadBytes,
+        sampledContainerAggregateBlockWriteBytes: input.sampledContainerAggregate.blockWriteBytes,
+        sampledContainerAggregatePids: input.sampledContainerAggregate.pids,
+      }),
     };
-    const hostSample = { id: stable([vpsId, input.agentInstanceId, input.snapshotId, input.collectedAt, hostMetrics]), vpsId, agentInstanceId: input.agentInstanceId, snapshotId: input.snapshotId, collectedAt: input.collectedAt, receivedAt, effectiveAt: input.collectedAt, metrics: hostMetrics };
+    const hostSample = { id: stable([vpsId, input.agentInstanceId, input.snapshotId, input.collectedAt, hostMetrics, input.sampledContainerAggregate?.coverage]), vpsId, agentInstanceId: input.agentInstanceId, snapshotId: input.snapshotId, collectedAt: input.collectedAt, receivedAt, effectiveAt: input.collectedAt, metrics: hostMetrics, ...(input.sampledContainerAggregate === undefined ? {} : { coverage: input.sampledContainerAggregate.coverage }) };
     const containerSamples = input.containers.map((c) => ({
       id: stable([vpsId, input.agentInstanceId, input.snapshotId, input.collectedAt, c.containerKey, c.cpuPercent, c.memoryUsageBytes, c.networkRxBytes, c.networkTxBytes, c.blockReadBytes, c.blockWriteBytes, c.pids]),
       vpsId, agentInstanceId: input.agentInstanceId, snapshotId: input.snapshotId, collectedAt: input.collectedAt, receivedAt, effectiveAt: input.collectedAt,

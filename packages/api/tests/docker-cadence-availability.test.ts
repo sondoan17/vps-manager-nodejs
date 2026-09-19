@@ -119,6 +119,26 @@ describe("docker cadence/availability contract", () => {
     });
   });
 
+  it("maps sampled aggregate into the host sample only when present", async () => {
+    const units: DockerV2IngestUnit[] = [];
+    const repository = { ingestV2Unit: vi.fn(async (unit: DockerV2IngestUnit) => {
+      units.push(unit);
+      return { vpsId: unit.vpsId, ingestStatus: "committed" as const, snapshotId: unit.snapshotId, agentInstanceId: unit.agentInstanceId, receivedAt: unit.receivedAt, revision: 1 };
+    }) };
+    const service = new DockerMonitoringService(repository as never, { get: vi.fn(async () => ({ id: "vps-1" })) } as never);
+    const aggregate = { coverage: { detailsSampled: 1, detailsTotalEligible: 2, complete: false, cohortDigest: "a".repeat(64) }, cpuPercent: 1, memoryUsageBytes: 2, networkRxBytes: 3, networkTxBytes: 4, blockReadBytes: 5, blockWriteBytes: 6, pids: 7 };
+    const input = validV2Docker({ sampledContainerAggregate: aggregate }) as unknown as AgentDockerMetricsInputV2;
+    await service.ingestV2("vps-1", input, "2026-01-01T00:00:00.000Z");
+    await service.ingestV2("vps-1", input, "2026-01-01T00:00:01.000Z");
+    expect(units[0].hostSample.coverage).toEqual(aggregate.coverage);
+    expect(units[0].hostSample.metrics.sampledContainerAggregateCpuPercent).toBe(1);
+    expect(units[0].requestDigest).toBe(units[1].requestDigest);
+
+    await service.ingestV2("vps-1", validV2Docker() as unknown as AgentDockerMetricsInputV2, "2026-01-01T00:00:00.000Z");
+    expect(units[2].hostSample.coverage).toBeUndefined();
+    expect(units[2].hostSample.metrics.sampledContainerAggregateCpuPercent).toBeUndefined();
+  });
+
   it("maps absent monitoring to an absent unit field", async () => {
     let captured: DockerV2IngestUnit | undefined;
     const repository = {

@@ -11,6 +11,7 @@ import type {
   DockerCursorPayload,
   DockerEventWatermark,
   DockerHostSample,
+  DockerHostSampleCoverage,
   DockerIngestBatch,
   DockerMetricRollup,
   DockerV2IngestUnit,
@@ -148,6 +149,13 @@ type AlertRow = {
 };
 
 function rowToHostSample(row: SampleRow): DockerHostSample {
+  const coverage = row.coverage;
+  const typedCoverage = coverage && typeof coverage === "object"
+    && typeof (coverage as Record<string, unknown>).detailsSampled === "number"
+    && typeof (coverage as Record<string, unknown>).detailsTotalEligible === "number"
+    && typeof (coverage as Record<string, unknown>).complete === "boolean"
+    ? coverage as DockerHostSampleCoverage
+    : undefined;
   return {
     id: row.id,
     vpsId: row.vps_id,
@@ -157,7 +165,7 @@ function rowToHostSample(row: SampleRow): DockerHostSample {
     receivedAt: requiredIsoString(row.received_at),
     effectiveAt: requiredIsoString(row.effective_at),
     metrics: row.metrics ?? {},
-    ...(row.coverage != null ? { coverage: row.coverage } : {}),
+    ...(typedCoverage ? { coverage: typedCoverage } : {}),
   };
 }
 

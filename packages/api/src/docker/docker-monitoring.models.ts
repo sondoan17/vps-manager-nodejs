@@ -2,7 +2,13 @@ export type DockerScope = "host" | "container" | "aggregate";
 export type DockerAlertState = "open" | "acknowledged" | "resolved";
 export type DockerEventAction = "create" | "start" | "restart" | "die" | "stop" | "kill" | "destroy" | "remove" | "health_status" | "stream_gap" | "daemon_restarted";
 
-export type DockerHostSample = { id: string; vpsId: string; agentInstanceId: string; snapshotId: string; collectedAt: string; receivedAt: string; effectiveAt: string; metrics: Record<string, number>; coverage?: Record<string, unknown> };
+export type DockerHostSampleCoverage = {
+  detailsSampled: number;
+  detailsTotalEligible: number;
+  complete: boolean;
+  cohortDigest?: string;
+};
+export type DockerHostSample = { id: string; vpsId: string; agentInstanceId: string; snapshotId: string; collectedAt: string; receivedAt: string; effectiveAt: string; metrics: Record<string, number>; coverage?: DockerHostSampleCoverage };
 export type DockerContainerSample = DockerHostSample & { containerKey: string; name?: string; state?: string };
 export type DockerMetricSample = DockerHostSample | DockerContainerSample;
 export type DockerMetricRollup = { id: string; vpsId: string; agentInstanceId: string; scope: DockerScope; containerKey?: string; cohortDigest?: string; bucketStart: string; formulaVersion: number; firstAt: string; lastAt: string; sampleCount: number; gaugeMin?: number; gaugeMax?: number; gaugeSum?: number; gaugeAverage?: number; counterFirst?: number; counterLast?: number; counterIncrease?: number; resetCount: number; expectedSamples: number; observedSamples: number; partialSampleCount: number; gapCount: number; coverageRatio: number };
