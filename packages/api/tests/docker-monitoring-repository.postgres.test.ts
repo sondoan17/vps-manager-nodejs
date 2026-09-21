@@ -96,6 +96,10 @@ describe("docker monitoring repository (PostgreSQL, I1)", () => {
       (m) => m.id === "014_docker_ingest.sql",
     )!;
     await pool.query(ingestMigration.sql);
+    const alertResolutionMigration = (await loadMigrations()).find(
+      (m) => m.id === "016_docker_alert_resolution.sql",
+    )!;
+    await pool.query(alertResolutionMigration.sql);
     repo = createPostgresDockerMonitoringRepository(pool as never);
   }, 30000);
 
@@ -329,9 +333,19 @@ describe("docker monitoring repository (PostgreSQL, I1)", () => {
       compatibility: { latest: true }, hostSample: sample("hs-1", "vps-a", receivedAt), ...overrides,
     });
     await ensureVps("vps-a");
-    const committed = await repo!.ingestV2Unit(base());
-    expect(committed.ingestStatus).toBe("committed");
+    const eventful = base({
+      events: [{ ...event("ev-1", "vps-a", receivedAt), sourceSequence: "1" }],
+      eventProtocol: {
+        fromWatermark: { vpsId: "vps-a", agentInstanceId: "inst1", timeNano: "0", boundaryDigests: [], updatedAt: receivedAt },
+        proposedWatermark: { vpsId: "vps-a", agentInstanceId: "inst1", timeNano: "10", boundaryDigests: ["digest-1"], updatedAt: receivedAt },
+        eventWindow: { from: "0", to: "10" },
+      },
+    });
+    const committed = await repo!.ingestV2Unit(eventful);
+    expect(committed).toMatchObject({ ingestStatus: "committed", committedWatermark: { timeNano: "10", boundaryDigests: ["digest-1"] } });
     expect((await repo!.listHostSamples({ vpsId: "vps-a" })).data).toHaveLength(1);
+    expect((await repo!.listEvents({ vpsId: "vps-a" })).data.map((row) => row.id)).toEqual(["ev-1"]);
+    expect(await repo!.getWatermark("vps-a", "inst1")).toMatchObject({ timeNano: "10", boundaryDigests: ["digest-1"], committedBatchId: "batch-1" });
     expect(await repo!.ingestV2Unit(base())).toEqual(committed);
     await expect(repo!.ingestV2Unit(base({ requestDigest: "digest-2" }))).rejects.toMatchObject({ code: "request_digest_mismatch" });
     await expect(repo!.ingestV2Unit(base({ batchId: "batch-2", snapshotId: "snap-2", sourceSequence: "1", agentInstanceId: "inst2", requestDigest: "digest-3" }))).rejects.toMatchObject({ code: "active_instance_conflict" });

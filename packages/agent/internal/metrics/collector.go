@@ -136,11 +136,12 @@ func (c *Collector) Collect(ctx context.Context) (*SystemMetrics, error) {
 
 	// Docker metrics are best-effort; never fail host metrics collection.
 	if c.isDockerEnabled() {
+		collectionStart := time.Now()
 		dockerCtx, cancel := context.WithTimeout(ctx, DefaultDockerTimeoutSeconds*time.Second)
 		defer cancel()
 		metrics.Docker = c.collectDocker(dockerCtx)
 		if c.isDockerV2Enabled() && metrics.Docker != nil {
-			metrics.DockerV2 = c.collectDockerV2(dockerCtx, metrics.Docker)
+			metrics.DockerV2 = c.collectDockerV2(dockerCtx, metrics.Docker, collectionStart)
 		}
 	}
 

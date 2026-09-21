@@ -1,19 +1,23 @@
-import { BadRequestException, ConflictException, Injectable, Inject, NotImplementedException } from "@nestjs/common";
+import { BadRequestException, ConflictException, Injectable, Inject, NotFoundException, Optional } from "@nestjs/common";
 import { VpsNotFoundError } from "../common/errors.js";
 import { createHash } from "node:crypto";
 import type { AgentDockerMetricsInputV2 } from "../agents/agent.models.js";
-import { DockerIngestConflict, type DockerV2IngestUnit } from "./docker-monitoring.models.js";
+import { DockerIngestCapacityRefused, DockerIngestConflict, type DockerAlertResolutionReason, type DockerV2IngestUnit } from "./docker-monitoring.models.js";
 import { DOCKER_INGEST_DIGEST_VERSION, dockerIngestRequestDigest } from "./docker-monitoring.schemas.js";
 import { ZodError } from "zod";
-import type { DockerMonitoringRepository } from "../persistence/repositories/docker-monitoring.repository.js";
-import { DOCKER_MONITORING_REPOSITORY } from "../tokens.js";
+import { DOCKER_MONITORING_CAPS, type DockerMonitoringMaintenanceResult, type DockerMonitoringRepository } from "../persistence/repositories/docker-monitoring.repository.js";
+import { APP_CONFIG, DOCKER_MONITORING_REPOSITORY } from "../tokens.js";
+import type { AppConfig } from "../config/app-config.js";
 import type { VpsRepository } from "../persistence/repositories/vps.repository.js";
 import { VPS_REPOSITORY } from "../tokens.js";
+import { DockerActivityService } from "./docker-activity.service.js";
+import { AuditService } from "../audit/audit.service.js";
+
 import {
   dockerHostHistoryQuerySchema, dockerContainerHistoryQuerySchema,
-  dockerEventsQuerySchema, dockerAlertsQuerySchema,
+  dockerEventsQuerySchema, dockerAlertsQuerySchema, dockerRollupsQuerySchema,
   type DockerHostHistoryQuery, type DockerContainerHistoryQuery,
-  type DockerEventsQuery, type DockerAlertsQuery,
+  type DockerEventsQuery, type DockerAlertsQuery, type DockerRollupsQuery,
   normalizeDockerDateRange,
 } from "./docker-monitoring.schemas.js";
 
@@ -22,6 +26,9 @@ export class DockerMonitoringService {
   constructor(
     @Inject(DOCKER_MONITORING_REPOSITORY) private readonly repository: DockerMonitoringRepository,
     @Inject(VPS_REPOSITORY) private readonly vps: VpsRepository,
+    @Optional() @Inject(APP_CONFIG) private readonly config?: AppConfig,
+    @Optional() private readonly activity?: DockerActivityService,
+    @Optional() private readonly audit?: AuditService,
   ) {}
 
   private async verify(vpsId: string) {
@@ -41,6 +48,16 @@ export class DockerMonitoringService {
       throw new BadRequestException({ error: { message: "Invalid cursor" } });
     }
     throw error;
+  }
+
+  async resolveActiveAlertsForVps(vpsId: string, reason: DockerAlertResolutionReason, resolvedAt: string = new Date().toISOString()) {
+    await this.verify(vpsId);
+    return this.repository.resolveActiveAlertsForVps(vpsId, reason, resolvedAt);
+  }
+
+  async cleanupForVps(vpsId: string, reason: "monitoring_disabled" | "vps_deleted" | "identity_reset_orphaned" = "monitoring_disabled") {
+    await this.verify(vpsId);
+    return this.repository.cleanupForVps({ vpsId, reason });
   }
 
   async ingestV2(vpsId: string, input: AgentDockerMetricsInputV2, receivedAt: string) {
@@ -79,8 +96,20 @@ export class DockerMonitoringService {
       eventProtocol: { fromWatermark: { ...from, vpsId, agentInstanceId: input.agentInstanceId, updatedAt: receivedAt }, proposedWatermark: { ...to, vpsId, agentInstanceId: input.agentInstanceId, updatedAt: receivedAt }, eventWindow: { from: input.eventWindow?.since ?? from.timeNano, to: input.eventWindow?.until ?? to.timeNano } },
       ...(input.monitoring === undefined ? {} : { monitoring: { ...input.monitoring } }),
     };
-    try { return await this.repository.ingestV2Unit(unit); }
-    catch (error) { if (error instanceof DockerIngestConflict) throw new ConflictException({ error: { message: "Docker ingest conflict", code: error.code } }); throw error; }
+    try {
+      const result = await this.repository.ingestV2Unit(unit);
+      if (result.ingestStatus === "rejected") {
+        throw new ConflictException({ error: { message: "Docker ingest history capacity refused", code: result.status ?? "history_capacity_refused", retryable: true } });
+      }
+        if (unit.events?.length) this.activity?.publish({ type: "docker.events.available", vpsId, newestEventId: unit.events[unit.events.length - 1]?.id, countHint: unit.events.length });
+        if (unit.monitoring?.availability === "unavailable") this.activity?.publish({ type: "docker.alerts.updated", vpsId, changedAlertIds: [], refreshRequired: true });
+      return result;
+    }
+    catch (error) {
+      if (error instanceof DockerIngestCapacityRefused) throw new ConflictException({ error: { message: error.message, code: error.code, retryable: true } });
+      if (error instanceof DockerIngestConflict) throw new ConflictException({ error: { message: "Docker ingest conflict", code: error.code } });
+      throw error;
+    }
   }
 
   async hostHistory(input: Omit<DockerHostHistoryQuery, "vpsId"> & { vpsId: string }) {
@@ -108,6 +137,14 @@ export class DockerMonitoringService {
     } catch (error) { this.toBadRequest(error); }
   }
   async storage(vpsId: string) { await this.verify(vpsId); return this.repository.getStorageLatest(vpsId); }
+  async rollups(input: Omit<DockerRollupsQuery, "vpsId"> & { vpsId: string }) {
+    await this.verify(input.vpsId);
+    const parsed = dockerRollupsQuerySchema.parse(input);
+    const query = normalizeDockerDateRange(parsed);
+    try {
+      return await this.repository.listRollups(query);
+    } catch (error) { this.toBadRequest(error); }
+  }
   async alerts(input: Omit<DockerAlertsQuery, "vpsId"> & { vpsId: string }) {
     await this.verify(input.vpsId);
     const parsed = dockerAlertsQuerySchema.parse(input);
@@ -116,10 +153,80 @@ export class DockerMonitoringService {
       return await this.repository.listAlerts(query);
     } catch (error) { this.toBadRequest(error); }
   }
-  async acknowledge(vpsId: string) {
+  async acknowledge(vpsId: string, alertId: string, actor = "dashboard", metadata?: Record<string, unknown>) {
     await this.verify(vpsId);
-    throw new NotImplementedException({
-      error: { message: "Docker alert acknowledgement is not available in I1" },
-    });
+    try {
+      const result = await this.repository.acknowledgeAlert(vpsId, alertId, actor, new Date().toISOString());
+      if (result.changed) {
+        await this.audit?.record({
+          actor,
+          action: "docker.alert.acknowledged",
+          resourceType: "docker_alert",
+          resourceId: alertId,
+          result: "success",
+          metadata: {
+            vpsId,
+            alertId,
+            ruleKind: result.alert.ruleKind,
+            ...(metadata?.requestId === undefined ? {} : { requestId: metadata.requestId }),
+          },
+        });
+        this.activity?.publish({ type: "docker.alerts.updated", vpsId, changedAlertIds: [alertId] });
+      }
+      return result.alert;
+    } catch (error) {
+      if (error instanceof Error && error.message === "Docker alert not found") {
+        throw new NotFoundException({ error: { message: "Docker alert not found" } });
+      }
+      throw error;
+    }
+  }
+
+  /**
+   * Bounded retention maintenance slice: strict cutoff derived from validated
+   * config retention days, per-VPS newest-first caps, delegates to the
+   * repository's existing JSON/Postgres prune. No scheduler, rollup pruning,
+   * alerts, SSE, or migrations here.
+   */
+  async runMaintenance(now?: string): Promise<DockerMonitoringMaintenanceResult> {
+    const prune = this.repository.pruneSamplesEventsAndStorage;
+    if (typeof prune !== "function") return { samplesRemoved: 0, eventsRemoved: 0 };
+    const nowMs = now === undefined ? Date.now() : Date.parse(now);
+    if (Number.isNaN(nowMs)) throw new Error("Invalid maintenance now: must be an ISO datetime string");
+    const retentionDays = this.config?.dockerRetentionDays ?? 7;
+    if (!Number.isInteger(retentionDays) || retentionDays < 1 || retentionDays > 90) {
+      throw new Error("Invalid maintenance retention days: must be an integer 1..90");
+    }
+    const cutoff = new Date(nowMs - retentionDays * 24 * 60 * 60 * 1000).toISOString();
+    const rollupRetentionDays = this.config?.dockerRollupRetentionDays ?? 30;
+    const alertRetentionDays = this.config?.dockerResolvedAlertRetentionDays ?? 30;
+    if (!Number.isInteger(rollupRetentionDays) || rollupRetentionDays < 1 || rollupRetentionDays > 365 || !Number.isInteger(alertRetentionDays) || alertRetentionDays < 1 || alertRetentionDays > 365) throw new Error("Invalid rollup or resolved alert retention days");
+    const rollupCutoff = new Date(nowMs - rollupRetentionDays * 24 * 60 * 60 * 1000).toISOString();
+    const alertCutoff = new Date(nowMs - alertRetentionDays * 24 * 60 * 60 * 1000).toISOString();
+    const samplesPerVps = Math.min(
+      this.config?.dockerMaintenanceSamplesPerVps ?? DOCKER_MONITORING_CAPS.samplesPerVps,
+      DOCKER_MONITORING_CAPS.samplesPerVps,
+    );
+    const eventsPerVps = Math.min(
+      this.config?.dockerMaintenanceEventsPerVps ?? DOCKER_MONITORING_CAPS.eventsPerVps,
+      DOCKER_MONITORING_CAPS.eventsPerVps,
+    );
+    if (!Number.isInteger(samplesPerVps) || samplesPerVps < 0) {
+      throw new Error("Invalid maintenance option samplesPerVps: must be a non-negative integer");
+    }
+    if (!Number.isInteger(eventsPerVps) || eventsPerVps < 0) {
+      throw new Error("Invalid maintenance option eventsPerVps: must be a non-negative integer");
+    }
+    const startedAt = Date.now();
+    const result = await prune.call(this.repository, { cutoff, rollupCutoff, alertCutoff, samplesPerVps, eventsPerVps });
+    return {
+      samplesRemoved: result.samplesRemoved,
+      ...(result.rollupsRemoved !== undefined ? { rollupsRemoved: result.rollupsRemoved } : {}),
+      eventsRemoved: result.eventsRemoved,
+      ...(result.alertsRemoved !== undefined ? { alertsRemoved: result.alertsRemoved } : {}),
+      ...(result.storageMode ? { storageMode: result.storageMode } : {}),
+      durationMs: Math.max(0, Date.now() - startedAt),
+      pass: { retentionDays, samplesPerVps, eventsPerVps },
+    };
   }
 }

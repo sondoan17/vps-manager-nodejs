@@ -15,6 +15,8 @@ export type AppConfig = {
   privateDir: string;
   rateLimitWindowMs: number;
   rateLimitMax: number;
+  dockerAlertAcknowledgeRateLimitWindowMs?: number;
+  dockerAlertAcknowledgeRateLimitMax?: number;
   agentPublicBaseUrl?: string;
   agentBinaryPath?: string;
   agentInstallIntervalSeconds: number;
@@ -40,6 +42,16 @@ export type AppConfig = {
   auditHistoryLimit: number;
   metricWindowLimit: number;
 
+  // Docker monitoring retention maintenance
+  dockerRetentionDays: number;
+  dockerRollupRetentionDays: number;
+  dockerResolvedAlertRetentionDays: number;
+  dockerMaintenanceSamplesPerVps: number;
+  dockerMaintenanceEventsPerVps: number;
+  dockerMaintenanceIntervalSeconds?: number;
+  dockerJsonMaxBytes: number;
+  dockerJsonMaintenanceMaxRewriteBytes: number;
+
   // SSH security
   sshHostKeyPins: Record<string, string | string[]>;
   sshHostKeyPolicy: "strict" | "permissive";
@@ -59,6 +71,8 @@ const envSchema = z.object({
   PRIVATE_DIR: z.string().trim().min(1).default("private"),
   RATE_LIMIT_WINDOW_MS: z.coerce.number().int().positive().default(60_000),
   RATE_LIMIT_MAX: z.coerce.number().int().positive().default(120),
+  DOCKER_ALERT_ACK_RATE_LIMIT_WINDOW_MS: z.coerce.number().int().positive().default(60_000),
+  DOCKER_ALERT_ACK_RATE_LIMIT_MAX: z.coerce.number().int().positive().default(30),
   AGENT_PUBLIC_BASE_URL: z.preprocess(
     (value) => (value === "" ? undefined : value),
     z.string().trim().url().optional(),
@@ -116,6 +130,29 @@ const envSchema = z.object({
     .positive()
     .max(1000)
     .default(120),
+  DOCKER_RETENTION_DAYS: z.coerce.number().int().min(1).max(90).default(7),
+  DOCKER_ROLLUP_RETENTION_DAYS: z.coerce.number().int().min(1).max(365).default(30),
+  DOCKER_RESOLVED_ALERT_RETENTION_DAYS: z.coerce.number().int().min(1).max(365).default(30),
+  DOCKER_MAINTENANCE_SAMPLES_PER_VPS: z.coerce
+    .number()
+    .int()
+    .positive()
+    .max(5000)
+    .default(5000),
+  DOCKER_MAINTENANCE_EVENTS_PER_VPS: z.coerce
+    .number()
+    .int()
+    .positive()
+    .max(10000)
+    .default(10000),
+  DOCKER_JSON_MAX_BYTES: z.coerce.number().int().positive().max(32 * 1024 * 1024).default(32 * 1024 * 1024),
+  DOCKER_JSON_MAINTENANCE_MAX_REWRITE_BYTES: z.coerce.number().int().positive().max(8 * 1024 * 1024).default(8 * 1024 * 1024),
+  DOCKER_MAINTENANCE_INTERVAL_SECONDS: z.coerce
+    .number()
+    .int()
+    .min(300)
+    .max(86400)
+    .default(21600),
 
   // SSH security
   SSH_HOST_KEY_PINS: z.preprocess(
@@ -199,6 +236,8 @@ export function parseAppConfig(
     privateDir: parsed.PRIVATE_DIR,
     rateLimitWindowMs: parsed.RATE_LIMIT_WINDOW_MS,
     rateLimitMax: parsed.RATE_LIMIT_MAX,
+    dockerAlertAcknowledgeRateLimitWindowMs: parsed.DOCKER_ALERT_ACK_RATE_LIMIT_WINDOW_MS,
+    dockerAlertAcknowledgeRateLimitMax: parsed.DOCKER_ALERT_ACK_RATE_LIMIT_MAX,
     agentPublicBaseUrl: parsed.AGENT_PUBLIC_BASE_URL,
     agentBinaryPath: parsed.AGENT_BINARY_PATH,
     agentInstallIntervalSeconds: parsed.AGENT_INSTALL_INTERVAL_SECONDS,
@@ -220,6 +259,16 @@ export function parseAppConfig(
     jobHistoryLimit: parsed.JOB_HISTORY_LIMIT,
     auditHistoryLimit: parsed.AUDIT_HISTORY_LIMIT,
     metricWindowLimit: parsed.METRIC_WINDOW_LIMIT,
+
+    dockerRetentionDays: parsed.DOCKER_RETENTION_DAYS,
+    dockerRollupRetentionDays: parsed.DOCKER_ROLLUP_RETENTION_DAYS,
+    dockerResolvedAlertRetentionDays: parsed.DOCKER_RESOLVED_ALERT_RETENTION_DAYS,
+    dockerMaintenanceSamplesPerVps: parsed.DOCKER_MAINTENANCE_SAMPLES_PER_VPS,
+    dockerMaintenanceEventsPerVps: parsed.DOCKER_MAINTENANCE_EVENTS_PER_VPS,
+     dockerMaintenanceIntervalSeconds: parsed.DOCKER_MAINTENANCE_INTERVAL_SECONDS,
+     dockerJsonMaxBytes: parsed.DOCKER_JSON_MAX_BYTES,
+     dockerJsonMaintenanceMaxRewriteBytes: parsed.DOCKER_JSON_MAINTENANCE_MAX_REWRITE_BYTES,
+
 
     sshHostKeyPins: parsed.SSH_HOST_KEY_PINS
       ? (() => {

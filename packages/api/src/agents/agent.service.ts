@@ -321,29 +321,33 @@ export class AgentService {
           },
         };
       } else if (parsed.docker && dockerMetricsEnabled) {
+        // The v2 branch above is handled by DockerMonitoringService. This
+        // legacy path is intentionally narrowed to the v1 DTO so its opaque
+        // container identifiers remain compatible with agent_docker_metrics.
+        const dockerV1 = parsed.docker as Extract<typeof parsed.docker, { schemaVersion?: 1 }>;
         const dockerMetrics: AgentDockerMetrics = {
           vpsId: credential.vpsId,
-          collectedAt: parsed.docker.collectedAt,
+          collectedAt: dockerV1.collectedAt,
           receivedAt: now,
-          agentVersion: parsed.docker.agentVersion ?? parsed.agentVersion,
-          engineVersion: parsed.docker.engineVersion,
-          apiVersion: parsed.docker.apiVersion,
-          os: parsed.docker.os,
-          architecture: parsed.docker.architecture,
+          agentVersion: dockerV1.agentVersion ?? parsed.agentVersion,
+          engineVersion: dockerV1.engineVersion,
+          apiVersion: dockerV1.apiVersion,
+          os: dockerV1.os,
+          architecture: dockerV1.architecture,
           schemaVersion: 1,
-          available: parsed.docker.available,
-          errorCode: parsed.docker.errorCode,
-          containerTotal: parsed.docker.containerTotal,
-          containerRunning: parsed.docker.containerRunning,
-          cpuPercent: parsed.docker.cpuPercent,
-          memoryUsageBytes: parsed.docker.memoryUsageBytes,
-          memoryLimitBytes: parsed.docker.memoryLimitBytes,
-          networkRxBytes: parsed.docker.networkRxBytes,
-          networkTxBytes: parsed.docker.networkTxBytes,
-          blockReadBytes: parsed.docker.blockReadBytes,
-          blockWriteBytes: parsed.docker.blockWriteBytes,
-          pids: parsed.docker.pids,
-          containers: parsed.docker.containers ?? [],
+          available: dockerV1.available,
+          errorCode: dockerV1.errorCode,
+          containerTotal: dockerV1.containerTotal,
+          containerRunning: dockerV1.containerRunning,
+          cpuPercent: dockerV1.cpuPercent,
+          memoryUsageBytes: dockerV1.memoryUsageBytes,
+          memoryLimitBytes: dockerV1.memoryLimitBytes,
+          networkRxBytes: dockerV1.networkRxBytes,
+          networkTxBytes: dockerV1.networkTxBytes,
+          blockReadBytes: dockerV1.blockReadBytes,
+          blockWriteBytes: dockerV1.blockWriteBytes,
+          pids: dockerV1.pids,
+          containers: dockerV1.containers ?? [],
         };
         await this.agentRepository.upsertDockerMetrics(dockerMetrics);
       }

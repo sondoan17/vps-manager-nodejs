@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import type { NextFunction, Request, Response } from "express";
 import type { AppConfig } from "../config/app-config.js";
 import {
@@ -31,16 +32,30 @@ export function createMutationRateLimit(
     if (!req.path.startsWith("/api/vps") && !req.path.startsWith("/api/agent"))
       return next();
 
-    const key = req.ip || "unknown";
+    const ipKey = req.ip || "unknown";
     const isAgent = req.path.startsWith("/api/agent");
+    // Keep unauthenticated traffic bounded by IP, but isolate authenticated agents
+    // before controller verification using a non-reversible credential fingerprint.
+    const authHeader = req.header("authorization") ?? "";
+    const credentialKey = authHeader.startsWith("Bearer ")
+      ? createHash("sha256").update(authHeader).digest("hex").slice(0, 32)
+      : ipKey;
+    const acknowledgeMatch = req.path.match(/^\/api\/vps\/([^/]+)\/docker\/alerts\/[^/]+\/acknowledge$/);
+    const sessionKey = req.dashboardSessionId ?? ipKey;
     const maxRequests = isAgent
       ? config.rateLimitMax * AGENT_LIMIT_MULTIPLIER
       : config.rateLimitMax;
+    const windowMs = config.dockerAlertAcknowledgeRateLimitWindowMs ?? config.rateLimitWindowMs;
+    const acknowledgeMax = config.dockerAlertAcknowledgeRateLimitMax ?? 30;
+    const bucket = acknowledgeMatch
+      ? `docker-alert-ack:${sessionKey}:${acknowledgeMatch[1]}`
+      : `${isAgent ? "agent" : "mutation"}:${credentialKey}`;
 
+    const effectiveMax = acknowledgeMatch ? acknowledgeMax : maxRequests;
     limiter
-      .consume(`mutation:${key}`, config.rateLimitWindowMs, maxRequests)
+      .consume(bucket, acknowledgeMatch ? windowMs : config.rateLimitWindowMs, effectiveMax)
       .then(({ count, resetAtMs }) => {
-        if (count > maxRequests) {
+        if (count > effectiveMax) {
           const retryAfter = Math.ceil((resetAtMs - Date.now()) / 1000);
           if (retryAfter > 0) {
             res.set("Retry-After", String(retryAfter));

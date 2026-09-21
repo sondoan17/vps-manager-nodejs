@@ -1,5 +1,8 @@
+import type { DockerTypedAlertState } from "./docker-alert-evaluator.js";
+
 export type DockerScope = "host" | "container" | "aggregate";
 export type DockerAlertState = "open" | "acknowledged" | "resolved";
+export type DockerAlertResolutionReason = "monitoring_disabled" | "identity_reset_orphaned" | "vps_deleted" | "condition_cleared" | "container_removed";
 export type DockerEventAction = "create" | "start" | "restart" | "die" | "stop" | "kill" | "destroy" | "remove" | "health_status" | "stream_gap" | "daemon_restarted";
 
 export type DockerHostSampleCoverage = {
@@ -38,11 +41,13 @@ export type DockerIngestBatchResult = { status: "committed" | "already_committed
 export type DockerIngestBatch = { vpsId: string; agentInstanceId: string; batchId: string; snapshotId: string; requestDigest: string; result: DockerIngestBatchResult | string; revision?: number; };
 export type DockerIngestConflictCode = "request_digest_mismatch" | "source_sequence_conflict" | "watermark_conflict" | "active_instance_conflict" | "snapshot_conflict" | "batch_conflict";
 export class DockerIngestConflict extends Error { readonly code: DockerIngestConflictCode; constructor(code: DockerIngestConflictCode, message = code) { super(message); this.name = "DockerIngestConflict"; this.code = code; } }
-export type DockerV2IngestResult = { vpsId: string; ingestStatus: "committed" | "already_committed" | "replay_ignored"; status?: string; snapshotId: string; agentInstanceId: string; batchId?: string; receivedAt: string; committedWatermark?: DockerEventWatermark; revision: number };
+export class DockerIngestCapacityRefused extends Error { readonly code = "history_capacity_refused" as const; readonly retryable = true; constructor(message = "Docker ingest history capacity refused") { super(message); this.name = "DockerIngestCapacityRefused"; } }
+export type DockerV2IngestResult = { vpsId: string; ingestStatus: "committed" | "already_committed" | "replay_ignored" | "rejected"; status?: "history_capacity_refused" | string; snapshotId: string; agentInstanceId: string; batchId?: string; receivedAt: string; committedWatermark?: DockerEventWatermark; revision: number };
 export type DockerMonitoringSnapshot = { vpsId: string; snapshotId: string; agentInstanceId: string; requestDigest: string; sourceSequence: DockerSourceSequence; result: DockerIngestBatchResult; receivedAt: string; revision: number };
 export type DockerAuthoritativeLatest = { activeInstanceId: string; snapshotId: string; sourceSequence: DockerSourceSequence; receivedAt: string; updatedAt: string; revision: number; compatibility: DockerCompatibilityPayload };
-export type DockerMonitoringStore = { schemaVersion: number; revision: number; samples: DockerMetricSample[]; rollups: DockerMetricRollup[]; events: DockerOperationalEvent[]; latestStorage: Record<string, DockerStorageLatest>; latestByVps: Record<string, DockerAuthoritativeLatest>; snapshots: DockerMonitoringSnapshot[]; watermarks: DockerEventWatermark[]; batches: DockerIngestBatch[]; alerts: DockerAlert[] };
-export type DockerAlert = { id: string; vpsId: string; agentInstanceId?: string; ruleKind: string; containerKey?: string; state: DockerAlertState; fingerprint: string; openedAt: string; lastObservedAt?: string; resolvedAt?: string; acknowledgedAt?: string; acknowledgedBy?: string; occurrences: number; summary: string; contextVersion: 1 };
+export type DockerUnavailableRuleState = { vpsId: string; window: Array<"available" | "unavailable">; alert: { state: "open" | "acknowledged"; openedAt: string; lastObservedAt: string; occurrences: number; acknowledgedAt?: string; acknowledgedBy?: string } | null };
+export type DockerAlert = { id: string; vpsId: string; agentInstanceId?: string; ruleKind: string; containerKey?: string; state: DockerAlertState; fingerprint: string; openedAt: string; lastObservedAt?: string; resolvedAt?: string; acknowledgedAt?: string; acknowledgedBy?: string; occurrences: number; summary: string; resolutionReason?: DockerAlertResolutionReason; contextVersion: 1 };
+export type DockerMonitoringStore = { schemaVersion: number; revision: number; lastMaintenanceAt?: string; samples: DockerMetricSample[]; rollups: DockerMetricRollup[]; events: DockerOperationalEvent[]; latestStorage: Record<string, DockerStorageLatest>; latestByVps: Record<string, DockerAuthoritativeLatest>; snapshots: DockerMonitoringSnapshot[]; watermarks: DockerEventWatermark[]; batches: DockerIngestBatch[]; alerts: DockerAlert[]; alertRuleStates: Record<string, DockerUnavailableRuleState | DockerTypedAlertState> };
 
 export type DockerListScope = "host" | "container" | "events" | "alerts" | "rollups";
 export type DockerListQuery = { vpsId: string; scope: DockerListScope; limit?: number; from?: string; to?: string; cursor?: string; agentInstanceId?: string; containerKey?: string; action?: DockerEventAction; state?: DockerAlertState; ruleKind?: string };

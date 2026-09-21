@@ -136,8 +136,10 @@ type DockerSampledContainerAggregateV2 struct {
 
 // DockerContainerV2 mirrors API AgentDockerContainerMetricV2.
 type DockerContainerV2 struct {
-	ContainerKey     string  `json:"containerKey"`
-	ID               string  `json:"id"`
+	ContainerKey string `json:"containerKey"`
+	// ID is retained only for the v1 DTO. V2 identifies containers solely by
+	// the opaque containerKey and must never transmit a daemon ID prefix.
+	ID               string  `json:"-"`
 	Name             string  `json:"name"`
 	Image            string  `json:"image"`
 	State            string  `json:"state"`
@@ -220,8 +222,8 @@ type DockerStorageAggregateV2 struct {
 // DockerMonitoringMetadataV2 is optional cadence and lifecycle metadata.
 type DockerMonitoringMetadataV2 struct {
 	EffectiveCadenceSeconds int    `json:"effectiveCadenceSeconds"`
-	Availability             string `json:"availability"`
-	State                    string `json:"state"`
+	Availability            string `json:"availability"`
+	State                   string `json:"state"`
 }
 
 // DockerMetricsV2 is the canonical flat API wire contract (schemaVersion 2).
@@ -260,5 +262,5 @@ type DockerMetricsV2 struct {
 	FromWatermark             *DockerEventWatermarkV2            `json:"fromWatermark,omitempty"`
 	ProposedWatermark         *DockerEventWatermarkV2            `json:"proposedWatermark,omitempty"`
 	Storage                   *DockerStorageAggregateV2          `json:"storage,omitempty"`
-	Monitoring                *DockerMonitoringMetadataV2         `json:"monitoring,omitempty"`
+	Monitoring                *DockerMonitoringMetadataV2        `json:"monitoring,omitempty"`
 }

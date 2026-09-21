@@ -37,10 +37,16 @@ const baseConfig: AppConfig = {
   dashboardCookieSameSite: "lax",
   dashboardSessionSecret: SESSION_SECRET,
   trustProxyHops: 0,
-  jobHistoryLimit: 1000,
-  auditHistoryLimit: 5000,
-  metricWindowLimit: 120,
-  sshHostKeyPins: {},
+    jobHistoryLimit: 1000,
+    auditHistoryLimit: 5000,
+    metricWindowLimit: 120,
+    dockerRetentionDays: 7,
+    dockerMaintenanceSamplesPerVps: 5000,
+    dockerMaintenanceEventsPerVps: 10000,
+    dockerMaintenanceIntervalSeconds: 21600,
+    dockerJsonMaxBytes: 32 * 1024 * 1024,
+    dockerJsonMaintenanceMaxRewriteBytes: 8 * 1024 * 1024,
+    sshHostKeyPins: {},
   sshHostKeyPolicy: "strict",
 };
 
@@ -496,17 +502,16 @@ describe("docker monitoring API VPS isolation", () => {
   });
 });
 
-describe("docker monitoring API acknowledge unavailable in I1", () => {
-  it("returns 501 without mutating alerts", async () => {
+describe("docker monitoring API alert acknowledgement", () => {
+  it("acknowledges an alert scoped to the VPS", async () => {
     const res = await authed(
       request(server)
         .post(`/api/vps/${vpsA}/docker/alerts/al-a1/acknowledge`)
         .set("Origin", ORIGIN)
         .set("Host", HOST),
-    ).expect(501);
-    expect(res.body.error.message).toBe(
-      "Docker alert acknowledgement is not available in I1",
-    );
+    ).expect(201);
+    expect(res.body).toMatchObject({ id: "al-a1", state: "acknowledged" });
+    expect(res.body.acknowledgedBy).toMatch(/^sess_/);
 
     const alerts = await authed(
       request(server).get(`/api/vps/${vpsA}/docker/alerts`),
@@ -514,7 +519,8 @@ describe("docker monitoring API acknowledge unavailable in I1", () => {
     expect(alerts.body.data.map((a: { id: string }) => a.id)).toEqual([
       "al-a1",
     ]);
-    expect(alerts.body.data[0]).toMatchObject({ state: "open" });
+    expect(alerts.body.data[0]).toMatchObject({ state: "acknowledged" });
+    expect(alerts.body.data[0].acknowledgedBy).toMatch(/^sess_/);
   });
 
   it("requires session auth and origin for ack", async () => {

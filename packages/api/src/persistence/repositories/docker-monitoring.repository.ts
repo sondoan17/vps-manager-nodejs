@@ -1,4 +1,16 @@
 import { join } from "node:path";
+
+export const DEFAULT_DOCKER_JSON_MAX_BYTES = 32 * 1024 * 1024;
+export const DEFAULT_DOCKER_JSON_MAINTENANCE_MAX_REWRITE_BYTES = 8 * 1024 * 1024;
+
+type JsonDockerMonitoringOptions = {
+  maxBytes?: number;
+  maintenanceMaxRewriteBytes?: number;
+};
+
+function jsonBytes(value: unknown): number {
+  return Buffer.byteLength(JSON.stringify(value), "utf8");
+}
 import {
   readJsonFile,
   readModifyWriteJsonFile,
@@ -10,10 +22,12 @@ import {
 } from "../../docker/docker-monitoring.schemas.js";
 import type {
   DockerAlert,
-  DockerContainerSample,
+  DockerAlertResolutionReason,
+  DockerUnavailableRuleState,
   DockerCursorPayload,
   DockerEventWatermark,
   DockerHostSample,
+  DockerContainerSample,
   DockerIngestBatch,
   DockerListScope,
   DockerMetricRollup,
@@ -26,6 +40,8 @@ import type {
 } from "../../docker/docker-monitoring.models.js";
 import { DockerIngestConflict } from "../../docker/docker-monitoring.models.js";
 import { compareDockerSourceSequence, compareDockerWatermarks } from "../../docker/docker-monitoring.schemas.js";
+import { evaluateDockerUnavailable, DOCKER_UNAVAILABLE_RULE_KIND, dockerUnavailableFingerprint, buildDockerUnavailableSummary, evaluateDockerAlert, createInitialDockerAlertState, dockerAlertFingerprint, buildDockerAlertSummary, DOCKER_ALERT_RULES } from "../../docker/docker-alert-evaluator.js";
+import type { DockerAlertObservation, DockerAlertRuleKind, DockerTypedAlertState } from "../../docker/docker-alert-evaluator.js";
 
 // ── Caps (I1 foundation; retention tuning is an I3 concern) ───────────────
 // Every persisted/listed section is bounded. Seed helpers truncate to these
@@ -81,13 +97,15 @@ export type DockerAlertsQuery = {
 export type DockerRollupsQuery = {
   vpsId: string;
   limit?: number;
+  from?: string;
+  to?: string;
   cursor?: string;
   agentInstanceId?: string;
   scope?: DockerMetricRollup["scope"];
   containerKey?: string;
 };
 
-// ── Future atomic ingest/cleanup contract (I3+, declared here, not implemented) ──
+// ── Atomic ingest/cleanup contract ──────────────────────────────────────────
 
 export type DockerMonitoringCleanup = {
   vpsId: string;
@@ -102,8 +120,7 @@ export type DockerHostGaugeRollupOptions = { vpsId: string; now?: string };
  */
 
 // ── Repository interface ──────────────────────────────────────────────────
-// Empty reads plus future atomic ingest/cleanup contract. I3 will implement
-// the ingest/cleanup behavior; I1 JSON throws for those methods.
+// Bounded reads plus atomic ingest/cleanup and optional maintenance operations.
 
 export type DockerMonitoringRepository = {
   listHostSamples(query: DockerHostSamplesQuery): Promise<DockerPage<DockerHostSample>>;
@@ -112,12 +129,16 @@ export type DockerMonitoringRepository = {
   listRollups(query: DockerRollupsQuery): Promise<DockerPage<DockerMetricRollup>>;
   getStorageLatest(vpsId: string): Promise<DockerStorageLatest | undefined>;
   listAlerts(query: DockerAlertsQuery): Promise<DockerPage<DockerAlert>>;
+  acknowledgeAlert(vpsId: string, alertId: string, acknowledgedBy: string, acknowledgedAt: string): Promise<{ alert: DockerAlert; changed: boolean }>;
+  resolveActiveAlertsForVps(vpsId: string, reason: DockerAlertResolutionReason, resolvedAt: string): Promise<number>;
+  applyUnavailableObservation(vpsId: string, agentInstanceId: string, observation: { availability: "available" | "unavailable" | "unknown"; observedAt: string }): Promise<{ alert?: DockerAlert; transition: string }>;
   getWatermark(vpsId: string, agentInstanceId: string): Promise<DockerEventWatermark | undefined>;
   getIngestBatch(vpsId: string, agentInstanceId: string, batchId: string): Promise<DockerIngestBatch | undefined>;
-  /** Future (I3): atomic ingest of one DockerV2IngestUnit. Not implemented in I1. */
+  /** Atomically ingest one DockerV2IngestUnit. */
   ingestV2Unit(unit: DockerV2IngestUnit): Promise<DockerV2IngestResult>;
-  /** Future (I3): scoped cleanup on disable/delete/identity-reset. Not implemented in I1. */
+  /** Apply scoped cleanup on disable, delete, or identity reset. */
   cleanupForVps(cleanup: DockerMonitoringCleanup): Promise<void>;
+  pruneSamplesEventsAndStorage?(options: DockerMonitoringMaintenanceOptions): Promise<DockerMonitoringMaintenanceResult>;
   rollupHostGauges?(options: DockerHostGaugeRollupOptions): Promise<DockerMetricRollup[]>;
 };
 
@@ -125,13 +146,25 @@ export type DockerMonitoringSeed = Partial<DockerMonitoringStore>;
 
 export type DockerMonitoringMaintenanceOptions = {
   cutoff: string;
+  rollupCutoff?: string;
+  alertCutoff?: string;
   samplesPerVps: number;
   eventsPerVps: number;
 };
 
 export type DockerMonitoringMaintenanceResult = {
   samplesRemoved: number;
+  rollupsRemoved?: number;
   eventsRemoved: number;
+  alertsRemoved?: number;
+  /** Safe bounded metadata only; never includes VPS/container names or event payloads. */
+  storageMode?: "json" | "postgres";
+  durationMs?: number;
+  pass?: {
+    retentionDays: number;
+    samplesPerVps: number;
+    eventsPerVps: number;
+  };
 };
 
 export type JsonDockerMonitoringRepository = DockerMonitoringRepository & {
@@ -144,6 +177,7 @@ function emptyStore(): DockerMonitoringStore {
   return {
     schemaVersion: 2,
     revision: 0,
+    lastMaintenanceAt: undefined,
     latestByVps: {},
     snapshots: [],
     samples: [],
@@ -153,6 +187,7 @@ function emptyStore(): DockerMonitoringStore {
     watermarks: [],
     batches: [],
     alerts: [],
+    alertRuleStates: {},
   };
 }
 
@@ -161,6 +196,9 @@ function normalizeStore(raw: unknown): DockerMonitoringStore {
   return {
     schemaVersion: typeof base.schemaVersion === "number" ? base.schemaVersion : 1,
     revision: typeof base.revision === "number" ? base.revision : 0,
+    ...(typeof base.lastMaintenanceAt === "string" && !Number.isNaN(Date.parse(base.lastMaintenanceAt))
+      ? { lastMaintenanceAt: base.lastMaintenanceAt }
+      : {}),
     latestByVps: base.latestByVps && typeof base.latestByVps === "object" ? { ...base.latestByVps } : {},
     snapshots: Array.isArray(base.snapshots) ? [...base.snapshots] : [],
     samples: Array.isArray(base.samples) ? [...base.samples] : [],
@@ -170,6 +208,7 @@ function normalizeStore(raw: unknown): DockerMonitoringStore {
     watermarks: Array.isArray(base.watermarks) ? [...base.watermarks] : [],
     batches: Array.isArray(base.batches) ? [...base.batches] : [],
     alerts: Array.isArray(base.alerts) ? [...base.alerts] : [],
+    alertRuleStates: base.alertRuleStates && typeof base.alertRuleStates === "object" ? { ...(base.alertRuleStates as Record<string, DockerUnavailableRuleState>) } : {},
   };
 }
 
@@ -302,8 +341,12 @@ function pruneToCapNewestFirst<T>(
   return { kept, removed };
 }
 
-export function createJsonDockerMonitoringRepository(dataDirOrFile = "data"): JsonDockerMonitoringRepository {
+export function createJsonDockerMonitoringRepository(dataDirOrFile = "data", options: JsonDockerMonitoringOptions = {}): JsonDockerMonitoringRepository {
   const filePath = resolveFilePath(dataDirOrFile);
+  const maxBytes = options.maxBytes ?? DEFAULT_DOCKER_JSON_MAX_BYTES;
+  const maintenanceMaxRewriteBytes = options.maintenanceMaxRewriteBytes ?? DEFAULT_DOCKER_JSON_MAINTENANCE_MAX_REWRITE_BYTES;
+  if (!Number.isInteger(maxBytes) || maxBytes <= 0 || maxBytes > DEFAULT_DOCKER_JSON_MAX_BYTES) throw new Error("Invalid Docker JSON maxBytes");
+  if (!Number.isInteger(maintenanceMaxRewriteBytes) || maintenanceMaxRewriteBytes <= 0 || maintenanceMaxRewriteBytes > DEFAULT_DOCKER_JSON_MAINTENANCE_MAX_REWRITE_BYTES) throw new Error("Invalid Docker JSON maintenanceMaxRewriteBytes");
   const resolved = filePath;
 
   async function readStore(): Promise<DockerMonitoringStore> {
@@ -430,6 +473,7 @@ export function createJsonDockerMonitoringRepository(dataDirOrFile = "data"): Js
         .filter((r) => (query.agentInstanceId === undefined ? true : r.agentInstanceId === query.agentInstanceId))
         .filter((r) => (query.scope === undefined ? true : r.scope === query.scope))
         .filter((r) => (query.containerKey === undefined ? true : (r.containerKey ?? undefined) === query.containerKey))
+        .filter((r) => inRange(r.bucketStart, query.from, query.to))
         .sort((a, b) => compareDesc(a.bucketStart, a.id, b.bucketStart, b.id))
         .slice(0, DOCKER_MONITORING_CAPS.rollupsPerVps);
       return paginateKeyset<DockerMetricRollup>({
@@ -443,7 +487,7 @@ export function createJsonDockerMonitoringRepository(dataDirOrFile = "data"): Js
           scope: "rollups",
           agentInstanceId: query.agentInstanceId,
           containerKey: query.containerKey,
-          filters: { scope: query.scope },
+          filters: { scope: query.scope, from: query.from, to: query.to },
           order: "bucketStart,id",
         },
         cursorPayload: (last) => ({
@@ -452,7 +496,7 @@ export function createJsonDockerMonitoringRepository(dataDirOrFile = "data"): Js
           scope: "rollups",
           agentInstanceId: query.agentInstanceId,
           containerKey: query.containerKey,
-          filters: { scope: query.scope },
+          filters: { scope: query.scope, from: query.from, to: query.to },
           order: "bucketStart,id",
           last,
         }),
@@ -464,7 +508,63 @@ export function createJsonDockerMonitoringRepository(dataDirOrFile = "data"): Js
       return store.latestStorage[vpsId];
     },
 
-    async listAlerts(query) {
+       async acknowledgeAlert(vpsId, alertId, acknowledgedBy, acknowledgedAt) {
+        let result: DockerAlert | undefined;
+        let changed = false;
+       await readModifyWriteJsonFile<unknown>(resolved, emptyStore(), (raw) => {
+         const store = normalizeStore(raw);
+         const index = store.alerts.findIndex((a) => a.vpsId === vpsId && a.id === alertId);
+         if (index < 0) throw new Error("Docker alert not found");
+         const alert = store.alerts[index]!;
+          if (alert.state === "open") {
+            changed = true;
+            store.alerts[index] = result = { ...alert, state: "acknowledged", acknowledgedAt, acknowledgedBy };
+          } else result = alert;
+          return store;
+        });
+        return { alert: result!, changed };
+     },
+
+      async resolveActiveAlertsForVps(vpsId, reason, resolvedAt) {
+        let count = 0;
+        await readModifyWriteJsonFile<unknown>(resolved, emptyStore(), (raw) => {
+          const store = normalizeStore(raw);
+          store.alerts = store.alerts.map((alert) => {
+            if (alert.vpsId !== vpsId || (alert.state !== "open" && alert.state !== "acknowledged")) return alert;
+            count++;
+            return { ...alert, state: "resolved", resolvedAt, resolutionReason: reason };
+          });
+          return store;
+        });
+        return count;
+      },
+
+      async applyUnavailableObservation(vpsId, agentInstanceId, observation) {
+        let output: { alert?: DockerAlert; transition: string } = { transition: "no_change" };
+        await readModifyWriteJsonFile<unknown>(resolved, emptyStore(), (raw) => {
+          const store = normalizeStore(raw);
+          const key = `${vpsId}\0${DOCKER_UNAVAILABLE_RULE_KIND}`;
+          const previous = (store.alertRuleStates[key] as DockerUnavailableRuleState | undefined) ?? { vpsId, window: [], alert: null };
+          const evaluated = evaluateDockerUnavailable(previous, observation);
+          store.alertRuleStates[key] = evaluated.next;
+          const active = evaluated.next.alert;
+          const existingIndex = store.alerts.findIndex((a) => a.vpsId === vpsId && a.fingerprint === dockerUnavailableFingerprint(vpsId) && (a.state === "open" || a.state === "acknowledged"));
+          if (active) {
+            const alert: DockerAlert = { id: `${vpsId}:${DOCKER_UNAVAILABLE_RULE_KIND}`, vpsId, agentInstanceId, ruleKind: DOCKER_UNAVAILABLE_RULE_KIND, state: active.state, fingerprint: dockerUnavailableFingerprint(vpsId), openedAt: active.openedAt, lastObservedAt: active.lastObservedAt, occurrences: active.occurrences, acknowledgedAt: active.acknowledgedAt, acknowledgedBy: active.acknowledgedBy, summary: buildDockerUnavailableSummary(evaluated.unavailableCount, evaluated.window.length), contextVersion: 1 };
+            if (existingIndex >= 0) store.alerts[existingIndex] = alert; else store.alerts.push(alert);
+            output = { alert, transition: evaluated.transition };
+          } else if (existingIndex >= 0 && evaluated.transition === "resolved") {
+            const old = store.alerts[existingIndex]!;
+            const alert = { ...old, state: "resolved" as const, resolvedAt: observation.observedAt, resolutionReason: "condition_cleared" as const };
+            store.alerts[existingIndex] = alert;
+            output = { alert, transition: evaluated.transition };
+          } else output = { transition: evaluated.transition };
+          return store;
+        });
+        return output;
+      },
+
+      async listAlerts(query) {
       const limit = query.limit ?? 50;
       const store = await readStore();
       const rows = store.alerts
@@ -536,21 +636,78 @@ export function createJsonDockerMonitoringRepository(dataDirOrFile = "data"): Js
           result = { vpsId: unit.vpsId, ingestStatus: "replay_ignored", snapshotId: unit.snapshotId, agentInstanceId: unit.agentInstanceId, batchId: unit.batchId, receivedAt: unit.receivedAt, revision: store.revision };
           return enforceCaps(store);
         }
-        const watermark = store.watermarks.find((w) => w.vpsId === unit.vpsId && w.agentInstanceId === unit.agentInstanceId);
-        if (unit.events?.length && unit.eventProtocol) {
-          if (watermark && compareDockerWatermarks(unit.eventProtocol.fromWatermark, watermark) !== 0) throw new DockerIngestConflict("watermark_conflict");
-          store.events.push(...unit.events);
-          const wi = store.watermarks.findIndex((w) => w.vpsId === unit.vpsId && w.agentInstanceId === unit.agentInstanceId);
-          if (wi >= 0) store.watermarks[wi] = unit.eventProtocol.proposedWatermark; else store.watermarks.push(unit.eventProtocol.proposedWatermark);
-        }
-        store.samples.push(unit.hostSample, ...(unit.containerSamples ?? []));
-        if (unit.storageLatest) store.latestStorage[unit.vpsId] = unit.storageLatest;
-        store.revision += 1;
+        if (prior && prior.activeInstanceId !== unit.agentInstanceId && compareDockerSourceSequence(unit.sourceSequence, prior.sourceSequence) <= 0) throw new DockerIngestConflict("active_instance_conflict");
+         const watermark = store.watermarks.find((w) => w.vpsId === unit.vpsId && w.agentInstanceId === unit.agentInstanceId);
+         if (unit.events?.length && unit.eventProtocol) {
+           if (watermark && compareDockerWatermarks(unit.eventProtocol.fromWatermark, watermark) !== 0) throw new DockerIngestConflict("watermark_conflict");
+         }
+         const historyCandidate = { ...store, samples: [...store.samples, unit.hostSample, ...(unit.containerSamples ?? [])], events: [...store.events, ...(unit.events ?? [])], watermarks: [...store.watermarks] };
+          if (unit.events?.length && unit.eventProtocol) {
+            const wi = historyCandidate.watermarks.findIndex((w) => w.vpsId === unit.vpsId && w.agentInstanceId === unit.agentInstanceId);
+            if (wi >= 0) historyCandidate.watermarks[wi] = unit.eventProtocol.proposedWatermark; else historyCandidate.watermarks.push(unit.eventProtocol.proposedWatermark);
+          }
+          if (jsonBytes(historyCandidate) > maxBytes) {
+            result = { vpsId: unit.vpsId, ingestStatus: "rejected", status: "history_capacity_refused", snapshotId: unit.snapshotId, agentInstanceId: unit.agentInstanceId, batchId: unit.batchId, receivedAt: unit.receivedAt, revision: store.revision };
+            return store;
+          }
+          store.events.push(...(unit.events ?? []));
+          if (unit.events?.length && unit.eventProtocol) {
+            const wi = store.watermarks.findIndex((w) => w.vpsId === unit.vpsId && w.agentInstanceId === unit.agentInstanceId);
+            if (wi >= 0) store.watermarks[wi] = unit.eventProtocol.proposedWatermark; else store.watermarks.push(unit.eventProtocol.proposedWatermark);
+          }
+          store.samples.push(unit.hostSample, ...(unit.containerSamples ?? []));
+          if (unit.storageLatest && (!store.latestStorage[unit.vpsId] || !store.latestByVps[unit.vpsId] || compareDockerSourceSequence(unit.sourceSequence, store.latestByVps[unit.vpsId]!.sourceSequence) >= 0)) store.latestStorage[unit.vpsId] = unit.storageLatest;
+          if (unit.monitoring) {
+            const key = `${unit.vpsId}\0${DOCKER_UNAVAILABLE_RULE_KIND}`;
+            const previous = (store.alertRuleStates[key] as DockerUnavailableRuleState | undefined) ?? { vpsId: unit.vpsId, window: [], alert: null };
+            const evaluated = evaluateDockerUnavailable(previous, { availability: unit.monitoring.availability, observedAt: unit.hostSample.collectedAt });
+            store.alertRuleStates[key] = evaluated.next;
+            const fingerprint = dockerUnavailableFingerprint(unit.vpsId);
+            const alertIndex = store.alerts.findIndex((a) => a.vpsId === unit.vpsId && a.fingerprint === fingerprint && (a.state === "open" || a.state === "acknowledged"));
+            if (evaluated.next.alert) {
+              const active = evaluated.next.alert;
+              const alert: DockerAlert = { id: `${unit.vpsId}:${DOCKER_UNAVAILABLE_RULE_KIND}`, vpsId: unit.vpsId, agentInstanceId: unit.agentInstanceId, ruleKind: DOCKER_UNAVAILABLE_RULE_KIND, state: active.state, fingerprint, openedAt: active.openedAt, lastObservedAt: active.lastObservedAt, occurrences: active.occurrences, ...(active.acknowledgedAt ? { acknowledgedAt: active.acknowledgedAt } : {}), ...(active.acknowledgedBy ? { acknowledgedBy: active.acknowledgedBy } : {}), summary: buildDockerUnavailableSummary(evaluated.unavailableCount, evaluated.window.length), contextVersion: 1 };
+              if (alertIndex >= 0) store.alerts[alertIndex] = alert; else store.alerts.push(alert);
+            } else if (alertIndex >= 0 && evaluated.transition === "resolved") store.alerts[alertIndex] = { ...store.alerts[alertIndex]!, state: "resolved", resolvedAt: unit.hostSample.collectedAt, resolutionReason: "condition_cleared" };
+          }
+          // Evaluate every typed rule from exact, identity-bound ingest evidence.
+          const typed: Array<{ kind: DockerAlertRuleKind; observation: DockerAlertObservation }> = [];
+          for (const sample of unit.containerSamples ?? []) {
+            const base = { observedAt: sample.collectedAt, vpsId: unit.vpsId, agentInstanceId: unit.agentInstanceId, containerKey: sample.containerKey, status: "complete" as const, exactContainer: true, coverageComplete: true, complete: true };
+            typed.push({ kind: "container_unhealthy", observation: { ...base, health: sample.state === "unhealthy" ? "unhealthy" : sample.state === "running" ? "running" : "unknown" } });
+            typed.push({ kind: "container_cpu_high", observation: { ...base, cpuRatio: sample.metrics.cpuUsageRatio } });
+            const limit = sample.metrics.memoryLimitBytes;
+            typed.push({ kind: "container_memory_high", observation: { ...base, memoryRatio: typeof limit === "number" && limit > 0 ? sample.metrics.memoryUsageBytes / limit : undefined } });
+          }
+          for (const event of unit.events ?? []) {
+            const base = { observedAt: event.eventOccurredAt, vpsId: unit.vpsId, agentInstanceId: unit.agentInstanceId, containerKey: event.containerKey, status: "complete" as const, exactContainer: Boolean(event.containerKey), complete: true };
+            if (event.containerKey) typed.push({ kind: "container_restart_loop", observation: { ...base, eventAction: event.action === "daemon_restarted" || event.action === "stream_gap" ? undefined : event.action } });
+          }
+          if (unit.storageLatest) {
+            const total = unit.storageLatest.images.totalBytes + unit.storageLatest.containers.totalBytes + unit.storageLatest.localVolumes.totalBytes + unit.storageLatest.buildCache.totalBytes;
+            typed.push({ kind: "docker_storage_pressure", observation: { observedAt: unit.hostSample.collectedAt, vpsId: unit.vpsId, agentInstanceId: unit.agentInstanceId, status: "complete", complete: true, storageRatio: total > 0 ? Math.min(1, total / Number.MAX_SAFE_INTEGER) : undefined } });
+          }
+          if (unit.eventProtocol && unit.eventProtocol.fromWatermark.timeNano !== unit.eventProtocol.proposedWatermark.timeNano && !(unit.events?.length)) typed.push({ kind: "docker_event_gap", observation: { observedAt: unit.hostSample.collectedAt, vpsId: unit.vpsId, agentInstanceId: unit.agentInstanceId, status: "gap", gap: true, complete: false, gapReason: "missing_event_window" } });
+          for (const item of typed) {
+            const key = `${unit.vpsId}\0${item.kind}\0${item.observation.agentInstanceId ?? "host"}\0${item.observation.containerKey ?? "host"}`;
+            const previous = store.alertRuleStates[key] as DockerTypedAlertState | undefined ?? createInitialDockerAlertState(item.kind, { vpsId: unit.vpsId, agentInstanceId: item.observation.agentInstanceId, containerKey: item.observation.containerKey });
+            const evaluated = evaluateDockerAlert(previous, item.observation);
+            store.alertRuleStates[key] = evaluated.next;
+            const fingerprint = dockerAlertFingerprint(unit.vpsId, item.kind, item.observation.agentInstanceId, item.observation.containerKey);
+            const existing = store.alerts.findIndex((a) => a.fingerprint === fingerprint && (a.state === "open" || a.state === "acknowledged"));
+            if (evaluated.next.alert) {
+              const active = evaluated.next.alert;
+              const alert: DockerAlert = { id: fingerprint, vpsId: unit.vpsId, agentInstanceId: item.observation.agentInstanceId ?? undefined, containerKey: item.observation.containerKey ?? undefined, ruleKind: item.kind, state: active.state, fingerprint, openedAt: active.openedAt, lastObservedAt: active.lastObservedAt, occurrences: active.occurrences, acknowledgedAt: active.acknowledgedAt, acknowledgedBy: active.acknowledgedBy, summary: buildDockerAlertSummary(item.kind, "threshold condition detected"), contextVersion: 1 };
+              if (existing >= 0) store.alerts[existing] = alert; else store.alerts.push(alert);
+            } else if (existing >= 0 && evaluated.transition.startsWith("resolved")) store.alerts[existing] = { ...store.alerts[existing]!, state: "resolved", resolvedAt: item.observation.observedAt, resolutionReason: evaluated.resolution === "container_removed" ? "container_removed" : "condition_cleared" };
+          }
+          store.revision += 1;
         store.latestByVps[unit.vpsId] = { activeInstanceId: unit.agentInstanceId, snapshotId: unit.snapshotId, sourceSequence: unit.sourceSequence, receivedAt: unit.receivedAt, updatedAt: unit.receivedAt, revision: store.revision, compatibility: unit.compatibility };
         const committed = { status: "committed" as const, snapshotId: unit.snapshotId, revision: store.revision };
         store.snapshots.push({ vpsId: unit.vpsId, snapshotId: unit.snapshotId, agentInstanceId: unit.agentInstanceId, requestDigest: unit.requestDigest, sourceSequence: unit.sourceSequence, result: committed, receivedAt: unit.receivedAt, revision: store.revision });
         if (unit.batchId) store.batches.push({ vpsId: unit.vpsId, agentInstanceId: unit.agentInstanceId, batchId: unit.batchId, snapshotId: unit.snapshotId, requestDigest: unit.requestDigest, result: committed, revision: store.revision });
-        result = { vpsId: unit.vpsId, ingestStatus: "committed", snapshotId: unit.snapshotId, agentInstanceId: unit.agentInstanceId, batchId: unit.batchId, receivedAt: unit.receivedAt, committedWatermark: unit.events?.length ? unit.eventProtocol?.proposedWatermark : undefined, revision: store.revision };
+         result = { vpsId: unit.vpsId, ingestStatus: "committed", status: "committed", snapshotId: unit.snapshotId, agentInstanceId: unit.agentInstanceId, batchId: unit.batchId, receivedAt: unit.receivedAt, committedWatermark: unit.events?.length ? unit.eventProtocol?.proposedWatermark : undefined, revision: store.revision };
+
         return enforceCaps(store);
       });
       return result!;
@@ -563,15 +720,26 @@ export function createJsonDockerMonitoringRepository(dataDirOrFile = "data"): Js
         const store = normalizeStore(raw);
         const oldSamples = store.samples.length;
         const oldEvents = store.events.length;
+        const oldRollups = store.rollups.length;
+        const oldAlerts = store.alerts.length;
         const eligibleSamples = store.samples.filter((sample) => sample.effectiveAt >= options.cutoff);
         const eligibleEvents = store.events.filter((event) => event.eventOccurredAt >= options.cutoff);
         const samples = pruneToCapNewestFirst(eligibleSamples, (sample) => sample.effectiveAt, (sample) => sample.id, (sample) => sample.vpsId, options.samplesPerVps);
         const events = pruneToCapNewestFirst(eligibleEvents, (event) => event.eventOccurredAt, (event) => event.id, (event) => event.vpsId, options.eventsPerVps);
         store.samples = samples.kept;
         store.events = events.kept;
-        result = { samplesRemoved: oldSamples - store.samples.length, eventsRemoved: oldEvents - store.events.length };
+        const rollupCutoff = options.rollupCutoff ?? options.cutoff;
+        const alertCutoff = options.alertCutoff ?? options.cutoff;
+        store.rollups = store.rollups.filter((rollup) => rollup.bucketStart >= rollupCutoff);
+        store.alerts = store.alerts.filter((alert) => alert.state !== "resolved" || !alert.resolvedAt || alert.resolvedAt >= alertCutoff);
+        result = { samplesRemoved: oldSamples - store.samples.length, rollupsRemoved: oldRollups - store.rollups.length, eventsRemoved: oldEvents - store.events.length, alertsRemoved: oldAlerts - store.alerts.length, storageMode: "json" };
         // latestStorage and latestByVps are authoritative state, not history; preserve them.
-        return store;
+         store.lastMaintenanceAt = new Date().toISOString();
+          // The store cap, rather than the historical 8 MiB rewrite default, is the
+          // hard post-prune limit. This permits pruning stores in the 8–32 MiB range.
+          if (jsonBytes(store) > maxBytes) throw new Error("Docker JSON maintenance rewrite exceeds configured limit");
+         return store;
+
       });
       return result;
     },
@@ -584,8 +752,13 @@ export function createJsonDockerMonitoringRepository(dataDirOrFile = "data"): Js
         store.events = store.events.filter((x) => x.vpsId !== v);
         store.rollups = store.rollups.filter((x) => x.vpsId !== v);
         store.alerts = store.alerts.filter((x) => x.vpsId !== v);
+        store.snapshots = store.snapshots.filter((x) => x.vpsId !== v);
+        store.watermarks = store.watermarks.filter((x) => x.vpsId !== v);
+        store.batches = store.batches.filter((x) => x.vpsId !== v);
         delete store.latestStorage[v]; delete store.latestByVps[v];
-        if (cleanup.reason === "vps_deleted") { store.snapshots = store.snapshots.filter((x) => x.vpsId !== v); store.watermarks = store.watermarks.filter((x) => x.vpsId !== v); store.batches = store.batches.filter((x) => x.vpsId !== v); }
+        for (const key of Object.keys(store.alertRuleStates)) {
+          if (store.alertRuleStates[key]?.vpsId === v) delete store.alertRuleStates[key];
+        }
         return store;
       });
     },

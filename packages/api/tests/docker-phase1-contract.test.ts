@@ -40,7 +40,6 @@ function validV1Docker(overrides: Record<string, unknown> = {}) {
 
 function validV2Container(overrides: Record<string, unknown> = {}) {
   return {
-    id: "abc123def456",
     name: "/web-nginx",
     image: "nginx:1.25",
     status: "Up 3 hours",

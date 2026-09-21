@@ -359,11 +359,8 @@ func TestCollectDocker_PrivacyFixturesOmitted(t *testing.T) {
 	if err != nil {
 		t.Fatalf("marshal: %v", err)
 	}
-	for _, banned := range []string{"Env", "Labels", "Mounts", "Command", "Args", "LogPath", "hunter2", "KernelVersion", "GitCommit", "Components"} {
-		if strings.Contains(string(raw), banned) {
-			t.Errorf("serialized output must omit %q: %s", banned, raw)
-		}
-	}
+	assertJSONHasNoForbiddenKeys(t, raw, "Env", "Labels", "Mounts", "Command", "Args", "LogPath", "KernelVersion", "GitCommit", "Components")
+	assertJSONOmitsValues(t, raw, "hunter2")
 }
 
 func TestCollectDocker_ContainerLimitRunning(t *testing.T) {

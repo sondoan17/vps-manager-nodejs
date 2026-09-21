@@ -169,11 +169,16 @@ function LiveStatus({ state }: { state: LiveConnectionState }) {
         : state.status === "reconnecting"
           ? "Reconnecting"
           : "Connection stale";
+  const latestEventAt = "latestEventAt" in state ? state.latestEventAt : undefined;
+  const latestEvent = latestEventAt
+    ? new Date(latestEventAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" })
+    : null;
 
   return (
     <span
       role="status"
       aria-label={`Monitoring connection: ${label}`}
+      title={latestEvent ? `Latest monitoring event: ${latestEvent}` : undefined}
       className="inline-flex items-center gap-1.5 whitespace-nowrap text-[11px] font-medium text-white/75 sm:text-xs"
     >
       <span
@@ -187,7 +192,7 @@ function LiveStatus({ state }: { state: LiveConnectionState }) {
         )}
         aria-hidden="true"
       />
-      {label}
+      <span>{label}</span>
     </span>
   );
 }

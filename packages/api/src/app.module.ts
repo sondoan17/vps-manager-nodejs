@@ -50,6 +50,8 @@ import { LocalAgentSupervisorService } from "./agents/local-agent-supervisor.ser
 import { TerminalSessionService } from "./terminal/terminal-session.service.js";
 import { DockerMonitoringController } from "./docker/docker-monitoring.controller.js";
 import { DockerMonitoringService } from "./docker/docker-monitoring.service.js";
+import { DockerMonitoringMaintenanceService } from "./docker/docker-monitoring-maintenance.service.js";
+import { DockerActivityService } from "./docker/docker-activity.service.js";
 import type { DockerMonitoringRepository } from "./persistence/repositories/docker-monitoring.repository.js";
 import {
   ADMIN_CREDENTIAL_REPOSITORY,
@@ -236,8 +238,10 @@ export function createAppModule(deps: AppDependencies = {}): DynamicModule {
         provide: DOCKER_MONITORING_REPOSITORY,
         useValue: deps.dockerMonitoring ?? repositories!.dockerMonitoring,
       },
-      DockerMonitoringService,
-      HostKeyPinService,
+       DockerActivityService,
+       DockerMonitoringService,
+       DockerMonitoringMaintenanceService,
+       HostKeyPinService,
       {
         provide: VpsService,
         inject: [
@@ -251,8 +255,9 @@ export function createAppModule(deps: AppDependencies = {}): DynamicModule {
           AGENT_REPOSITORY,
           HostKeyPinService,
           AgentUpgraderService,
-          AgentRestartService,
-        ],
+           AgentRestartService,
+           DockerMonitoringService,
+         ],
         useFactory: (
           store: VpsRepository,
           keys: KeyService,
@@ -264,8 +269,9 @@ export function createAppModule(deps: AppDependencies = {}): DynamicModule {
           agentRepo: AgentRepository,
           hostKeyPin: HostKeyPinService,
           upgrader: AgentUpgraderService,
-          restarter: AgentRestartService,
-        ) =>
+           restarter: AgentRestartService,
+           dockerMonitoringService: DockerMonitoringService,
+         ) =>
           new VpsService(
             store,
             keys,
@@ -275,10 +281,11 @@ export function createAppModule(deps: AppDependencies = {}): DynamicModule {
             installer,
             uninstaller,
             agentRepo,
-            hostKeyPin,
-            upgrader,
-            restarter,
-          ),
+             hostKeyPin,
+             upgrader,
+             restarter,
+             dockerMonitoringService,
+           ),
       },
     ],
   };

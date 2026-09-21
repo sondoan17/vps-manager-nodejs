@@ -435,6 +435,48 @@ func TestV2_AlreadyCommittedCommits(t *testing.T) {
 	}
 }
 
+func TestV2_ReplayIgnoredCommits(t *testing.T) {
+	s := mustState(t)
+	m := makeV2(s, "b1", "s1", 100)
+	pusher := &mockPusher{
+		handler: func(got *metrics.SystemMetrics) (*push.PushResult, error) {
+			// Idempotent replay path: server ignored an equivalent replay.
+			return ackFor("test-vps", "b1", "s1", s.InstanceID(), "replay_ignored", "100"), nil
+		},
+	}
+	runner := NewWithState(createTestConfig(), &mockCollector{metrics: m}, pusher, s)
+	if err := runner.RunOnce(context.Background()); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if s.GetPending() != nil {
+		t.Fatal("pending must be cleared on replay_ignored")
+	}
+	if got := s.GetWatermark(); got.TimeNano != 100 {
+		t.Fatalf("watermark = %+v, want 100", got)
+	}
+}
+
+func TestV2_CommittedWatermarkMismatch_LeavesPending(t *testing.T) {
+	s := mustState(t)
+	m := makeV2(s, "b1", "s1", 100)
+	pusher := &mockPusher{
+		handler: func(got *metrics.SystemMetrics) (*push.PushResult, error) {
+			// Stale replay: ids match but the durable watermark is foreign.
+			return ackFor("test-vps", "b1", "s1", s.InstanceID(), "committed", "999"), nil
+		},
+	}
+	runner := NewWithState(createTestConfig(), &mockCollector{metrics: m}, pusher, s)
+	if err := runner.RunOnce(context.Background()); err == nil {
+		t.Fatal("expected watermark mismatch error")
+	}
+	if s.GetPending() == nil {
+		t.Fatal("pending must be preserved on watermark mismatch")
+	}
+	if got := s.GetWatermark(); got.TimeNano != 0 {
+		t.Fatalf("watermark unchanged, got %+v", got)
+	}
+}
+
 func TestV2_ConfigOnlySuccess_LeavesPending(t *testing.T) {
 	s := mustState(t)
 	m := makeV2(s, "b1", "s1", 100)
@@ -495,7 +537,7 @@ func TestV2_MismatchAck_LeavesPending(t *testing.T) {
 	cases[2].ack = ackFor("test-vps", "b1", "s1", "wrong-instance-id-0000000000000", "committed", "100")
 	cases[3].ack = ackFor("test-vps", "b1", "s1", s.InstanceID(), "committed", "999")
 	cases[4].ack = ackFor("other-vps", "b1", "s1", s.InstanceID(), "committed", "100")
-	cases[5].ack = ackFor("test-vps", "b1", "s1", s.InstanceID(), "replay_ignored", "100")
+	cases[5].ack = ackFor("test-vps", "b1", "s1", s.InstanceID(), "rejected", "100")
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			sp := mustState(t)

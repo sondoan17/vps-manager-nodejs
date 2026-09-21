@@ -323,6 +323,12 @@ func buildSuccessResult(body []byte) *PushResult {
 	if err := dec.Decode(&outer); err != nil || outer.Data == nil {
 		return failClosed
 	}
+	// A successful response is exactly one JSON value. Do not accept a valid
+	// envelope followed by attacker-controlled JSON data.
+	var trailing any
+	if err := dec.Decode(&trailing); err != io.EOF {
+		return failClosed
+	}
 	cfg := &ConfigResponse{DockerMetricsEnabled: false}
 	if outer.Data.Config != nil {
 		cfg = sanitizeConfig(outer.Data.Config)

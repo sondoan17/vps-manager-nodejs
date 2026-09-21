@@ -9,6 +9,7 @@ import type { Pool } from "pg";
 import type { AppConfig } from "../config/app-config.js";
 import { APP_CONFIG, DATABASE_POOL } from "../tokens.js";
 import { loadMigrations, selectMigrations } from "../db/migrations.js";
+import { DockerMonitoringMaintenanceService } from "../docker/docker-monitoring-maintenance.service.js";
 
 // In-memory cache of required migration IDs (lazily populated)
 let cachedRequiredIds: string[] | undefined;
@@ -26,13 +27,15 @@ export class HealthController {
   constructor(
     @Inject(APP_CONFIG) private readonly config: AppConfig,
     @Optional() @Inject(DATABASE_POOL) private readonly pool?: Pool,
+    @Optional() private readonly maintenance?: DockerMonitoringMaintenanceService,
   ) {}
 
   @Get()
   async health(): Promise<Record<string, unknown>> {
-    // ---- JSON mode: always exact { ok: true } ----
+    // Preserve the established health contract when maintenance telemetry is not wired (for example, lightweight tests/tools).
+    const maintenance = this.maintenance?.getHealth();
     if (this.config.storageDriver !== "postgres") {
-      return { ok: true };
+      return maintenance === undefined ? { ok: true } : { ok: true, maintenance };
     }
 
     // ---- Postgres mode: check DB + schema ----
@@ -75,6 +78,7 @@ export class HealthController {
       storage: "postgres",
       database: { ok: true },
       schema: { ok: true },
+      ...(maintenance === undefined ? {} : { maintenance }),
     };
   }
 }

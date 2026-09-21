@@ -6,6 +6,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"sort"
@@ -266,34 +267,121 @@ type dockerV2SafeEvent struct {
 	size int
 }
 
+// errDockerV2EventObjectOversize signals a single event object that exceeds
+// the decode byte budget. Callers map it to oversize (lossy gap), never to a
+// hard error, so a hostile object cannot grow framing memory.
+var errDockerV2EventObjectOversize = errors.New("docker v2: event object oversize")
+
+// dockerV2MaxObjectDepth bounds JSON nesting inside one event object.
+// Daemon events are flat; deeper nesting is hostile or corrupt.
+const dockerV2MaxObjectDepth = 64
+
+// dockerV2RawEventAttrCap bounds the daemon Attributes map decoded from one
+// event object before any accumulation. Only allowlisted scalar entries are
+// ever copied downstream; the raw map itself is never persisted.
+const dockerV2RawEventAttrCap = 256
+
+// dockerV2RawEventAttrBytesCap bounds the total key+value bytes of one
+// event's Attributes map before accumulation.
+const dockerV2RawEventAttrBytesCap = 8 * 1024
+
+// dockerV2RawFieldCap bounds Type/Action/Actor.ID rune lengths decoded from
+// one event object before key derivation or accumulation.
+const dockerV2RawFieldCap = 256
+
+// dockerV2RawEventBounded reports whether a decoded raw event is within the
+// pre-accumulation object bounds (attributes count/bytes and short fields).
+func dockerV2RawEventBounded(e DockerV2RawEvent) bool {
+	if len(e.Type) > dockerV2RawFieldCap || len(e.Action) > dockerV2RawFieldCap || len(e.Actor.ID) > dockerV2RawFieldCap {
+		return false
+	}
+	if len(e.Actor.Attributes) > dockerV2RawEventAttrCap {
+		return false
+	}
+	var total int
+	for k, v := range e.Actor.Attributes {
+		total += len(k) + len(v)
+		if total > dockerV2RawEventAttrBytesCap {
+			return false
+		}
+	}
+	return true
+}
+
 // decodeDockerV2EventStream decodes a finite /events response with
 // io.LimitReader(max+1) sentinel semantics. It returns raw events and
 // oversize=true when the source exceeds max events or max bytes.
 // No open stream is ever used; callers pass the fixed-window response body.
 // nextDockerV2JSONValue frames one complete top-level JSON object without decoder read-ahead.
-func nextDockerV2JSONValue(br *bufio.Reader) ([]byte, error) {
-	var b []byte
-	depth := 0
-	started := false
-	inString, escaped := false, false
+func nextDockerV2JSONValue(br *bufio.Reader, maxObjectBytes int64) ([]byte, error) {
+	if maxObjectBytes <= 0 {
+		maxObjectBytes = dockerV2DecodeMaxBytes + 1
+	}
+	var read int64
 	for {
 		c, err := br.ReadByte()
 		if err != nil {
-			if err == io.EOF && !started { return nil, io.EOF }
+			if err == io.EOF {
+				return nil, io.EOF
+			}
 			return nil, err
 		}
-		if !started {
-			if c == ' ' || c == '\t' || c == '\r' || c == '\n' { continue }
-			started = true
+		read++
+		if read > maxObjectBytes {
+			return nil, errDockerV2EventObjectOversize
 		}
-		b = append(b, c)
-		if inString {
-			if escaped { escaped = false } else if c == '\\' { escaped = true } else if c == '"' { inString = false }
+		if c == ' ' || c == '\t' || c == '\r' || c == '\n' {
 			continue
 		}
-		if c == '"' { inString = true; continue }
-		if c == '{' { depth++ }
-		if c == '}' { depth--; if depth == 0 { return b, nil } }
+		if c != '{' {
+			return nil, fmt.Errorf("docker v2: event stream must contain objects")
+		}
+		b := []byte{c}
+		depth := 1
+		inString, escaped := false, false
+		for {
+			c, err := br.ReadByte()
+			if err != nil {
+				if err == io.EOF {
+					return nil, io.ErrUnexpectedEOF
+				}
+				return nil, err
+			}
+			read++
+			if read > maxObjectBytes {
+				return nil, errDockerV2EventObjectOversize
+			}
+			b = append(b, c)
+			if int64(len(b)) > maxObjectBytes {
+				return nil, errDockerV2EventObjectOversize
+			}
+			if inString {
+				if escaped {
+					escaped = false
+				} else if c == '\\' {
+					escaped = true
+				} else if c == '"' {
+					inString = false
+				}
+				continue
+			}
+			if c == '"' {
+				inString = true
+				continue
+			}
+			if c == '{' {
+				depth++
+				if depth > dockerV2MaxObjectDepth {
+					return nil, fmt.Errorf("docker v2: event object too deep")
+				}
+			}
+			if c == '}' {
+				depth--
+				if depth == 0 {
+					return b, nil
+				}
+			}
+		}
 	}
 }
 
@@ -306,17 +394,45 @@ func decodeDockerV2EventStream(r io.Reader, maxEvents int, maxBytes int64) ([]Do
 	if maxBytes <= 0 {
 		maxBytes = dockerV2DecodeMaxBytes
 	}
+	perObject := maxBytes + 1
 	out := make([]DockerV2RawEvent, 0, 64)
 	for {
-		raw, err := nextDockerV2JSONValue(br)
+		raw, err := nextDockerV2JSONValue(br, perObject)
 		consumed += int64(len(raw))
-		if err == io.EOF { return out, false, nil }
-		if err != nil { if consumed > maxBytes { return out, true, nil }; return out, false, err }
-		if consumed > maxBytes { return out, true, nil }
+		if err == io.EOF {
+			return out, false, nil
+		}
+		if errors.Is(err, errDockerV2EventObjectOversize) || consumed > maxBytes {
+			return out, true, nil
+		}
+		if err != nil {
+			return out, false, err
+		}
+		if consumed > maxBytes {
+			return out, true, nil
+		}
 		var e DockerV2RawEvent
-		if err := json.Unmarshal(raw, &e); err != nil { return out, false, err }
+		if err := json.Unmarshal(raw, &e); err != nil {
+			return out, false, err
+		}
+		if !dockerV2RawEventBounded(e) {
+			return out, false, fmt.Errorf("docker v2: event object unbounded")
+		}
 		out = append(out, e)
-		if len(out) == maxEvents { raw, err = nextDockerV2JSONValue(br); consumed += int64(len(raw)); if err == nil || consumed > maxBytes { return out, true, nil }; if err != io.EOF { return out, false, err }; return out, false, nil }
+		if len(out) == maxEvents {
+			raw, err = nextDockerV2JSONValue(br, perObject)
+			consumed += int64(len(raw))
+			if err == nil || consumed > maxBytes {
+				return out, true, nil
+			}
+			if errors.Is(err, errDockerV2EventObjectOversize) {
+				return out, true, nil
+			}
+			if err != io.EOF {
+				return out, false, err
+			}
+			return out, false, nil
+		}
 	}
 }
 
@@ -375,8 +491,11 @@ func collectDockerV2EventWindow(ctx context.Context, r io.Reader, sinceNano, unt
 		default:
 		}
 		before := sourceBytes
-		raw, err := nextDockerV2JSONValue(br)
+		raw, err := nextDockerV2JSONValue(br, dockerV2DecodeMaxBytes+1)
 		sourceBytes += int64(len(raw))
+		if errors.Is(err, errDockerV2EventObjectOversize) {
+			return gap(DockerV2GapResponseOversize)
+		}
 		var e DockerV2RawEvent
 		if err == nil { err = json.Unmarshal(raw, &e) }
 		if err == io.EOF {
@@ -394,6 +513,15 @@ func collectDockerV2EventWindow(ctx context.Context, r io.Reader, sinceNano, unt
 		}
 		if sourceN > dockerV2DecodeMaxEvents || after > dockerV2DecodeMaxBytes {
 			return gap(DockerV2GapResponseOversize)
+		}
+		// Bounded object decoding before any timestamp, key, digest, or
+		// accumulation work: oversized fields/attributes are skipped without
+		// deriving keys or appending to the batch.
+		if !dockerV2RawEventBounded(e) {
+			if boundary && after-boundaryStart > dockerV2BoundaryMaxBytes {
+				return gap(DockerV2GapBoundaryOverrun)
+			}
+			continue
 		}
 		nano, reduced, ok := dockerV2NormalizeNano(e)
 		if ok && boundary && nano != bt {

@@ -19,6 +19,11 @@ const (
 	deliveryMACDomain  = "vps-manager/docker/delivery/v1"
 	deliveryKeyDomain  = "vps-manager/docker/delivery-mac/v1"
 	containerKeyDomain = "vps-manager/docker/container/v1"
+	// runtimeContainerKeyDomain derives the runtime container-master key from
+	// the raw installation key. It is intentionally distinct from
+	// containerKeyDomain/ContainerDomainPrefix (per-container HMAC domain) so
+	// the runtime file never holds the raw installation key.
+	runtimeContainerKeyDomain = "vps-manager/docker/container-key/v1"
 )
 
 // IdentityMaterial is immutable installation identity. Its fields are copied on construction.
@@ -58,12 +63,20 @@ type LoadOptions struct{ RuntimeOwnerUID *int }
 // accepted; a partial pair is completed without rotating the existing identity.
 func Provision(identityPath, runtimeKeysPath string, opts ProvisionOptions) error {
 	identityUID := provisionIdentityOwnerUID()
-	if opts.IdentityOwnerUID != nil { identityUID = *opts.IdentityOwnerUID }
+	if opts.IdentityOwnerUID != nil {
+		identityUID = *opts.IdentityOwnerUID
+	}
 	runtimeUID := provisionRuntimeOwnerUID()
-	if opts.RuntimeOwnerUID != nil { runtimeUID = *opts.RuntimeOwnerUID }
+	if opts.RuntimeOwnerUID != nil {
+		runtimeUID = *opts.RuntimeOwnerUID
+	}
 	// Existing files are never repaired: validate exact mode and ownership first.
-	if err := validateProvisionFile(identityPath, identityUID); err != nil && !os.IsNotExist(err) { return err }
-	if err := validateProvisionFile(runtimeKeysPath, runtimeUID); err != nil && !os.IsNotExist(err) { return err }
+	if err := validateProvisionFile(identityPath, identityUID); err != nil && !os.IsNotExist(err) {
+		return err
+	}
+	if err := validateProvisionFile(runtimeKeysPath, runtimeUID); err != nil && !os.IsNotExist(err) {
+		return err
+	}
 	var installation [32]byte
 	if raw, err := os.ReadFile(identityPath); err == nil {
 		var im IdentityMaterial
@@ -81,7 +94,10 @@ func Provision(identityPath, runtimeKeysPath string, opts ProvisionOptions) erro
 		return err
 	}
 	ik := base64.RawURLEncoding.EncodeToString(installation[:])
-	rk := RuntimeKeys{Version: IdentityVersion, DeliveryMACKey: b64(hmacBytes(installation[:], deliveryKeyDomain)), ContainerHMACKey: ik, AgentInstanceID: deriveAgentInstanceID(installation[:])}
+	// Keep the legacy field name and raw value for durable-state compatibility;
+	// newly provisioned runtime files carry a domain-separated derived key.
+	runtimeContainerKey := b64(hmacBytes(installation[:], runtimeContainerKeyDomain))
+	rk := RuntimeKeys{Version: IdentityVersion, DeliveryMACKey: b64(hmacBytes(installation[:], deliveryKeyDomain)), ContainerHMACKey: runtimeContainerKey, AgentInstanceID: deriveAgentInstanceID(installation[:])}
 	ib, _ := json.Marshal(IdentityMaterial{IdentityVersion, ik})
 	rb, _ := json.Marshal(rk)
 	if _, err := publishExclusive(identityPath, ib, 0600); err != nil {
@@ -90,20 +106,28 @@ func Provision(identityPath, runtimeKeysPath string, opts ProvisionOptions) erro
 	if _, err := publishExclusive(runtimeKeysPath, rb, 0600); err != nil {
 		return err
 	}
-	if err := validateProvisionFile(identityPath, identityUID); err != nil { return err }
-	if err := validateProvisionFile(runtimeKeysPath, runtimeUID); err != nil { return err }
+	if err := validateProvisionFile(identityPath, identityUID); err != nil {
+		return err
+	}
+	if err := validateProvisionFile(runtimeKeysPath, runtimeUID); err != nil {
+		return err
+	}
 	return validateProvisionPair(identityPath, runtimeKeysPath)
 }
 
 func validateProvisionFile(path string, uid int) error {
 	fi, err := os.Stat(path)
-	if err != nil { return err }
+	if err != nil {
+		return err
+	}
 	if !fi.Mode().IsRegular() || fi.Mode().Perm() != 0600 {
 		return fmt.Errorf("state: insecure provision file: fail closed")
 	}
 	if uid >= 0 {
 		expected := uid
-		if err := checkFileOwnershipWithUID(fi, &expected); err != nil { return err }
+		if err := checkFileOwnershipWithUID(fi, &expected); err != nil {
+			return err
+		}
 	}
 	return nil
 }
@@ -148,11 +172,29 @@ func validateProvisionPair(identityPath, runtimePath string) error {
 	if err = decodeStrict(rb, &rk); err != nil || rk.Version != IdentityVersion {
 		return fmt.Errorf("state: invalid runtime keys: fail closed")
 	}
-	ck, err := base64.RawURLEncoding.DecodeString(rk.ContainerHMACKey)
-	if err != nil || len(ck) != 32 || !hmac.Equal(ck, key) || rk.AgentInstanceID != deriveAgentInstanceID(key) {
+	if _, err := runtimeContainerKey(rk.ContainerHMACKey, key); err != nil || rk.AgentInstanceID != deriveAgentInstanceID(key) {
 		return fmt.Errorf("state: runtime keys do not match identity: fail closed")
 	}
 	return nil
+
+}
+
+func runtimeContainerKey(encoded string, installation []byte) ([]byte, error) {
+	key, err := base64.RawURLEncoding.DecodeString(encoded)
+	if err != nil || len(key) != InstallationKeyBytes {
+		return nil, fmt.Errorf("invalid container key")
+	}
+	// Existing provisioned files stored the raw installation key. Accept those
+	// files so upgrades preserve durable identity; new files use the separated
+	// derivation above.
+	if hmac.Equal(key, installation) {
+		return key, nil
+	}
+	want := hmacBytes(installation, runtimeContainerKeyDomain)
+	if !hmac.Equal(key, want) {
+		return nil, fmt.Errorf("container key mismatch")
+	}
+	return key, nil
 }
 func hmacBytes(key []byte, domain string) []byte {
 	m := hmac.New(sha256.New, key)
@@ -224,10 +266,10 @@ func loadStoreOptions(rp, dp string, opts LoadOptions) (*Store, error) {
 		return nil, fmt.Errorf("state: invalid runtime identity")
 	}
 	containerBytes, e := base64.RawURLEncoding.DecodeString(rk.ContainerHMACKey)
-	if e != nil || len(containerBytes) != 32 {
+	if e != nil || len(containerBytes) != InstallationKeyBytes {
 		return nil, fmt.Errorf("state: invalid container key")
 	}
-	if rk.AgentInstanceID != deriveAgentInstanceID(containerBytes) {
+	if rk.AgentInstanceID == "" {
 		return nil, fmt.Errorf("state: invalid runtime identity")
 	}
 	container := [32]byte{}

@@ -1,12 +1,29 @@
 import { withTransaction, type DatabasePool } from "../../db/pool.js";
 import {
   assertDockerCursorBinding,
+  compareDockerWatermarks,
   decodeDockerCursor,
   encodeDockerCursor,
 } from "../../docker/docker-monitoring.schemas.js";
 import { DockerIngestConflict } from "../../docker/docker-monitoring.models.js";
+import {
+  evaluateDockerUnavailable,
+  createInitialDockerUnavailableState,
+  DOCKER_UNAVAILABLE_RULE_KIND,
+  dockerUnavailableFingerprint,
+  buildDockerUnavailableSummary,
+  evaluateDockerAlert,
+  createInitialDockerAlertState,
+  DOCKER_ALERT_RULES,
+  dockerAlertFingerprint,
+  buildDockerAlertSummary,
+  type DockerAlertObservation,
+  type DockerAlertRuleKind,
+  type DockerTypedAlertState,
+} from "../../docker/docker-alert-evaluator.js";
 import type {
   DockerAlert,
+  DockerAlertResolutionReason,
   DockerContainerSample,
   DockerCursorPayload,
   DockerEventWatermark,
@@ -37,9 +54,9 @@ import {
   requiredIsoString,
 } from "./postgres-mappers.js";
 
-// ── PostgreSQL Docker monitoring reads (I1) ──────────────────────────────
+// ── PostgreSQL Docker monitoring repository ───────────────────────────────
 // Bounded VPS-scoped keyset reads matching the JSON observable semantics.
-// I3 ingest/cleanup throw not-implemented (same contract as JSON).
+// Ingest, cleanup, maintenance, and rollup operations share the repository contract.
 
 type SampleRow = {
   id: string;
@@ -147,6 +164,7 @@ type AlertRow = {
   occurrences: number;
   summary: string;
   context_version: 1;
+  resolution_reason: DockerAlert["resolutionReason"] | null;
 };
 
 function rowToHostSample(row: SampleRow): DockerHostSample {
@@ -301,8 +319,9 @@ function rowToAlert(row: AlertRow): DockerAlert {
     ...(optionalIsoString(row.acknowledged_at) !== undefined
       ? { acknowledgedAt: optionalIsoString(row.acknowledged_at) }
       : {}),
-    ...(row.acknowledged_by != null ? { acknowledgedBy: row.acknowledged_by } : {}),
-    occurrences: row.occurrences,
+     ...(row.acknowledged_by != null ? { acknowledgedBy: row.acknowledged_by } : {}),
+     ...(row.resolution_reason != null ? { resolutionReason: row.resolution_reason } : {}),
+     occurrences: row.occurrences,
     summary: row.summary,
     contextVersion: 1,
   };
@@ -539,7 +558,7 @@ export function createPostgresDockerMonitoringRepository(
         scope: "rollups" as const,
         agentInstanceId: query.agentInstanceId,
         containerKey: query.containerKey,
-        filters: { scope: query.scope },
+        filters: { scope: query.scope, from: query.from, to: query.to },
         order: "bucketStart,id" as const,
       };
       let last: { at: string; id: string } | undefined;
@@ -561,6 +580,14 @@ export function createPostgresDockerMonitoringRepository(
       if (query.containerKey !== undefined) {
         values.push(query.containerKey);
         where.push(`container_key = $${values.length}`);
+      }
+      if (query.from !== undefined) {
+        values.push(new Date(query.from));
+        where.push(`bucket_start >= $${values.length}`);
+      }
+      if (query.to !== undefined) {
+        values.push(new Date(query.to));
+        where.push(`bucket_start <= $${values.length}`);
       }
       if (last !== undefined) {
         values.push(new Date(last.at), last.id);
@@ -590,7 +617,7 @@ export function createPostgresDockerMonitoringRepository(
                   scope: "rollups",
                   agentInstanceId: query.agentInstanceId,
                   containerKey: query.containerKey,
-                  filters: { scope: query.scope },
+                  filters: { scope: query.scope, from: query.from, to: query.to },
                   order: "bucketStart,id",
                   last: { at: tail.bucketStart, id: tail.id },
                 })
@@ -693,6 +720,44 @@ export function createPostgresDockerMonitoringRepository(
       };
     },
 
+    async resolveActiveAlertsForVps(vpsId: string, reason: DockerAlertResolutionReason, resolvedAt: string) {
+      const result = await pool.query(
+        `UPDATE docker_alerts
+            SET state = 'resolved', resolved_at = $2, resolution_reason = $3
+          WHERE vps_id = $1 AND state IN ('open', 'acknowledged')`,
+        [vpsId, new Date(resolvedAt), reason],
+      );
+      return result.rowCount ?? 0;
+    },
+
+    async acknowledgeAlert(vpsId, alertId, acknowledgedBy, acknowledgedAt) {
+      const result = await pool.query<AlertRow>(
+        `UPDATE docker_alerts
+            SET state = 'acknowledged', acknowledged_at = $3, acknowledged_by = $4
+          WHERE vps_id = $1 AND id = $2 AND state = 'open'
+          RETURNING *`,
+        [vpsId, alertId, new Date(acknowledgedAt), acknowledgedBy],
+      );
+      if (result.rows[0]) return { alert: rowToAlert(result.rows[0]), changed: true };
+      const existing = await pool.query("SELECT 1 FROM docker_alerts WHERE vps_id = $1 AND id = $2", [vpsId, alertId]);
+      if (!existing.rows[0]) throw new Error("Docker alert not found");
+      const current = await pool.query<AlertRow>("SELECT * FROM docker_alerts WHERE vps_id = $1 AND id = $2", [vpsId, alertId]);
+      return { alert: rowToAlert(current.rows[0]!), changed: false };
+    },
+    async applyUnavailableObservation(vpsId, agentInstanceId, observation) {
+      const current = await pool.query<AlertRow>(`SELECT * FROM docker_alerts WHERE vps_id = $1 AND fingerprint = $2 AND state IN ('open','acknowledged') LIMIT 1`, [vpsId, `docker_unavailable:v1:${vpsId}`]);
+      if (observation.availability === "unknown") return { transition: "frozen" };
+      if (current.rows[0] && observation.availability === "available") {
+        const result = await pool.query<AlertRow>(`UPDATE docker_alerts SET state='resolved', resolved_at=$3, resolution_reason='condition_cleared', last_observed_at=$3 WHERE vps_id=$1 AND fingerprint=$2 AND state IN ('open','acknowledged') RETURNING *`, [vpsId, `docker_unavailable:v1:${vpsId}`, new Date(observation.observedAt)]);
+        return { alert: result.rows[0] ? rowToAlert(result.rows[0]) : undefined, transition: "resolved" };
+      }
+      if (current.rows[0] && observation.availability === "unavailable") {
+        const result = await pool.query<AlertRow>(`UPDATE docker_alerts SET last_observed_at=$3, occurrences=occurrences+1 WHERE vps_id=$1 AND fingerprint=$2 AND state IN ('open','acknowledged') RETURNING *`, [vpsId, `docker_unavailable:v1:${vpsId}`, new Date(observation.observedAt)]);
+        return { alert: rowToAlert(result.rows[0]!), transition: "persisted" };
+      }
+      return { transition: "no_change" };
+    },
+
     async getWatermark(
       vpsId: string,
       agentInstanceId: string,
@@ -737,15 +802,75 @@ export function createPostgresDockerMonitoringRepository(
         const latest = (await client.query<{ active_instance_id:string; source_sequence:string; revision:string }>(
           "SELECT active_instance_id,source_sequence,revision FROM docker_ingest_latest WHERE vps_id=$1 FOR UPDATE", [unit.vpsId])).rows[0];
         const seq = BigInt(unit.sourceSequence);
+        if (latest && latest.active_instance_id === unit.agentInstanceId && seq < BigInt(latest.source_sequence)) {
+          const result: DockerV2IngestResult = { vpsId: unit.vpsId, ingestStatus: "replay_ignored", snapshotId: unit.snapshotId, agentInstanceId: unit.agentInstanceId, ...(unit.batchId ? { batchId: unit.batchId } : {}), receivedAt: unit.receivedAt, revision: Number(latest.revision) };
+          return result;
+        }
         if (latest && latest.active_instance_id !== unit.agentInstanceId && seq <= BigInt(latest.source_sequence)) throw new DockerIngestConflict("active_instance_conflict");
+        if (unit.events?.length && unit.eventProtocol) {
+          const watermark = (await client.query<WatermarkRow>("SELECT * FROM docker_event_watermarks WHERE vps_id=$1 AND agent_instance_id=$2 FOR UPDATE", [unit.vpsId, unit.agentInstanceId])).rows[0];
+          if (watermark && compareDockerWatermarks(unit.eventProtocol.fromWatermark, rowToWatermark(watermark)) !== 0) throw new DockerIngestConflict("watermark_conflict");
+        }
         const revision = (latest ? BigInt(latest.revision) : 0n) + 1n;
         const received = new Date(unit.receivedAt);
-        await client.query(`INSERT INTO docker_metric_samples (id,vps_id,agent_instance_id,snapshot_id,container_key,collected_at,received_at,effective_at,metrics,coverage) VALUES ($1,$2,$3,$4,NULL,$5,$6,$5,$7,$8) ON CONFLICT DO NOTHING`, [unit.hostSample.id, unit.vpsId, unit.agentInstanceId, unit.snapshotId, new Date(unit.hostSample.collectedAt), received, unit.hostSample.metrics, unit.hostSample.coverage ?? null]);
-        for (const sample of unit.containerSamples ?? []) await client.query(`INSERT INTO docker_metric_samples (id,vps_id,agent_instance_id,snapshot_id,container_key,name,state,collected_at,received_at,effective_at,metrics,coverage) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$8,$10,$11) ON CONFLICT DO NOTHING`, [sample.id, unit.vpsId, unit.agentInstanceId, unit.snapshotId, sample.containerKey, sample.name ?? null, sample.state ?? null, new Date(sample.collectedAt), received, sample.metrics, sample.coverage ?? null]);
-        for (const event of unit.events ?? []) await client.query(`INSERT INTO docker_operational_events (id,vps_id,agent_instance_id,container_key,action,event_occurred_at,received_at,event_digest,context_version,health_status,exit_code,signal,oom_killed) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,1,$9,$10,$11,$12) ON CONFLICT DO NOTHING`, [event.id,unit.vpsId,unit.agentInstanceId,event.containerKey ?? null,event.action,new Date(event.eventOccurredAt),received,event.eventDigest,event.healthStatus ?? null,event.exitCode ?? null,event.signal ?? null,event.oomKilled ?? null]);
+        const priorWatermark = (await client.query<WatermarkRow>(
+          "SELECT * FROM docker_event_watermarks WHERE vps_id=$1 AND agent_instance_id=$2 FOR UPDATE",
+          [unit.vpsId, unit.agentInstanceId],
+        )).rows[0];
+        if (unit.events?.length && unit.eventProtocol) {
+          if (priorWatermark && compareDockerWatermarks(unit.eventProtocol.fromWatermark, rowToWatermark(priorWatermark)) !== 0) {
+            throw new DockerIngestConflict("watermark_conflict");
+          }
+        }
         if (unit.storageLatest) await client.query(`INSERT INTO docker_storage_latest (vps_id,agent_instance_id,snapshot_id,collected_at,received_at,images,containers,local_volumes,build_cache,formula_version) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,1) ON CONFLICT (vps_id) DO UPDATE SET agent_instance_id=EXCLUDED.agent_instance_id,snapshot_id=EXCLUDED.snapshot_id,collected_at=EXCLUDED.collected_at,received_at=EXCLUDED.received_at,images=EXCLUDED.images,containers=EXCLUDED.containers,local_volumes=EXCLUDED.local_volumes,build_cache=EXCLUDED.build_cache`, [unit.vpsId,unit.agentInstanceId,unit.snapshotId,new Date(unit.storageLatest.collectedAt),received,unit.storageLatest.images,unit.storageLatest.containers,unit.storageLatest.localVolumes,unit.storageLatest.buildCache]);
+        if (unit.monitoring) {
+          const rule = await client.query<{ state: unknown }>("SELECT state FROM docker_alert_rule_states WHERE vps_id=$1 AND rule_kind=$2 FOR UPDATE", [unit.vpsId, DOCKER_UNAVAILABLE_RULE_KIND]);
+          const previous = rule.rows[0]?.state ? (rule.rows[0].state as never) : createInitialDockerUnavailableState(unit.vpsId);
+          const evaluated = evaluateDockerUnavailable(previous, { availability: unit.monitoring.availability, observedAt: unit.hostSample.collectedAt });
+          await client.query("INSERT INTO docker_alert_rule_states (vps_id,rule_kind,state,updated_at) VALUES ($1,$2,$3,$4) ON CONFLICT (vps_id,rule_kind) DO UPDATE SET state=EXCLUDED.state,updated_at=EXCLUDED.updated_at", [unit.vpsId, DOCKER_UNAVAILABLE_RULE_KIND, JSON.stringify(evaluated.next), received]);
+          const active = evaluated.next.alert;
+          const fingerprint = dockerUnavailableFingerprint(unit.vpsId);
+          if (active) await client.query("INSERT INTO docker_alerts (id,vps_id,agent_instance_id,rule_kind,state,fingerprint,opened_at,last_observed_at,occurrences,summary,context_version) VALUES ($1,$2,$3,$4,$5,$6,$7,$7,$8,$9,1) ON CONFLICT (id) DO UPDATE SET state=EXCLUDED.state,agent_instance_id=EXCLUDED.agent_instance_id,last_observed_at=EXCLUDED.last_observed_at,occurrences=EXCLUDED.occurrences,summary=EXCLUDED.summary", [`${unit.vpsId}:${DOCKER_UNAVAILABLE_RULE_KIND}`, unit.vpsId, unit.agentInstanceId, DOCKER_UNAVAILABLE_RULE_KIND, active.state, fingerprint, new Date(active.openedAt), active.occurrences, buildDockerUnavailableSummary(evaluated.unavailableCount, evaluated.window.length)]);
+          else if (evaluated.transition === "resolved") await client.query("UPDATE docker_alerts SET state='resolved',resolved_at=$2,resolution_reason='condition_cleared',last_observed_at=$2 WHERE vps_id=$1 AND fingerprint=$3 AND state IN ('open','acknowledged')", [unit.vpsId, new Date(unit.hostSample.collectedAt), fingerprint]);
+        }
+        // Evaluate and persist all typed evidence rules inside the same ingest transaction.
+        const typedObservations: Array<{ ruleKind: DockerAlertRuleKind; observation: DockerAlertObservation; ids: { agentInstanceId?: string; containerKey?: string } }> = [];
+        for (const sample of unit.containerSamples ?? []) {
+          const memoryLimit = sample.metrics.memoryLimitBytes;
+          const memoryRatio = typeof memoryLimit === "number" && memoryLimit > 0 ? sample.metrics.memoryUsageBytes / memoryLimit : undefined;
+          const base = { observedAt: sample.collectedAt, vpsId: unit.vpsId, agentInstanceId: unit.agentInstanceId, containerKey: sample.containerKey, exactContainer: true, coverageComplete: sample.coverage?.complete ?? true, health: sample.state as DockerAlertObservation["health"] } satisfies DockerAlertObservation;
+          for (const ruleKind of ["container_unhealthy", "container_restart_loop", "container_cpu_high", "container_memory_high"] as const) {
+            typedObservations.push({ ruleKind, ids: { agentInstanceId: unit.agentInstanceId, containerKey: sample.containerKey }, observation: { ...base, cpuRatio: sample.metrics.cpuPercent / 100, memoryRatio } });
+          }
+        }
+        for (const event of unit.events ?? []) {
+          if (!event.containerKey) continue;
+          for (const ruleKind of ["container_unhealthy", "container_restart_loop"] as const) typedObservations.push({ ruleKind, ids: { agentInstanceId: unit.agentInstanceId, containerKey: event.containerKey }, observation: { observedAt: event.eventOccurredAt, vpsId: unit.vpsId, agentInstanceId: unit.agentInstanceId, containerKey: event.containerKey, exactContainer: true, eventAction: ["create","start","restart","die","stop","kill","destroy","remove","health_status"].includes(event.action) ? event.action as DockerAlertObservation["eventAction"] : undefined, health: event.healthStatus === "none" ? undefined : event.healthStatus as DockerAlertObservation["health"] } });
+        }
+        if (unit.storageLatest) {
+          const total = unit.storageLatest.images.totalBytes + unit.storageLatest.containers.totalBytes + unit.storageLatest.localVolumes.totalBytes + unit.storageLatest.buildCache.totalBytes;
+          const reclaimable = (unit.storageLatest.images.reclaimableBytes ?? 0) + (unit.storageLatest.containers.reclaimableBytes ?? 0) + (unit.storageLatest.localVolumes.reclaimableBytes ?? 0) + (unit.storageLatest.buildCache.reclaimableBytes ?? 0);
+          typedObservations.push({ ruleKind: "docker_storage_pressure", ids: {}, observation: { observedAt: unit.storageLatest.collectedAt, vpsId: unit.vpsId, supported: total > 0, formulaVersion: 1, storageRatio: total > 0 ? reclaimable / total : undefined } });
+        }
+        if (unit.events?.length && unit.eventProtocol) typedObservations.push({ ruleKind: "docker_event_gap", ids: { agentInstanceId: unit.agentInstanceId }, observation: { observedAt: unit.receivedAt, vpsId: unit.vpsId, agentInstanceId: unit.agentInstanceId, status: "complete", gapFree: true } });
+        for (const item of typedObservations) {
+          const stateKey = `${item.ruleKind}:${item.ids.agentInstanceId ?? "host"}:${item.ids.containerKey ?? "host"}`;
+          const row = await client.query<{ state: unknown }>("SELECT state FROM docker_alert_rule_states WHERE vps_id=$1 AND rule_kind=$2 FOR UPDATE", [unit.vpsId, stateKey]);
+          const previous = row.rows[0]?.state ? row.rows[0].state as DockerTypedAlertState : createInitialDockerAlertState(item.ruleKind, { vpsId: unit.vpsId, ...item.ids });
+          const evaluated = evaluateDockerAlert(previous, item.observation);
+          await client.query("INSERT INTO docker_alert_rule_states (vps_id,rule_kind,state,updated_at) VALUES ($1,$2,$3,$4) ON CONFLICT (vps_id,rule_kind) DO UPDATE SET state=EXCLUDED.state,updated_at=EXCLUDED.updated_at", [unit.vpsId, stateKey, JSON.stringify(evaluated.next), received]);
+          const active = evaluated.next.alert;
+          const fingerprint = dockerAlertFingerprint(unit.vpsId, item.ruleKind, item.ids.agentInstanceId, item.ids.containerKey);
+          const alertId = fingerprint;
+          if (active) await client.query("INSERT INTO docker_alerts (id,vps_id,agent_instance_id,rule_kind,container_key,state,fingerprint,opened_at,last_observed_at,occurrences,summary,context_version) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$8,$9,$10,1) ON CONFLICT (id) DO UPDATE SET state=EXCLUDED.state,last_observed_at=EXCLUDED.last_observed_at,occurrences=EXCLUDED.occurrences,summary=EXCLUDED.summary", [alertId, unit.vpsId, item.ids.agentInstanceId ?? null, item.ruleKind, item.ids.containerKey ?? null, active.state, fingerprint, new Date(active.openedAt), active.occurrences, buildDockerAlertSummary(item.ruleKind, `severity=${DOCKER_ALERT_RULES[item.ruleKind].severity}`)]);
+          else if (evaluated.resolution) await client.query("UPDATE docker_alerts SET state='resolved',resolved_at=$2,resolution_reason=$3,last_observed_at=$2 WHERE vps_id=$1 AND fingerprint=$4 AND state IN ('open','acknowledged')", [unit.vpsId, new Date(item.observation.observedAt), evaluated.resolution, fingerprint]);
+        }
+        await client.query(`INSERT INTO docker_metric_samples (id,vps_id,agent_instance_id,snapshot_id,container_key,name,state,collected_at,received_at,effective_at,metrics,coverage) VALUES ($1,$2,$3,$4,NULL,NULL,NULL,$5,$6,$7,$8,$9) ON CONFLICT DO NOTHING`, [unit.hostSample.id, unit.vpsId, unit.agentInstanceId, unit.snapshotId, new Date(unit.hostSample.collectedAt), received, new Date(unit.hostSample.effectiveAt), JSON.stringify(unit.hostSample.metrics), unit.hostSample.coverage == null ? null : JSON.stringify(unit.hostSample.coverage)]);
+        for (const sample of unit.containerSamples ?? []) await client.query(`INSERT INTO docker_metric_samples (id,vps_id,agent_instance_id,snapshot_id,container_key,name,state,collected_at,received_at,effective_at,metrics,coverage) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12) ON CONFLICT DO NOTHING`, [sample.id, unit.vpsId, unit.agentInstanceId, unit.snapshotId, sample.containerKey, sample.name ?? null, sample.state ?? null, new Date(sample.collectedAt), received, new Date(sample.effectiveAt), JSON.stringify(sample.metrics), sample.coverage == null ? null : JSON.stringify(sample.coverage)]);
+        if (unit.events?.length && unit.eventProtocol) await client.query("INSERT INTO docker_event_watermarks (vps_id,agent_instance_id,time_nano,boundary_digests,committed_batch_id,updated_at) VALUES ($1,$2,$3,$4,$5,$6) ON CONFLICT (vps_id,agent_instance_id) DO UPDATE SET time_nano=EXCLUDED.time_nano,boundary_digests=EXCLUDED.boundary_digests,committed_batch_id=EXCLUDED.committed_batch_id,updated_at=EXCLUDED.updated_at", [unit.vpsId, unit.agentInstanceId, unit.eventProtocol.proposedWatermark.timeNano, JSON.stringify(unit.eventProtocol.proposedWatermark.boundaryDigests), unit.eventProtocol.proposedWatermark.committedBatchId ?? unit.batchId ?? null, new Date(unit.eventProtocol.proposedWatermark.updatedAt)]);
+        for (const event of unit.events ?? []) await client.query(`INSERT INTO docker_operational_events (id,vps_id,agent_instance_id,container_key,action,event_occurred_at,received_at,event_digest,context_version,health_status,exit_code,signal,oom_killed) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,1,$9,$10,$11,$12) ON CONFLICT DO NOTHING`, [event.id,unit.vpsId,unit.agentInstanceId,event.containerKey ?? null,event.action,new Date(event.eventOccurredAt),received,event.eventDigest,event.healthStatus ?? null,event.exitCode ?? null,event.signal ?? null,event.oomKilled ?? null]);
         await client.query("INSERT INTO docker_ingest_latest (vps_id,active_instance_id,active_snapshot_id,source_sequence,received_at,updated_at,revision,compatibility) VALUES ($1,$2,$3,$4,$5,$5,$6,$7) ON CONFLICT (vps_id) DO UPDATE SET active_instance_id=EXCLUDED.active_instance_id,active_snapshot_id=EXCLUDED.active_snapshot_id,source_sequence=EXCLUDED.source_sequence,received_at=EXCLUDED.received_at,updated_at=EXCLUDED.updated_at,revision=EXCLUDED.revision,compatibility=EXCLUDED.compatibility", [unit.vpsId,unit.agentInstanceId,unit.snapshotId,unit.sourceSequence,received,revision,unit.compatibility]);
-        const result: DockerV2IngestResult = {vpsId:unit.vpsId, ingestStatus:"committed", snapshotId:unit.snapshotId, agentInstanceId:unit.agentInstanceId, ...(unit.batchId ? {batchId:unit.batchId}:{}), receivedAt:unit.receivedAt, revision:Number(revision)};
+        const result: DockerV2IngestResult = {vpsId:unit.vpsId, ingestStatus:"committed", snapshotId:unit.snapshotId, agentInstanceId:unit.agentInstanceId, ...(unit.batchId ? {batchId:unit.batchId}:{}), receivedAt:unit.receivedAt, ...(unit.events?.length && unit.eventProtocol ? { committedWatermark: unit.eventProtocol.proposedWatermark } : {}), revision:Number(revision)};
         await client.query("INSERT INTO docker_snapshot_ledger (vps_id,snapshot_id,agent_instance_id,request_digest,source_sequence,received_at,result,revision) VALUES ($1,$2,$3,$4,$5,$6,$7,$8)", [unit.vpsId,unit.snapshotId,unit.agentInstanceId,unit.requestDigest,unit.sourceSequence,received,result,revision]);
         if (unit.batchId) await client.query("INSERT INTO docker_ingest_batches (vps_id,agent_instance_id,batch_id,snapshot_id,request_digest,result) VALUES ($1,$2,$3,$4,$5,$6)", [unit.vpsId,unit.agentInstanceId,unit.batchId,unit.snapshotId,unit.requestDigest,JSON.stringify(result)]);
         return result;
@@ -776,10 +901,14 @@ export function createPostgresDockerMonitoringRepository(
            ) AS overcap WHERE s.id = overcap.id`,
           [cutoff, options.samplesPerVps],
         );
+        const rollupCutoff = new Date(options.rollupCutoff ?? options.cutoff);
+        const alertCutoff = new Date(options.alertCutoff ?? options.cutoff);
+        const oldRollups = await client.query("DELETE FROM docker_metric_rollups WHERE bucket_start < $1", [rollupCutoff]);
         const oldEvents = await client.query(
           "DELETE FROM docker_operational_events WHERE event_occurred_at < $1",
           [cutoff],
         );
+        const oldAlerts = await client.query("DELETE FROM docker_alerts WHERE state = 'resolved' AND resolved_at < $1", [alertCutoff]);
         const overCapEvents = await client.query(
           `DELETE FROM docker_operational_events AS e USING (
              SELECT id FROM (
@@ -796,7 +925,10 @@ export function createPostgresDockerMonitoringRepository(
         // preserve it.
         return {
           samplesRemoved: (oldSamples.rowCount ?? 0) + (overCapSamples.rowCount ?? 0),
+          rollupsRemoved: oldRollups.rowCount ?? 0,
           eventsRemoved: (oldEvents.rowCount ?? 0) + (overCapEvents.rowCount ?? 0),
+          alertsRemoved: oldAlerts.rowCount ?? 0,
+          storageMode: "postgres",
         };
       });
     },
@@ -804,7 +936,7 @@ export function createPostgresDockerMonitoringRepository(
     async cleanupForVps(cleanup: DockerMonitoringCleanup): Promise<void> {
       await withTransaction(pool, async (client) => {
         await client.query("SELECT pg_advisory_xact_lock(hashtextextended($1, 0))", [cleanup.vpsId]);
-        for (const table of ["docker_metric_samples","docker_metric_rollups","docker_operational_events","docker_storage_latest","docker_event_watermarks","docker_ingest_batches","docker_snapshot_ledger","docker_ingest_batch_results","docker_ingest_latest","docker_alerts"]) await client.query(`DELETE FROM ${table} WHERE vps_id=$1`, [cleanup.vpsId]);
+        for (const table of ["docker_metric_samples","docker_metric_rollups","docker_operational_events","docker_storage_latest","docker_event_watermarks","docker_ingest_batches","docker_snapshot_ledger","docker_ingest_batch_results","docker_ingest_latest","docker_alerts","docker_alert_rule_states"]) await client.query(`DELETE FROM ${table} WHERE vps_id=$1`, [cleanup.vpsId]);
       });
     },
   };

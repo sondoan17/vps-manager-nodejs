@@ -69,7 +69,7 @@ func (c *Collector) SetDockerV2StorageEnabled(enabled bool) {
 }
 
 // DockerV2 event/storage calls use the existing v1 client and base URL.
-func (c *Collector) collectDockerV2API(ctx context.Context, out *DockerMetricsV2) {
+func (c *Collector) collectDockerV2API(ctx context.Context, out *DockerMetricsV2, starts ...time.Time) {
 	// Keep optional v2 work inside the same five-second upper bound used by
 	// v1. The caller's cancellation/deadline remains authoritative.
 	// The caller owns the single collection deadline shared with v1.
@@ -81,6 +81,9 @@ func (c *Collector) collectDockerV2API(ctx context.Context, out *DockerMetricsV2
 		return
 	}
 	start := time.Now()
+	if len(starts) > 0 {
+		start = starts[0]
+	}
 	if eventProvider != nil && dockerV2RemainingBudget(start, 5*time.Second, 100*time.Millisecond) {
 		if in, ok := eventProvider(); ok && in.AgentInstanceID != "" {
 			if req, err := dockerV2EventsRequest(ctx, base, in.SinceNano, in.UntilNano); err == nil {
@@ -220,6 +223,8 @@ func dockerV2FromV1(v1 *DockerMetrics, keyForID DockerV2ContainerKeyFunc, rotati
 	for _, vc := range v1.Containers {
 		id := vc.fullID
 		if id == "" {
+			// Tests and legacy in-memory callers may not retain fullID; the
+			// bounded v1 ID remains sufficient for deterministic derivation.
 			id = vc.ID
 		}
 		key := keyForID(id)
@@ -232,7 +237,6 @@ func dockerV2FromV1(v1 *DockerMetrics, keyForID DockerV2ContainerKeyFunc, rotati
 		})
 		byKey[key] = sanitizeDockerV2Display(DockerContainerV2{
 			ContainerKey:     key,
-			ID:               vc.ID,
 			Name:             vc.Name,
 			Image:            vc.Image,
 			State:            vc.State,
@@ -268,7 +272,7 @@ func dockerV2FromV1(v1 *DockerMetrics, keyForID DockerV2ContainerKeyFunc, rotati
 // result and applies the finalize hook when set. It returns nil when the v2
 // gate is off, when v1 is nil, or on any derivation/hook failure, preserving
 // v1 output by contract.
-func (c *Collector) collectDockerV2(ctx context.Context, v1 *DockerMetrics) (out *DockerMetricsV2) {
+func (c *Collector) collectDockerV2(ctx context.Context, v1 *DockerMetrics, starts ...time.Time) (out *DockerMetricsV2) {
 	if !c.isDockerV2Enabled() || v1 == nil {
 		return nil
 	}
@@ -292,7 +296,7 @@ func (c *Collector) collectDockerV2(ctx context.Context, v1 *DockerMetrics) (out
 	}
 	// Existing v1 collection owns the global deadline; these optional calls
 	// share its context and are strictly budget/cadence gated.
-	c.collectDockerV2API(ctx, out)
+	c.collectDockerV2API(ctx, out, starts...)
 	if finalize != nil {
 		finalize(out)
 	}

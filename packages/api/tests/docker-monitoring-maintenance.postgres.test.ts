@@ -47,6 +47,8 @@ function createFakeMaintenancePool(counts: {
   overCapSamples: number;
   oldEvents: number;
   overCapEvents: number;
+  oldRollups?: number;
+  oldAlerts?: number;
 }) {
   const queries: RecordedQuery[] = [];
   const fakeClient = {
@@ -62,6 +64,8 @@ function createFakeMaintenancePool(counts: {
       if (text.startsWith("DELETE FROM docker_metric_samples AS s")) {
         return { rowCount: counts.overCapSamples, rows: [] };
       }
+      if (text.startsWith("DELETE FROM docker_metric_rollups WHERE")) return { rowCount: counts.oldRollups ?? 0, rows: [] };
+      if (text.startsWith("DELETE FROM docker_alerts WHERE")) return { rowCount: counts.oldAlerts ?? 0, rows: [] };
       if (text.startsWith("DELETE FROM docker_operational_events WHERE")) {
         return { rowCount: counts.oldEvents, rows: [] };
       }
@@ -131,7 +135,7 @@ describe("docker monitoring postgres maintenance (static, fake pool)", () => {
       samplesPerVps: 2,
       eventsPerVps: 1,
     });
-    expect(result).toEqual({ samplesRemoved: 4, eventsRemoved: 6 });
+    expect(result).toEqual({ samplesRemoved: 4, rollupsRemoved: 0, eventsRemoved: 6, alertsRemoved: 0, storageMode: "postgres" });
 
     const texts = queries.map((q) => q.text);
     expect(texts[0]).toBe("BEGIN");
@@ -163,7 +167,7 @@ describe("docker monitoring postgres maintenance (static, fake pool)", () => {
     expect(capEvents.values).toEqual([new Date("2026-02-01T00:00:00.000Z"), 1]);
     expect(texts[texts.length - 1]).toBe("COMMIT");
     // Latest state tables are never touched.
-    expect(texts.join("\n")).not.toMatch(/docker_storage_latest|docker_ingest_latest|docker_event_watermarks|docker_snapshot_ledger|docker_ingest_batches|docker_metric_rollups|docker_alerts/);
+    expect(texts.join("\n")).not.toMatch(/docker_storage_latest|docker_ingest_latest|docker_event_watermarks|docker_snapshot_ledger|docker_ingest_batches/);
   });
 });
 

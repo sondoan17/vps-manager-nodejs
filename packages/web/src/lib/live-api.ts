@@ -39,6 +39,24 @@ export type MonitoringErrorPayload = {
   message: string;
 };
 
+export type DockerEventsAvailablePayload = {
+  vpsId?: string;
+  newestEventId?: string;
+  countHint?: number;
+  truncated?: boolean;
+};
+
+export type DockerAlertsUpdatedPayload = {
+  vpsId?: string;
+  changedAlertIds?: string[];
+  refreshRequired?: boolean;
+};
+
+export type DockerInvalidationPayload = {
+  vpsIds?: string[];
+  refreshRequired?: boolean;
+};
+
 // ── Union of all recognised event types ───────────────────────────────
 
 export type MonitoringEvent =
@@ -47,7 +65,10 @@ export type MonitoringEvent =
   | MonitoringEnvelope<"metrics.updated", MetricsUpdatedPayload>
   | MonitoringEnvelope<"jobs.updated", JobsUpdatedPayload>
   | MonitoringEnvelope<"monitoring.heartbeat", MonitoringHeartbeatPayload>
-  | MonitoringEnvelope<"monitoring.error", MonitoringErrorPayload>;
+  | MonitoringEnvelope<"monitoring.error", MonitoringErrorPayload>
+  | MonitoringEnvelope<"docker.events.available", DockerEventsAvailablePayload>
+  | MonitoringEnvelope<"docker.alerts.updated", DockerAlertsUpdatedPayload>
+  | MonitoringEnvelope<"docker.invalidation", DockerInvalidationPayload>;
 
 // ── Connection state ──────────────────────────────────────────────────
 
@@ -66,6 +87,9 @@ export type MonitoringCallbacks = {
   onJobsUpdated?: (payload: JobsUpdatedPayload) => void;
   onHeartbeat?: (payload: MonitoringHeartbeatPayload) => void;
   onError?: (payload: MonitoringErrorPayload) => void;
+  onDockerEventsAvailable?: (payload: DockerEventsAvailablePayload) => void;
+  onDockerAlertsUpdated?: (payload: DockerAlertsUpdatedPayload) => void;
+  onDockerInvalidation?: (payload: DockerInvalidationPayload) => void;
   onConnectionChange?: (state: LiveConnectionState) => void;
 };
 
@@ -78,124 +102,63 @@ export function subscribeMonitoring(
 ): () => void {
   let es: EventSource | null = null;
   let reconnectAttempts = 0;
-  const maxReconnectDelay = 16_000;
+  let latestCursor: number | null = null;
+  let generation = 0;
+  let disposed = false;
 
   function connect() {
-    if (es) {
-      es.close();
-    }
-
+    const currentGeneration = ++generation;
+    if (es) es.close();
     callbacks.onConnectionChange?.({ status: "connecting" });
-    es = new EventSource("/api/monitoring/stream");
-
-    es.addEventListener("monitoring.hello", (event: MessageEvent) => {
+    const query = latestCursor === null ? "" : `?cursor=${encodeURIComponent(String(latestCursor))}`;
+    const current = new EventSource(`/api/monitoring/stream${query}`);
+    es = current;
+    const active = () => !disposed && generation === currentGeneration && es === current;
+    const acceptCursor = (event: MessageEvent) => {
+      if (!active()) return false;
+      const raw = typeof event.lastEventId === "string" ? event.lastEventId.trim() : "";
+      if (!/^\d+$/.test(raw)) return true;
+      const id = Number(raw);
+      if (!Number.isSafeInteger(id) || id < 0 || (latestCursor !== null && id <= latestCursor)) return false;
+      latestCursor = id;
+      return true;
+    };
+    const handle = (event: MessageEvent, callback?: (payload: never) => void) => {
+      if (!acceptCursor(event)) return;
       try {
         const envelope = JSON.parse(event.data) as MonitoringEvent;
         if (envelope.schemaVersion !== 1) return;
-        callbacks.onHello?.(envelope.payload as MonitoringHelloPayload);
-        callbacks.onConnectionChange?.({
-          status: "live",
-          latestEventAt: envelope.emittedAt,
-        });
+        callback?.(envelope.payload as never);
+        callbacks.onConnectionChange?.({ status: "live", latestEventAt: envelope.emittedAt });
         reconnectAttempts = 0;
-      } catch {
-        // Ignore malformed events
-      }
-    });
-
-    es.addEventListener("monitoring.snapshot", (event: MessageEvent) => {
-      try {
-        const envelope = JSON.parse(event.data) as MonitoringEvent;
-        if (envelope.schemaVersion !== 1) return;
-        callbacks.onSnapshot?.(envelope.payload as MonitoringSnapshotPayload);
-        callbacks.onConnectionChange?.({
-          status: "live",
-          latestEventAt: envelope.emittedAt,
-        });
-        reconnectAttempts = 0;
-      } catch {
-        // Ignore
-      }
-    });
-
-    es.addEventListener("metrics.updated", (event: MessageEvent) => {
-      try {
-        const envelope = JSON.parse(event.data) as MonitoringEvent;
-        if (envelope.schemaVersion !== 1) return;
-        callbacks.onMetricsUpdated?.(envelope.payload as MetricsUpdatedPayload);
-        callbacks.onConnectionChange?.({
-          status: "live",
-          latestEventAt: envelope.emittedAt,
-        });
-        reconnectAttempts = 0;
-      } catch {
-        // Ignore
-      }
-    });
-
-    es.addEventListener("jobs.updated", (event: MessageEvent) => {
-      try {
-        const envelope = JSON.parse(event.data) as MonitoringEvent;
-        if (envelope.schemaVersion !== 1) return;
-        callbacks.onJobsUpdated?.(envelope.payload as JobsUpdatedPayload);
-        callbacks.onConnectionChange?.({
-          status: "live",
-          latestEventAt: envelope.emittedAt,
-        });
-        reconnectAttempts = 0;
-      } catch {
-        // Ignore malformed events
-      }
-    });
-
-    es.addEventListener("monitoring.heartbeat", (event: MessageEvent) => {
-      try {
-        const envelope = JSON.parse(event.data) as MonitoringEvent;
-        if (envelope.schemaVersion !== 1) return;
-        callbacks.onHeartbeat?.(envelope.payload as MonitoringHeartbeatPayload);
-        callbacks.onConnectionChange?.({
-          status: "live",
-          latestEventAt: envelope.emittedAt,
-        });
-        reconnectAttempts = 0;
-      } catch {
-        // Ignore
-      }
-    });
-
-    es.addEventListener("monitoring.error", (event: MessageEvent) => {
-      try {
-        const envelope = JSON.parse(event.data) as MonitoringEvent;
-        if (envelope.schemaVersion !== 1) return;
-        callbacks.onError?.(envelope.payload as MonitoringErrorPayload);
-        callbacks.onConnectionChange?.({
-          status: "stale",
-          latestEventAt: envelope.emittedAt,
-        });
-      } catch {
-        // Ignore
-      }
-    });
-
-    es.onerror = () => {
-      // EventSource auto-reconnects; signal reconnecting state
+      } catch { /* Ignore malformed events */ }
+    };
+    for (const [type, callback] of [
+      ["monitoring.hello", callbacks.onHello], ["monitoring.snapshot", callbacks.onSnapshot],
+      ["metrics.updated", callbacks.onMetricsUpdated], ["jobs.updated", callbacks.onJobsUpdated],
+      ["monitoring.heartbeat", callbacks.onHeartbeat], ["monitoring.error", callbacks.onError],
+      ["docker.events.available", callbacks.onDockerEventsAvailable], ["docker.alerts.updated", callbacks.onDockerAlertsUpdated],
+      ["docker.invalidation", callbacks.onDockerInvalidation],
+    ] as const) {
+      current.addEventListener(type, (event: MessageEvent) => handle(event, callback as ((payload: never) => void) | undefined));
+    }
+    current.onerror = () => {
+      if (!active()) return;
       reconnectAttempts++;
-      if (reconnectAttempts <= 1) {
-        callbacks.onConnectionChange?.({ status: "reconnecting" });
-      } else {
-        callbacks.onConnectionChange?.({
-          status: "stale",
-        });
-      }
+      callbacks.onConnectionChange?.(reconnectAttempts <= 1 ? { status: "reconnecting" } : { status: "stale" });
+      current.close();
+      const delay = Math.min(1000 * 2 ** Math.max(0, reconnectAttempts - 1), 16_000);
+      window.setTimeout(() => {
+        if (active()) connect();
+      }, delay);
     };
   }
 
   connect();
-
   return () => {
-    if (es) {
-      es.close();
-      es = null;
-    }
+    disposed = true;
+    generation++;
+    es?.close();
+    es = null;
   };
 }

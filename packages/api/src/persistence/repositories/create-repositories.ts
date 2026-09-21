@@ -101,7 +101,8 @@ export function createRepositories(
       join(config.dataDir, "host-key-pins.json"),
     ),
     dockerMonitoring: createJsonDockerMonitoringRepository(
-      join(config.dataDir, "docker-monitoring.json"),
-    ),
+       join(config.dataDir, "docker-monitoring.json"),
+       { maxBytes: config.dockerJsonMaxBytes, maintenanceMaxRewriteBytes: config.dockerJsonMaintenanceMaxRewriteBytes },
+     ),
   };
 }

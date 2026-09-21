@@ -268,11 +268,17 @@ export function DashboardProvider({
   const [pendingHostKeyTrust, setPendingHostKeyTrust] =
     useState<PendingHostKeyTrust | null>(null);
   const unsubscribeRef = useRef<(() => void) | null>(null);
+  const recordsRef = useRef(records);
   const [initialLoadDone, setInitialLoadDone] = useState(false);
   const [refreshToastVisible, setRefreshToastVisible] = useState(false);
   const refreshToastTimerRef = useRef<ReturnType<typeof setTimeout> | null>(
     null,
   );
+  const dockerInvalidationTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  useEffect(() => {
+    recordsRef.current = records;
+  }, [records]);
 
   // ── Data loading ───────────────────────────────────────────────────
 
@@ -358,6 +364,8 @@ export function DashboardProvider({
     return () => {
       if (refreshToastTimerRef.current)
         clearTimeout(refreshToastTimerRef.current);
+      if (dockerInvalidationTimerRef.current)
+        clearTimeout(dockerInvalidationTimerRef.current);
     };
   }, []);
 
@@ -399,6 +407,36 @@ export function DashboardProvider({
           jobs: mergeJobs(prev.jobs, payload.jobs),
         }));
         setRecords((prev) => applyAgentJobState(prev, payload.jobs));
+      },
+      onDockerEventsAvailable: (payload) => {
+        if (!payload || (payload.vpsId && !recordsRef.current.some((vps) => vps.id === payload.vpsId))) return;
+        if (dockerInvalidationTimerRef.current) return;
+        dockerInvalidationTimerRef.current = setTimeout(() => {
+          dockerInvalidationTimerRef.current = null;
+          void loadVps().catch(() => {
+            // Live invalidation is best effort; keep the existing dashboard visible.
+          });
+        }, 250);
+      },
+      onDockerAlertsUpdated: (payload) => {
+        if (!payload || (payload.vpsId && !recordsRef.current.some((vps) => vps.id === payload.vpsId))) return;
+        if (dockerInvalidationTimerRef.current) return;
+        dockerInvalidationTimerRef.current = setTimeout(() => {
+          dockerInvalidationTimerRef.current = null;
+          void loadVps().catch(() => {
+            // Live invalidation is best effort; keep the existing dashboard visible.
+          });
+        }, 250);
+      },
+      onDockerInvalidation: (payload) => {
+        if (payload?.vpsIds && !payload.vpsIds.some((id) => recordsRef.current.some((vps) => vps.id === id))) return;
+        if (dockerInvalidationTimerRef.current) return;
+        dockerInvalidationTimerRef.current = setTimeout(() => {
+          dockerInvalidationTimerRef.current = null;
+          void loadVps().catch(() => {
+            // Live invalidation is best effort; keep the existing dashboard visible.
+          });
+        }, 250);
       },
       onHeartbeat: (_payload) => {},
       onError: (_payload) => {

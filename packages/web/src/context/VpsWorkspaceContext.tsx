@@ -10,6 +10,12 @@ import {
   TerminalPanel,
 } from "../components/dashboard/DashboardPanels";
 import {
+  getVpsDockerStorage,
+  listVpsDockerContainerHistory,
+  listVpsDockerAlerts,
+  listVpsDockerEvents,
+  listVpsDockerHistory,
+  listVpsDockerRollups,
   listVpsAuditEvents,
   listVpsJobs,
   listVpsMetrics,
@@ -17,11 +23,22 @@ import {
   type DashboardJob,
   type DashboardMetric,
   type DashboardOverview,
+  type DockerAlert,
+  type DockerOperationalEvent,
+  type DockerHostSample,
+  type DockerMetricRollup,
+  type DockerStorageLatest,
   type VpsRecord,
 } from "../lib/api";
+import { subscribeMonitoring } from "../lib/live-api";
 import { useDashboard } from "./DashboardContext";
 import { vpsDisplayName } from "../lib/dashboard-formatters";
 import { DockerMetricsPanel } from "../components/dashboard/servers/DockerMetricsPanel";
+import { DockerCapabilityNotice } from "../components/dashboard/docker/DockerCapabilityNotice";
+import { DockerHistoryChart } from "../components/dashboard/docker/DockerHistoryChart";
+import { DockerEventTimeline } from "../components/dashboard/docker/DockerEventTimeline";
+import { DockerAlertsPanel } from "../components/dashboard/docker/DockerAlertsPanel";
+import { DockerStorageOverview } from "../components/dashboard/docker/DockerStorageOverview";
 
 // ── Context type ────────────────────────────────────────────────────
 
@@ -276,6 +293,131 @@ export function VpsWorkspaceOverviewPage() {
 export function VpsWorkspaceDockerPage() {
   const { vps, overview } = useVpsWorkspace();
   const dashboard = useDashboard();
+  const snapshot = overview.dockerMetrics[0];
+  const enabled = vps.dockerMetricsEnabled !== false;
+  const [history, setHistory] = useState<DockerHostSample[]>([]);
+  const [historyTotal, setHistoryTotal] = useState(0);
+  const [rollups, setRollups] = useState<DockerMetricRollup[]>([]);
+  const [events, setEvents] = useState<DockerOperationalEvent[]>([]);
+  const [eventsTotal, setEventsTotal] = useState(0);
+  const [alerts, setAlerts] = useState<DockerAlert[]>([]);
+  const [alertsTotal, setAlertsTotal] = useState(0);
+  const [storage, setStorage] = useState<DockerStorageLatest | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [resourceErrors, setResourceErrors] = useState<Record<string, string | null>>({});
+  const [resourcePages, setResourcePages] = useState<Record<string, { cursor?: string; hasMore: boolean }>>({});
+  const [loadingMore, setLoadingMore] = useState<string | null>(null);
+  const [refreshTick, setRefreshTick] = useState(0);
+  const [selectedContainer, setSelectedContainer] = useState<string | null>(null);
+  const [containerHistory, setContainerHistory] = useState<DockerHostSample[]>([]);
+  const [containerHistoryError, setContainerHistoryError] = useState<string | null>(null);
+  const [containerHistoryLoading, setContainerHistoryLoading] = useState(false);
+
+  const loadMore = async (resource: "history" | "rollups" | "events" | "alerts") => {
+    const cursor = resourcePages[resource]?.cursor;
+    if (!enabled || !cursor || loadingMore === resource) return;
+    setLoadingMore(resource);
+    try {
+      if (resource === "history") {
+        const result = await listVpsDockerHistory(vps.id, { limit: 100, cursor });
+        setHistory((items) => [...items, ...result.data]); setHistoryTotal((n) => n + result.data.length);
+        setResourcePages((pages) => ({ ...pages, history: { cursor: result.page.nextCursor, hasMore: result.page.hasMore } }));
+      } else if (resource === "rollups") {
+        const result = await listVpsDockerRollups(vps.id, { limit: 100, cursor });
+        setRollups((items) => [...items, ...result.data]);
+        setResourcePages((pages) => ({ ...pages, rollups: { cursor: result.page.nextCursor, hasMore: result.page.hasMore } }));
+      } else if (resource === "events") {
+        const result = await listVpsDockerEvents(vps.id, { limit: 50, cursor });
+        setEvents((items) => [...items, ...result.data]); setEventsTotal((n) => n + result.data.length);
+        setResourcePages((pages) => ({ ...pages, events: { cursor: result.page.nextCursor, hasMore: result.page.hasMore } }));
+      } else {
+        const result = await listVpsDockerAlerts(vps.id, { limit: 50, cursor });
+        setAlerts((items) => [...items, ...result.data]); setAlertsTotal((n) => n + result.data.length);
+        setResourcePages((pages) => ({ ...pages, alerts: { cursor: result.page.nextCursor, hasMore: result.page.hasMore } }));
+      }
+    } catch (err) { setResourceErrors((errors) => ({ ...errors, [resource]: err instanceof Error ? err.message : "Unable to load more" })); }
+    finally { setLoadingMore(null); }
+  };
+
+  useEffect(() => {
+    if (!enabled) {
+      setLoading(false);
+      setHistory([]); setRollups([]); setEvents([]); setAlerts([]); setStorage(null);
+      setResourceErrors({}); setResourcePages({}); setContainerHistory([]); setSelectedContainer(null);
+      return;
+    }
+    let cancelled = false;
+    setLoading(true);
+    setError(null);
+    (async () => {
+      try {
+        const [h, r, e, a, s] = await Promise.allSettled([
+          listVpsDockerHistory(vps.id, { limit: 100 }),
+          listVpsDockerRollups(vps.id, { limit: 100 }),
+          listVpsDockerEvents(vps.id, { limit: 50 }),
+          listVpsDockerAlerts(vps.id, { limit: 50 }),
+          getVpsDockerStorage(vps.id),
+        ]);
+        if (cancelled) return;
+        const failures: string[] = [];
+        const nextErrors: Record<string, string | null> = {};
+        const nextPages: Record<string, { cursor?: string; hasMore: boolean }> = {};
+        if (h.status === "fulfilled") {
+          setHistory(h.value.data);
+          setHistoryTotal(h.value.data.length);
+          nextPages.history = { cursor: h.value.page.nextCursor, hasMore: h.value.page.hasMore };
+        } else { failures.push("history"); nextErrors.history = h.reason instanceof Error ? h.reason.message : "History unavailable"; }
+        if (r.status === "fulfilled") { setRollups(r.value.data); nextPages.rollups = { cursor: r.value.page.nextCursor, hasMore: r.value.page.hasMore }; }
+        else { failures.push("rollups"); nextErrors.rollups = r.reason instanceof Error ? r.reason.message : "Rollups unavailable"; }
+        if (e.status === "fulfilled") { setEvents(e.value.data); setEventsTotal(e.value.data.length); nextPages.events = { cursor: e.value.page.nextCursor, hasMore: e.value.page.hasMore }; }
+        else { failures.push("events"); nextErrors.events = e.reason instanceof Error ? e.reason.message : "Events unavailable"; }
+        if (a.status === "fulfilled") { setAlerts(a.value.data); setAlertsTotal(a.value.data.length); nextPages.alerts = { cursor: a.value.page.nextCursor, hasMore: a.value.page.hasMore }; }
+        else { failures.push("alerts"); nextErrors.alerts = a.reason instanceof Error ? a.reason.message : "Alerts unavailable"; }
+        if (s.status === "fulfilled") setStorage(s.value);
+        else { failures.push("storage"); nextErrors.storage = s.reason instanceof Error ? s.reason.message : "Storage unavailable"; }
+        setResourceErrors(nextErrors);
+        setResourcePages(nextPages);
+        if (failures.length === 4) throw new Error("Docker detail data is unavailable right now.");
+        if (failures.length) setError(`Some Docker detail sections are unavailable: ${failures.join(", " )}.`);
+      } catch (err) {
+        if (!cancelled) setError(err instanceof Error ? err.message : "Docker detail data is unavailable right now.");
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [vps.id, enabled, refreshTick]);
+
+  useEffect(() => {
+    const container = snapshot?.containers.find((item) => item.id === selectedContainer);
+    const agentInstanceId = (snapshot as DashboardOverview["dockerMetrics"][number] & { agentInstanceId?: string } | undefined)?.agentInstanceId;
+    if (!enabled || !container || !agentInstanceId) { setContainerHistory([]); setContainerHistoryError(null); return; }
+    let cancelled = false;
+    setContainerHistoryLoading(true); setContainerHistoryError(null);
+    listVpsDockerContainerHistory(vps.id, { agentInstanceId, containerKey: container.id, limit: 50 })
+      .then((result) => { if (!cancelled) setContainerHistory(result.data); })
+      .catch((err) => { if (!cancelled) setContainerHistoryError(err instanceof Error ? err.message : "Container history unavailable"); })
+      .finally(() => { if (!cancelled) setContainerHistoryLoading(false); });
+    return () => { cancelled = true; };
+  }, [vps.id, enabled, selectedContainer, snapshot?.receivedAt]);
+
+  useEffect(() => {
+    const unsubscribe = subscribeMonitoring({
+      onDockerEventsAvailable: (payload) => {
+        if (!payload?.vpsId || payload.vpsId === vps.id) setRefreshTick((n) => n + 1);
+      },
+      onDockerAlertsUpdated: (payload) => {
+        if (!payload?.vpsId || payload.vpsId === vps.id) setRefreshTick((n) => n + 1);
+      },
+    });
+    return () => {
+      unsubscribe();
+    };
+  }, [vps.id]);
+
   return (
     <section aria-labelledby="server-docker-heading" className="min-w-0">
       <div className="mb-5 max-w-2xl">
@@ -294,11 +436,27 @@ export function VpsWorkspaceDockerPage() {
       </div>
       <DockerMetricsPanel
         vps={vps}
-        dockerMetrics={overview.dockerMetrics[0]}
+        dockerMetrics={snapshot}
         busy={dashboard.busy}
         onToggle={dashboard.onToggleDockerMetrics}
         presentation="detail"
       />
+      <div className="mt-4 space-y-4">
+        <DockerCapabilityNotice enabled={enabled} waiting={enabled && !snapshot} />
+        {enabled && snapshot ? (
+          <>
+            <DockerHistoryChart samples={history} rollups={rollups} retained={historyTotal} loading={loading} error={resourceErrors.history} />{resourcePages.history?.hasMore ? <button type="button" onClick={() => loadMore("history")} disabled={loadingMore === "history"} className="text-xs text-sky-200 underline">{loadingMore === "history" ? "Loading…" : "Load more history"}</button> : null}{resourcePages.rollups?.hasMore ? <button type="button" onClick={() => loadMore("rollups")} disabled={loadingMore === "rollups"} className="ml-3 text-xs text-sky-200 underline">{loadingMore === "rollups" ? "Loading…" : "Load more rollups"}</button> : null}
+            <section aria-label="Container history" className="rounded-none border border-white/10 bg-black/10 p-4">
+              <h3 className="text-xs font-medium text-white/75">Container history</h3>
+              <div className="mt-2 flex flex-wrap gap-2">{snapshot.containers.map((container) => <button key={container.id} type="button" className={`border px-2 py-1 text-[11px] ${selectedContainer === container.id ? "border-sky-300 text-sky-200" : "border-white/10 text-white/60"}`} onClick={() => setSelectedContainer(selectedContainer === container.id ? null : container.id)}>{container.name}</button>)}</div>
+              {selectedContainer ? <DockerHistoryChart samples={containerHistory} retained={containerHistory.length} loading={containerHistoryLoading} error={containerHistoryError} /> : <p className="mt-2 text-[11px] text-white/40">Select a container to load its retained history.</p>}
+            </section>
+            <DockerEventTimeline events={events} retained={eventsTotal} loading={loading} error={resourceErrors.events} />{resourcePages.events?.hasMore ? <button type="button" onClick={() => loadMore("events")} disabled={loadingMore === "events"} className="text-xs text-sky-200 underline">{loadingMore === "events" ? "Loading…" : "Load more events"}</button> : null}
+            <DockerAlertsPanel alerts={alerts} retained={alertsTotal} loading={loading} error={resourceErrors.alerts} vpsId={vps.id} onAcknowledged={(updated) => setAlerts((current) => current.map((alert) => alert.id === updated.id ? updated : alert))} />{resourcePages.alerts?.hasMore ? <button type="button" onClick={() => loadMore("alerts")} disabled={loadingMore === "alerts"} className="text-xs text-sky-200 underline">{loadingMore === "alerts" ? "Loading…" : "Load more alerts"}</button> : null}
+            <DockerStorageOverview storage={storage} loading={loading} error={resourceErrors.storage} />
+          </>
+        ) : null}
+      </div>
     </section>
   );
 }

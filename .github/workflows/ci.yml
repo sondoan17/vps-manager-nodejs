@@ -128,7 +128,10 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install -y gcc
-          cd packages/agent && CGO_ENABLED=1 go test -race ./...
+          cd packages/agent
+          CGO_ENABLED=1 go test -race ./...
+          go vet ./...
+          go build ./cmd/vps-agent
 
       - name: Setup Docker Buildx
         if: steps.effective.outputs.api_changed == 'true' || steps.effective.outputs.web_changed == 'true'
@@ -165,6 +168,9 @@ jobs:
             test -f /app/db/migrations/011_vps_display_name.sql
             test -f /app/db/migrations/012_vps_location.sql
             test -f /app/db/migrations/013_docker_monitoring.sql
+            test -f /app/db/migrations/014_docker_ingest.sql
+            test -f /app/db/migrations/015_docker_rollups.sql
+            test -f /app/db/migrations/016_docker_alert_resolution.sql
             test -x /app/agent/vps-agent-linux-amd64
           '
 
@@ -280,7 +286,7 @@ jobs:
           EXPECT_API="$(normalize "$EXPECT_API")" EXPECT_WEB="$(normalize "$EXPECT_WEB")" node scripts/ci/gate-trivy-critical.mjs
 
   postgres-integration:
-    name: PostgreSQL migration integration
+    name: TimescaleDB PostgreSQL migration integration
     needs: verify
     runs-on: ubuntu-latest
     services:
@@ -305,10 +311,10 @@ jobs:
           cache: npm
       - name: Install Node dependencies
         run: npm ci
-      - name: Run PostgreSQL migration test
+      - name: Run PostgreSQL migration tests
         env:
           VPS_MANAGER_TEST_POSTGRES_URL: postgres://vps_manager:vps_manager@localhost:5432/vps_manager
-        run: npx vitest run packages/api/tests/docker-migration-009.postgres.test.ts
+        run: npx vitest run packages/api/tests/docker-migration-009.postgres.test.ts packages/api/tests/docker-migration-013.postgres.test.ts packages/api/tests/docker-migration-014.postgres.test.ts packages/api/tests/docker-monitoring-repository.postgres.test.ts packages/api/tests/docker-monitoring-maintenance.postgres.test.ts
 
   docker-monitoring-postgres16:
     name: Docker monitoring PostgreSQL 16
@@ -339,11 +345,11 @@ jobs:
       - name: Run Docker monitoring PostgreSQL 16 tests
         env:
           VPS_MANAGER_TEST_POSTGRES_URL: postgres://vps_manager:vps_manager@localhost:5432/vps_manager
-        run: npx vitest run packages/api/tests/docker-migration-013.postgres.test.ts packages/api/tests/docker-migration-014.postgres.test.ts packages/api/tests/docker-monitoring-repository.postgres.test.ts
+        run: npx vitest run packages/api/tests/docker-migration-009.postgres.test.ts packages/api/tests/docker-migration-013.postgres.test.ts packages/api/tests/docker-migration-014.postgres.test.ts packages/api/tests/docker-monitoring-repository.postgres.test.ts packages/api/tests/docker-monitoring-maintenance.postgres.test.ts
 
   publish:
     name: Publish Docker image
-    needs: [verify, postgres-integration]
+    needs: [verify, postgres-integration, docker-monitoring-postgres16]
     runs-on: ubuntu-latest
     if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
     permissions:

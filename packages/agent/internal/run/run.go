@@ -13,6 +13,7 @@ import (
 	"log"
 	mathrand "math/rand"
 	"strconv"
+	"sync"
 	"time"
 
 	"github.com/vps-manager/agent/internal/config"
@@ -46,12 +47,12 @@ type DockerState interface {
 	CommitAcknowledgement(batchID, snapshotID, agentInstanceID string, committed state.Watermark) error
 }
 
-// Runner orchestrates metric collection and push in once or loop mode.
 type Runner struct {
 	cfg       *config.Config
 	collector MetricsCollector
 	pusher    MetricsPusher
 	docker    DockerState
+	runMu     sync.Mutex
 }
 
 // New creates a new Runner without Docker v2 state (v1/host-only behavior).
@@ -102,8 +103,9 @@ func opaqueID() string {
 	return base64.RawURLEncoding.EncodeToString(b[:])
 }
 
-// RunOnce collects metrics once and pushes them. Returns the error if any.
 func (r *Runner) RunOnce(ctx context.Context) error {
+	r.runMu.Lock()
+	defer r.runMu.Unlock()
 	log.Println("collecting metrics...")
 	m, err := r.collector.Collect(ctx)
 	if err != nil {
@@ -234,14 +236,11 @@ func (r *Runner) pushWithState(ctx context.Context, m *metrics.SystemMetrics) er
 		return fmt.Errorf("docker v2: collected batch invalid: %w", err)
 	}
 	if err := r.docker.PersistPending(cand); err != nil {
-		// Reject different second pending or validation failure: fail
-		// closed for v2, host continues via stripped push. Leave
-		// pending/watermark unchanged beyond what the store did.
-		log.Printf("docker v2: persist batchId=%q failed, pushing host-only", cand.BatchID)
-		stripped := stripDockerV2(m)
-		if _, pushErr := r.pusher.PushWithRetry(ctx, stripped); pushErr != nil {
-			return pushErr
-		}
+		// A durable write failure is not safe to downgrade to a host-only
+		// push: doing so would acknowledge a snapshot whose Docker payload
+		// was never durably recorded. Retry the same collection only after
+		// the state store is healthy; the existing pending state is untouched.
+		log.Printf("docker v2: persist batchId=%q failed, refusing host-only downgrade", cand.BatchID)
 		return fmt.Errorf("docker v2: persist pending: %w", err)
 	}
 	res, err := r.pusher.PushWithRetry(ctx, m)
@@ -256,7 +255,9 @@ func (r *Runner) pushWithState(ctx context.Context, m *metrics.SystemMetrics) er
 // handleAck validates the typed ack against the durable pending and the
 // configured VPS/instance, then commits. Nil/malformed/mismatched acks,
 // unexpected ingest statuses, 409-equivalents, and commit errors leave
-// pending/watermark unchanged. already_committed is accepted like committed.
+// pending/watermark unchanged. committed, already_committed, and
+// replay_ignored are accepted; the committed watermark must equal the pending
+// proposed watermark exactly or pending is preserved.
 func (r *Runner) handleAck(res *push.PushResult, pending *state.PendingBatch) error {
 	if res == nil || res.Docker == nil {
 		// V2 batch got a config-only/v1 response (old server, stripped
@@ -268,8 +269,9 @@ func (r *Runner) handleAck(res *push.PushResult, pending *state.PendingBatch) er
 	}
 	ack := res.Docker
 	switch ack.IngestStatus {
-	case "committed", "already_committed":
-		// accepted below
+	case "committed", "already_committed", "replay_ignored":
+		// All successful ingest outcomes carry the server's durable watermark.
+		// replay_ignored is a successful idempotent outcome, not a failure.
 	default:
 		log.Printf("docker v2: ingestStatus=%q not committable, pending batchId=%q preserved", ack.IngestStatus, pending.BatchID)
 		return fmt.Errorf("docker v2: ingest status %q not committable", ack.IngestStatus)
@@ -295,6 +297,13 @@ func (r *Runner) handleAck(res *push.PushResult, pending *state.PendingBatch) er
 	if err != nil {
 		log.Printf("docker v2: ack watermark invalid, pending batchId=%q preserved", pending.BatchID)
 		return fmt.Errorf("docker v2: acknowledgement watermark invalid: %w", err)
+	}
+	// Committed/proposed relationship: the server must confirm exactly the
+	// batch this runner persisted. A stale, replayed, or foreign watermark
+	// never advances local state, even if the store would reject it later.
+	if !watermarkEqual(committed, pending.ProposedWatermark) {
+		log.Printf("docker v2: committed watermark mismatch, pending batchId=%q preserved", pending.BatchID)
+		return fmt.Errorf("docker v2: committed watermark mismatch")
 	}
 	if err := r.docker.CommitAcknowledgement(ack.BatchId, ack.SnapshotId, ack.AgentInstanceId, committed); err != nil {
 		log.Printf("docker v2: commit batchId=%q failed, pending preserved", pending.BatchID)

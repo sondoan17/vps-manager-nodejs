@@ -139,6 +139,22 @@ describe("docker cadence/availability contract", () => {
     expect(units[2].hostSample.metrics.sampledContainerAggregateCpuPercent).toBeUndefined();
   });
 
+  it("publishes availability after a committed ingest only", async () => {
+    const activity = { publish: vi.fn() };
+    const repository = { ingestV2Unit: vi.fn(async (unit: DockerV2IngestUnit) => ({ vpsId: unit.vpsId, ingestStatus: "committed" as const, snapshotId: unit.snapshotId, agentInstanceId: unit.agentInstanceId, receivedAt: unit.receivedAt, revision: 1 })) };
+    const service = new DockerMonitoringService(repository as never, { get: vi.fn(async () => ({ id: "vps-1" })) } as never, undefined, activity as never);
+    await service.ingestV2("vps-1", validV2Docker({ monitoring: { effectiveCadenceSeconds: 30, availability: "unavailable", state: "disabled" } }) as unknown as AgentDockerMetricsInputV2, new Date().toISOString());
+    expect(activity.publish).toHaveBeenCalledWith({ type: "docker.alerts.updated", vpsId: "vps-1", changedAlertIds: [], refreshRequired: true });
+  });
+
+  it("does not publish when ingest fails", async () => {
+    const activity = { publish: vi.fn() };
+    const repository = { ingestV2Unit: vi.fn().mockRejectedValue(new Error("db unavailable")) };
+    const service = new DockerMonitoringService(repository as never, { get: vi.fn(async () => ({ id: "vps-1" })) } as never, undefined, activity as never);
+    await expect(service.ingestV2("vps-1", validV2Docker() as unknown as AgentDockerMetricsInputV2, new Date().toISOString())).rejects.toThrow("db unavailable");
+    expect(activity.publish).not.toHaveBeenCalled();
+  });
+
   it("maps absent monitoring to an absent unit field", async () => {
     let captured: DockerV2IngestUnit | undefined;
     const repository = {

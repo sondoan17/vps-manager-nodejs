@@ -876,6 +876,23 @@ func TestPush_DockerOmittedWhenNil(t *testing.T) {
 // I2 typed push response
 // ---------------------------------------------------------------------------
 
+func TestPush_TrailingJSONFailsClosed(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte(`{"data":{"ok":true,"config":{"dockerMetricsEnabled":true}}}{"unexpected":true}`))
+	}))
+	defer srv.Close()
+
+	client := NewClient(createTestConfig(srv.URL))
+	res, err := client.Push(context.Background(), &metrics.SystemMetrics{CPU: 10})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if res == nil || res.Docker != nil || res.Config == nil || res.Config.DockerMetricsEnabled {
+		t.Fatalf("trailing JSON must fail closed, got %+v", res)
+	}
+}
+
 func TestPush_TypedAckSuccess(t *testing.T) {
 	var received *ConfigResponse
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

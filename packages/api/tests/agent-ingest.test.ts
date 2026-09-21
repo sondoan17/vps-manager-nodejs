@@ -1238,7 +1238,6 @@ describe("Docker v2 ingest via AgentService", () => {
       pids: 2,
       containers: [
         {
-          id: "abc123def456",
           name: "/web-nginx",
           image: "nginx:1.25",
           state: "running",

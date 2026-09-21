@@ -91,7 +91,7 @@ export type AgentDockerContainerMetric = {
   pids: number;
 };
 
-export type AgentDockerContainerMetricV2 = AgentDockerContainerMetric & {
+export type AgentDockerContainerMetricV2 = Omit<AgentDockerContainerMetric, "id"> & {
   containerKey: string;
 };
 

@@ -126,6 +126,25 @@ export const dockerEventsQuerySchema = rangeRefine(
   }),
 );
 
+export const dockerRollupsQuerySchema = rangeRefine(
+  z.object({
+    vpsId: vpsIdSchema,
+    limit: z.coerce.number().int().positive().max(MAX_HISTORY_LIMIT).default(DEFAULT_HISTORY_LIMIT),
+    from: isoDate.optional(),
+    to: isoDate.optional(),
+    agentInstanceId: opaqueId(32).optional(),
+    scope: z.enum(["host", "container", "aggregate"]).optional(),
+    containerKey: opaqueId(32).optional(),
+    ...baseList,
+  }).strict().superRefine((v, ctx) => {
+    const hasInstance = v.agentInstanceId !== undefined;
+    const hasContainer = v.containerKey !== undefined;
+    if (hasContainer !== hasInstance) {
+      ctx.addIssue({ code: z.ZodIssueCode.custom, message: "agentInstanceId and containerKey must be provided together" });
+    }
+  }),
+);
+
 export const dockerAlertsQuerySchema = rangeRefine(
   z.object({
     vpsId: vpsIdSchema,
@@ -155,6 +174,7 @@ export type DockerHostHistoryQuery = z.infer<typeof dockerHostHistoryQuerySchema
 export type DockerContainerHistoryQuery = z.infer<typeof dockerContainerHistoryQuerySchema>;
 export type DockerEventsQuery = z.infer<typeof dockerEventsQuerySchema>;
 export type DockerAlertsQuery = z.infer<typeof dockerAlertsQuerySchema>;
+export type DockerRollupsQuery = z.infer<typeof dockerRollupsQuerySchema>;
 
 const opaqueCursorId = z.string().min(1).max(128).regex(/^[A-Za-z0-9._~-]+$/);
 const cursorPayloadSchema = z.object({

@@ -29,6 +29,7 @@ import type { AgentRepository } from "../persistence/repositories/agent.reposito
 import { HostKeyPinService } from "../ssh/host-key-pin.service.js";
 import { applyAgentState, type VpsRecord } from "./vps.models.js";
 import { deriveHostStatus } from "../common/host-health.js";
+import { DockerMonitoringService } from "../docker/docker-monitoring.service.js";
 
 @Injectable()
 export class VpsService {
@@ -44,6 +45,7 @@ export class VpsService {
     private readonly hostKeyPin: HostKeyPinService,
     private readonly agentUpgrader?: AgentUpgraderService,
     private readonly agentRestarter?: AgentRestartService,
+    private readonly dockerMonitoring?: DockerMonitoringService,
   ) {}
 
   async list() {
@@ -147,7 +149,10 @@ export class VpsService {
 
       // Delete first: if cleanup fails, leave the toggle enabled so the
       // persisted configuration remains consistent and the request is retryable.
-      if (!newValue) await this.agentRepository.deleteDockerMetrics(id);
+      if (!newValue) {
+        await this.agentRepository.deleteDockerMetrics(id);
+        await this.dockerMonitoring?.cleanupForVps(id, "monitoring_disabled");
+      }
 
       const updated = await this.store.update(id, {
         dockerMetricsEnabled: newValue,
@@ -190,6 +195,7 @@ export class VpsService {
       // combined update fields untouched, making the request safely retryable.
       if (oldValue && !newValue) {
         await this.agentRepository.deleteDockerMetrics(id);
+        await this.dockerMonitoring?.cleanupForVps(id, "monitoring_disabled");
       }
 
       const updated = await this.store.update(id, parsedBody);

@@ -151,6 +151,7 @@ describe("database migrations", () => {
       "013_docker_monitoring.sql",
       "014_docker_ingest.sql",
       "015_docker_metric_rollup_metric_name.sql",
+      "016_docker_alert_resolution.sql",
     ]);
     expect(migrations[0]?.sql).toContain("CREATE TABLE IF NOT EXISTS vps");
     expect(migrations[1]?.sql).toContain("metric_samples_vps_effective_idx");
@@ -229,6 +230,7 @@ describe("database migrations", () => {
       "013_docker_monitoring.sql",
       "014_docker_ingest.sql",
       "015_docker_metric_rollup_metric_name.sql",
+      "016_docker_alert_resolution.sql",
     ]);
     expect(
       selectMigrations(migrations, true).map((migration) => migration.id),
@@ -248,6 +250,7 @@ describe("database migrations", () => {
       "013_docker_monitoring.sql",
       "014_docker_ingest.sql",
       "015_docker_metric_rollup_metric_name.sql",
+      "016_docker_alert_resolution.sql",
     ]);
   });
 });

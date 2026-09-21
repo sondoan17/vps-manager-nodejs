@@ -440,6 +440,46 @@ func TestI2_ForbiddenFields(t *testing.T) {
 	}
 }
 
+func TestI2_SingleObjectOversize(t *testing.T) {
+	// A single object larger than the byte budget must surface oversize
+	// without growing framing memory, at both decode and window layers.
+	big := `{"Type":"container","Action":"die","Actor":{"ID":"actor-0001","Attributes":{"pad":"` + strings.Repeat("x", 2048) + `"}},"time":1767225600,"timeNano":1767225600000000000}`
+	got, oversize, err := decodeDockerV2EventStream(strings.NewReader(big), 100, 1024)
+	if err != nil || !oversize {
+		t.Fatalf("single oversize object must be oversize: got=%d oversize=%v err=%v", len(got), oversize, err)
+	}
+	since := "1767225590000000000"
+	until := "1767225620000000000"
+	inst := strings.Repeat("a", 32)
+	huge := `{"Type":"container","Action":"die","Actor":{"ID":"actor-0001","Attributes":{"pad":"` + strings.Repeat("x", dockerV2DecodeMaxBytes+100) + `"}},"time":1767225600,"timeNano":1767225600000000000}`
+	evs, win, prop, err := collectDockerV2EventWindow(context.Background(), strings.NewReader(huge), since, until, inst, nil, testKeyForID)
+	if err != nil {
+		t.Fatalf("oversize object must map to gap, not error: %v", err)
+	}
+	if !win.Lossy || win.GapReason != DockerV2GapResponseOversize || prop.TimeNano != until {
+		t.Fatalf("oversize object must abandon through U: %+v prop=%+v evs=%d", win, prop, len(evs))
+	}
+}
+
+func TestI2_NonObjectFramingRejected(t *testing.T) {
+	// Non-object top-level input must be a hard error, never a clean EOF
+	// that silently drops malformed data.
+	if _, oversize, err := decodeDockerV2EventStream(strings.NewReader(`[1,2,3]`), 100, 1<<20); err == nil || oversize {
+		t.Fatalf("array input must error: oversize=%v err=%v", oversize, err)
+	}
+	since := "1767225590000000000"
+	until := "1767225620000000000"
+	inst := strings.Repeat("a", 32)
+	if _, _, _, err := collectDockerV2EventWindow(context.Background(), strings.NewReader(`[1,2,3]`), since, until, inst, nil, testKeyForID); err == nil {
+		t.Fatal("array input must error in window collection, not break clean")
+	}
+	// Trailing garbage after a valid object must also error, not parse clean.
+	trailing := testEventJSON(1, 1767225600000000000) + `garbage`
+	if _, _, err := decodeDockerV2EventStream(strings.NewReader(trailing), 100, 1<<20); err == nil {
+		t.Fatal("trailing garbage must error")
+	}
+}
+
 func TestI2_BudgetAndCadence(t *testing.T) {
 	start := time.Now()
 	if !dockerV2RemainingBudget(start, 5*time.Second, 250*time.Millisecond) {

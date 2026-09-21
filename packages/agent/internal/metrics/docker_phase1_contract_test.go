@@ -386,18 +386,13 @@ func TestPhase1_V2GoldenFlatJSON(t *testing.T) {
 	if decoded.EventWindow.Since != "1767225590000000000" || decoded.FromWatermark.TimeNano != "1767225590000000000" || decoded.ProposedWatermark.TimeNano != "1767225620000000000" {
 		t.Fatalf("watermark/window binding broken: %+v", decoded)
 	}
-	banned := []string{
+	assertJSONHasNoForbiddenKeys(t, raw,
 		"env", "Env", "ENV", "labels", "Labels", "mounts", "Mounts",
 		"command", "Command", "args", "Args", "entrypoint", "Entrypoint",
 		"log", "Log", "logs", "Logs", "secret", "Secret", "config", "Config",
 		"inspect", "Inspect", "volumeName", "mountPoint", "layerId", "cacheRecord",
-		"objectName", "hunter2",
-	}
-	for _, b := range banned {
-		if strings.Contains(s, `"`+b+`"`) {
-			t.Fatalf("marshalled v2 must not contain field %q: %s", b, s)
-		}
-	}
+		"objectName")
+	assertJSONOmitsValues(t, raw, "hunter2")
 }
 
 func TestPhase1_V2AllOrNone(t *testing.T) {

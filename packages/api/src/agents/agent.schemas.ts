@@ -287,10 +287,23 @@ const dockerStorageSchema = z
   })
   .strict();
 
-const agentDockerContainerMetricV2Schema = agentDockerContainerMetricSchema
-  .extend({
-    containerKey: containerKey,
+const agentDockerContainerMetricV2Schema = z
+  .object({
+    containerKey,
+    name: z.string().max(255),
+    image: z.string().max(255),
+    status: z.string().max(255).optional(),
+    state: z.string().max(255),
+    createdAt: z.string().max(255).optional(),
     health: z.enum(["healthy", "unhealthy", "starting", "none"]).optional(),
+    cpuPercent: z.number().finite().min(0).max(100000),
+    memoryUsageBytes: z.number().int().finite().min(0).safe(),
+    memoryLimitBytes: z.number().int().finite().min(0).safe().optional(),
+    networkRxBytes: z.number().int().finite().min(0).safe(),
+    networkTxBytes: z.number().int().finite().min(0).safe(),
+    blockReadBytes: z.number().int().finite().min(0).safe(),
+    blockWriteBytes: z.number().int().finite().min(0).safe(),
+    pids: z.number().int().finite().min(0).safe(),
   })
   .strict();
 

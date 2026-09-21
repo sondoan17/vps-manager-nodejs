@@ -18,12 +18,15 @@ Every pull request runs:
 4. `npm run build`
 5. `bash scripts/tests/test-installer-docker-access.sh`
 6. `docker compose config --quiet`
-7. `npm run test:agent -- --race` (with `CGO_ENABLED=1`)
+7. When agent paths change, the Go agent is tested with the race detector (`CGO_ENABLED=1`); otherwise the agent test/build step is skipped.
 8. Docker build checks for both runtime targets:
    - API image target: `api-runtime`
    - Web image target: `web-runtime`
 9. When an API or web image is built, independent report-only Trivy scans and SBOM generation run for both applicable images; reports are uploaded even if findings occur, then a final gate fails on fixable CRITICAL findings.
-10. PostgreSQL migration integration test
+10. TimescaleDB PostgreSQL migration integration (`postgres-integration`, `timescale/timescaledb:2.17.2-pg16`)
+11. Mandatory plain PostgreSQL 16 job (`docker-monitoring-postgres16`, `postgres:16`, `pg_isready` healthcheck, and `VPS_MANAGER_TEST_POSTGRES_URL`), separate from TimescaleDB; it runs the concrete migration, repository, and maintenance suites (`docker-migration-009/013/014.postgres.test.ts`, `docker-monitoring-repository.postgres.test.ts`, and `docker-monitoring-maintenance.postgres.test.ts`). `publish` requires both database jobs.
+
+The PostgreSQL jobs run the same live-test contract against different server capabilities. Core migrations and Docker-monitoring tables must work on ordinary PostgreSQL; TimescaleDB is exercised separately for optional extension-aware deployments. Tests that require a live database are skipped when `VPS_MANAGER_TEST_POSTGRES_URL` is unset, but CI supplies it and therefore treats those cases as mandatory.
 
 The `publish` job runs only on pushes to `main` (and equivalent non-PR workflow dispatches). It always builds and publishes both API and web images using the current commit SHA, regardless of verification path filters. Pull requests never publish images or deploy.
 

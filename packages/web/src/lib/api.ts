@@ -425,6 +425,74 @@ export function deleteVps(id: string) {
   return request<null>(`${vpsPath(id)}`, { method: "DELETE" });
 }
 
+// ── Docker monitoring (bounded, read-only detail data) ──────────────
+
+export type DockerPage<T> = { data: T[]; page: { limit: number; nextCursor?: string; hasMore: boolean } };
+export type DockerHostSample = { id: string; vpsId: string; agentInstanceId: string; snapshotId: string; collectedAt: string; receivedAt: string; effectiveAt: string; metrics: Record<string, number>; coverage?: { detailsSampled: number; detailsTotalEligible: number; complete: boolean; cohortDigest?: string } };
+export type DockerMetricRollup = { id: string; vpsId: string; agentInstanceId: string; scope: "host" | "container" | "aggregate"; metricName?: string; containerKey?: string; bucketStart: string; formulaVersion: number; firstAt: string; lastAt: string; sampleCount: number; gaugeMin?: number; gaugeMax?: number; gaugeAverage?: number; counterIncrease?: number; resetCount: number; expectedSamples: number; observedSamples: number; partialSampleCount: number; gapCount: number; coverageRatio: number };
+export type DockerOperationalEvent = { id: string; vpsId: string; agentInstanceId: string; containerKey?: string; action: string; eventOccurredAt: string; receivedAt: string; eventDigest: string; contextVersion: 1; healthStatus?: string; exitCode?: number; signal?: number; oomKilled?: boolean };
+export type DockerStorageCategory = { supported: boolean; count: number; totalBytes: number; reclaimableBytes?: number; reclaimableSupported?: boolean; estimatedReclaimableBytes?: number };
+export type DockerStorageLatest = { vpsId: string; agentInstanceId: string; snapshotId: string; collectedAt: string; receivedAt: string; images: DockerStorageCategory; containers: DockerStorageCategory; localVolumes: DockerStorageCategory; buildCache: DockerStorageCategory; formulaVersion: 1 };
+export type DockerAlert = { id: string; vpsId: string; agentInstanceId?: string; ruleKind: string; containerKey?: string; state: "open" | "acknowledged" | "resolved"; openedAt: string; lastObservedAt?: string; resolvedAt?: string; acknowledgedAt?: string; occurrences: number; summary: string; resolutionReason?: string; contextVersion: 1 };
+export type DockerHistoryQuery = { limit?: number; from?: string; to?: string; cursor?: string };
+export type DockerContainerHistoryQuery = DockerHistoryQuery & { agentInstanceId: string; containerKey: string };
+export type DockerEventsQuery = DockerHistoryQuery & { action?: string; agentInstanceId?: string; containerKey?: string };
+export type DockerAlertsQuery = DockerHistoryQuery & { state?: DockerAlert["state"]; ruleKind?: string; agentInstanceId?: string; containerKey?: string };
+
+async function requestEnvelope<T>(path: string, options: RequestInit = {}): Promise<T> {
+  const headers = new Headers(options.headers);
+  if (options.body && !headers.has("Content-Type")) {
+    headers.set("Content-Type", "application/json");
+  }
+
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
+
+  let response: Response;
+  try {
+    response = await fetch(path, {
+      ...options,
+      credentials: options.credentials || "same-origin",
+      headers,
+      signal: options.signal || controller.signal,
+    });
+  } catch (error) {
+    if (error instanceof DOMException && error.name === "AbortError") {
+      throw new Error(
+        "Request timed out. Check backend connectivity and retry.",
+      );
+    }
+    throw error;
+  } finally {
+    clearTimeout(timeout);
+  }
+
+  if (response.status === 204) return { data: [], page: { limit: 0, hasMore: false } } as T;
+  const payload = (await response.json().catch(() => ({}))) as T & ApiResponse<unknown>;
+  if (!response.ok) {
+    const err = (payload as ApiResponse<unknown>).error;
+    throw new ApiError(err?.message || "Request failed", err);
+  }
+  return payload;
+}
+
+function dockerQueryString(params: Record<string, string | number | undefined>) {
+  const query = new URLSearchParams();
+  for (const [key, value] of Object.entries(params)) if (value !== undefined) query.set(key, String(value));
+  const encoded = query.toString();
+  return encoded ? `?${encoded}` : "";
+}
+export function listVpsDockerHistory(id: string, params: DockerHistoryQuery = {}) { return requestEnvelope<DockerPage<DockerHostSample>>(`${vpsPath(id)}/docker/history${dockerQueryString(params)}`); }
+export function listVpsDockerContainerHistory(id: string, params: DockerContainerHistoryQuery) {
+  const { agentInstanceId, containerKey, ...query } = params;
+  return requestEnvelope<DockerPage<DockerHostSample>>(`${vpsPath(id)}/docker/instances/${encodeURIComponent(agentInstanceId)}/containers/${encodeURIComponent(containerKey)}/history${dockerQueryString(query)}`);
+}
+export function listVpsDockerRollups(id: string, params: DockerHistoryQuery = {}) { return requestEnvelope<DockerPage<DockerMetricRollup>>(`${vpsPath(id)}/docker/rollups${dockerQueryString(params)}`); }
+export function listVpsDockerEvents(id: string, params: DockerEventsQuery = {}) { return requestEnvelope<DockerPage<DockerOperationalEvent>>(`${vpsPath(id)}/docker/events${dockerQueryString(params)}`); }
+export function getVpsDockerStorage(id: string) { return request<DockerStorageLatest | null>(`${vpsPath(id)}/docker/storage`); }
+export function listVpsDockerAlerts(id: string, params: DockerAlertsQuery = {}) { return requestEnvelope<DockerPage<DockerAlert>>(`${vpsPath(id)}/docker/alerts${dockerQueryString(params)}`); }
+export function acknowledgeVpsDockerAlert(id: string, alertId: string) { return requestEnvelope<{ data: DockerAlert }>(`${vpsPath(id)}/docker/alerts/${encodeURIComponent(alertId)}/acknowledge`, { method: "POST" }); }
+
 // ── Scoped VPS endpoints (Phase 4) ──────────────────────────────────
 
 export function listVpsJobs(

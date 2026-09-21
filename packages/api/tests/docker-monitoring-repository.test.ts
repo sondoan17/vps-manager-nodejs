@@ -74,8 +74,15 @@ function alert(id: string, vpsId: string, openedAt: string, extra: Partial<Docke
   };
 }
 
-export function conformanceSuite(makeRepo: () => DockerMonitoringRepository | Promise<DockerMonitoringRepository>) {
+export type DockerMonitoringConformanceSeed = Parameters<typeof seedDockerMonitoringForTests>[1];
+
+export function conformanceSuite(
+  makeRepo: () => DockerMonitoringRepository | Promise<DockerMonitoringRepository>,
+  seedRepo: (repo: DockerMonitoringRepository, seed: DockerMonitoringConformanceSeed) => Promise<void>,
+) {
   return () => {
+    const seedFor = (repo: DockerMonitoringRepository, seed: DockerMonitoringConformanceSeed) => seedRepo(repo, seed);
+
     it("empty file yields empty reads, no cursors, storage/watermark/batch undefined", async () => {
       const repo = await makeRepo();
       expect((await repo.listHostSamples({ vpsId: "vps-a" })).data).toEqual([]);
@@ -181,13 +188,6 @@ export function conformanceSuite(makeRepo: () => DockerMonitoringRepository | Pr
   };
 }
 
-// JSON-only seed bridge: conformance seeds via file helper; postgres will
-// implement its own bridge reusing `conformanceSuite`.
-async function seedFor(repo: DockerMonitoringRepository, seed: Parameters<typeof seedDockerMonitoringForTests>[1]): Promise<void> {
-  const file = (repo as unknown as { __testFile?: string }).__testFile;
-  if (!file) throw new Error("repo missing __testFile bridge");
-  await seedDockerMonitoringForTests(file, seed);
-}
 
 describe("docker monitoring repository (JSON, I1)", () => {
   let dir = "";
@@ -207,9 +207,45 @@ describe("docker monitoring repository (JSON, I1)", () => {
     return repo;
   }
 
-  describe("shared conformance (JSON backend)", conformanceSuite(jsonRepo));
+  describe("shared conformance (JSON backend)", conformanceSuite(jsonRepo, async (repo, seed) => {
+    const file = (repo as unknown as { __testFile?: string }).__testFile;
+    if (!file) throw new Error("repo missing __testFile bridge");
+    await seedDockerMonitoringForTests(file, seed);
+  }));
 
   describe("JSON backend specifics", () => {
+    it("resolves only active alerts for one VPS, persists metadata, and is idempotent", async () => {
+      const repo = jsonRepo();
+      const resolvedAt = "2026-09-20T12:34:56.000Z";
+      await seedDockerMonitoringForTests((repo as unknown as { __testFile: string }).__testFile, {
+        alerts: [
+          alert("open", "vps-a", "2026-09-20T00:00:00.000Z"),
+          alert("ack", "vps-a", "2026-09-20T00:01:00.000Z", { state: "acknowledged" }),
+          alert("resolved", "vps-a", "2026-09-20T00:02:00.000Z", {
+            state: "resolved",
+            resolvedAt: "2026-09-19T00:00:00.000Z",
+            resolutionReason: "vps_deleted",
+          }),
+          alert("other-vps", "vps-b", "2026-09-20T00:03:00.000Z"),
+        ],
+      });
+
+      // Objective: active alerts transition with reason/timestamp, while resolved and other-VPS alerts do not.
+      const firstCount = await repo.resolveActiveAlertsForVps("vps-a", "monitoring_disabled", resolvedAt);
+      const first = (await repo.listAlerts({ vpsId: "vps-a" })).data;
+      const other = (await repo.listAlerts({ vpsId: "vps-b" })).data;
+
+      expect(firstCount).toBe(2);
+      expect(first.find((a) => a.id === "open")).toMatchObject({ state: "resolved", resolvedAt, resolutionReason: "monitoring_disabled" });
+      expect(first.find((a) => a.id === "ack")).toMatchObject({ state: "resolved", resolvedAt, resolutionReason: "monitoring_disabled" });
+      expect(first.find((a) => a.id === "resolved")).toMatchObject({ state: "resolved", resolvedAt: "2026-09-19T00:00:00.000Z", resolutionReason: "vps_deleted" });
+      expect(other.find((a) => a.id === "other-vps")?.state).toBe("open");
+
+      // Repeating the operation must not rewrite resolved alerts or report them again.
+      expect(await repo.resolveActiveAlertsForVps("vps-a", "vps_deleted", "2026-09-21T00:00:00.000Z")).toBe(0);
+      expect((await repo.listAlerts({ vpsId: "vps-a" })).data.find((a) => a.id === "open")).toMatchObject({ resolvedAt, resolutionReason: "monitoring_disabled" });
+    });
+
     it("missing file behaves as empty store", async () => {
       const repo = jsonRepo();
       const page = await repo.listHostSamples({ vpsId: "nope" });

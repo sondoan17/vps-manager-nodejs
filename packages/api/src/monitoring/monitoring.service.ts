@@ -1,4 +1,4 @@
-import { Inject, Injectable, Logger } from "@nestjs/common";
+import { Inject, Injectable, Logger, Optional } from "@nestjs/common";
 import type { Response } from "express";
 import { nanoid } from "nanoid";
 import type { AppConfig } from "../config/app-config.js";
@@ -21,6 +21,7 @@ import {
   type JobActivityListener,
 } from "../jobs/job-activity.service.js";
 import { APP_CONFIG, METRIC_REPOSITORY } from "../tokens.js";
+import { DockerActivityService, DockerInvalidationCoalescer } from "../docker/docker-activity.service.js";
 import {
   HOST_FRESHNESS_THRESHOLD_MS,
   isFreshTimestamp as isFreshTimestampShared,
@@ -171,15 +172,45 @@ function stateToMetricSample(
 
 // ── SSE helper ────────────────────────────────────────────────────────
 
+const SSE_FRAME_MAX_BYTES = 32 * 1024;
+const SSE_REPLAY_MAX_EVENTS = 100;
+let nextSseEventId = 1;
+const replayBuffer: Array<{ id: number; frame: string }> = [];
+
 function sendEvent(res: Response, type: string, data: unknown): void {
+  const eventId = nextSseEventId++;
   const envelope: MonitoringEnvelope<string, unknown> = {
     schemaVersion: 1,
     type,
-    id: nanoid(12),
+    id: String(eventId),
     emittedAt: new Date().toISOString(),
     payload: data,
   };
-  res.write(`event: ${type}\ndata: ${JSON.stringify(envelope)}\n\n`);
+  const frame = (payload: unknown) => {
+    const value = JSON.stringify({ ...envelope, payload });
+    return `id: ${envelope.id}\nevent: ${type}\ndata: ${value}\n\n`;
+  };
+  let output = frame(data);
+  if (Buffer.byteLength(output, "utf8") > SSE_FRAME_MAX_BYTES) {
+    output = frame({ refreshRequired: true });
+  }
+  // Keep the write boundary itself bounded; callers treat a failed write as teardown.
+  if (Buffer.byteLength(output, "utf8") > SSE_FRAME_MAX_BYTES) {
+    throw new Error("SSE frame exceeds bounded write size");
+  }
+  replayBuffer.push({ id: eventId, frame: output });
+  if (replayBuffer.length > SSE_REPLAY_MAX_EVENTS) replayBuffer.shift();
+  res.write(output);
+}
+
+function replaySince(res: Response, cursor: string | undefined): boolean {
+  if (!cursor) return false;
+  if (!/^\d+$/.test(cursor)) return false;
+  const id = Number(cursor);
+  const oldest = replayBuffer[0]?.id;
+  if (!oldest || id < oldest - 1 || id >= nextSseEventId) return false;
+  for (const event of replayBuffer) if (event.id > id) res.write(event.frame);
+  return true;
 }
 
 // ── Freshness helpers ─────────────────────────────────────────────────
@@ -213,6 +244,49 @@ export function isFreshTimestamp(
 const JOB_EVENT_DEBOUNCE_MS = 150;
 
 type JobStreamTracker = { flush: () => void; teardown: () => void };
+
+type DockerStreamTracker = { teardown: () => void };
+
+function createDockerStreamTracker(
+  res: Response,
+  activity: DockerActivityService,
+  scope?: { vpsId: string },
+): DockerStreamTracker {
+  const coalescer = new DockerInvalidationCoalescer(scope);
+  let timer: NodeJS.Timeout | null = null;
+  let closed = false;
+  const flush = () => {
+    timer = null;
+    if (closed) return;
+    const payload = coalescer.flush();
+    if (!payload) return;
+    try {
+      if (scope) {
+        for (const event of payload.events) sendEvent(res, "docker.events.available", event);
+        for (const alert of payload.alerts) sendEvent(res, "docker.alerts.updated", alert);
+        if (payload.refreshRequired && !payload.events.length && !payload.alerts.length) {
+          sendEvent(res, "docker.alerts.updated", { vpsId: scope.vpsId, changedAlertIds: [], refreshRequired: true });
+        }
+      } else {
+        // Global streams receive invalidation-only data; clients refresh scoped state.
+        sendEvent(res, "docker.invalidation", {
+          vpsIds: payload.vpsIds,
+          refreshRequired: payload.refreshRequired,
+        });
+      }
+    } catch { teardown(); }
+  };
+  const schedule = () => { if (!timer) timer = setTimeout(flush, 25); };
+  const unsubscribe = activity.subscribe((event) => { if (!closed) { coalescer.add(event); schedule(); } });
+  const teardown = () => {
+    if (closed) return;
+    closed = true;
+    if (timer) clearTimeout(timer);
+    coalescer.teardown();
+    unsubscribe();
+  };
+  return { teardown };
+}
 
 function createJobStreamTracker(
   res: Response,
@@ -281,6 +355,7 @@ export class MonitoringService {
     private readonly metricRepository: MetricRepository,
     @Inject(JobService) private readonly jobs: JobService,
     @Inject(JobActivityService) private readonly jobActivity: JobActivityService,
+    @Optional() @Inject(DockerActivityService) private readonly dockerActivity?: DockerActivityService,
   ) {
     this.intervalMs = this.config.mode === "demo" ? 1_500 : 5_000;
   }
@@ -288,7 +363,7 @@ export class MonitoringService {
   /**
    * Stream SSE events to the given response. Blocks until the client disconnects.
    */
-  async stream(res: Response): Promise<void> {
+  async stream(res: Response, lastEventId?: string): Promise<void> {
     // SSE headers
     res.writeHead(200, {
       "Content-Type": "text/event-stream",
@@ -299,15 +374,21 @@ export class MonitoringService {
     // Flush headers
     res.flushHeaders();
 
+    // Replay retained events when the cursor is valid and retained; otherwise the
+    // normal hello/snapshot path below provides an authoritative fallback.
+    const replayed = replaySince(res, lastEventId);
+
     // Subscribe to job activity so `jobs.updated` events stream live progress.
     const jobTracker = createJobStreamTracker(res, this.jobActivity);
-    res.once("close", () => jobTracker.teardown());
-    res.once("finish", () => jobTracker.teardown());
-    res.once("error", () => jobTracker.teardown());
+    const dockerTracker = this.dockerActivity ? createDockerStreamTracker(res, this.dockerActivity) : null;
+    res.once("close", () => { jobTracker.teardown(); dockerTracker?.teardown(); });
+    res.once("finish", () => { jobTracker.teardown(); dockerTracker?.teardown(); });
+    res.once("error", () => { jobTracker.teardown(); dockerTracker?.teardown(); });
 
     try {
-      // Hello + initial snapshot must either complete together or close cleanly.
-      sendEvent(res, "monitoring.hello", {
+      // Replay retained events; otherwise send an authoritative hello and snapshot.
+      if (!replayed) {
+        sendEvent(res, "monitoring.hello", {
         mode: this.config.mode,
         intervalMs: this.intervalMs,
       });
@@ -321,8 +402,10 @@ export class MonitoringService {
         dockerMetrics: overview.dockerMetrics,
       };
       sendEvent(res, "monitoring.snapshot", snapshotPayload);
+      }
     } catch {
       jobTracker.teardown();
+      dockerTracker?.teardown();
       if (!res.writableEnded) res.end();
       return;
     }
@@ -407,11 +490,13 @@ export class MonitoringService {
     // when ordinary host metrics are empty.
     let lastDockerJson: string | undefined;
     let isFirstTick = true;
+    let inFlight = false;
     const interval = setInterval(async () => {
-      if (res.destroyed) {
-        clearInterval(interval);
+      if (res.destroyed || inFlight) {
+        if (res.destroyed) clearInterval(interval);
         return;
       }
+      inFlight = true;
 
       try {
         // Re-fetch current metrics from the repository
@@ -443,6 +528,8 @@ export class MonitoringService {
         sendEvent(res, "monitoring.heartbeat", {});
       } catch {
         clearInterval(interval);
+      } finally {
+        inFlight = false;
       }
     }, this.intervalMs);
 
@@ -467,7 +554,14 @@ export class MonitoringService {
    * Stream SSE events scoped to a single VPS.
    * The caller (controller) must validate VPS existence before calling this.
    */
-  async streamForVps(res: Response, vpsId: string): Promise<void> {
+  async streamForVps(res: Response, vpsId: string, lastEventId?: string): Promise<void> {
+    // Resolve and validate scope before committing an SSE response.
+    const overview = await this.dashboardService.overview();
+    const vps = overview.servers.find((s) => s.id === vpsId);
+    if (!vps) {
+      if (!res.headersSent) res.status(404).json({ error: { message: "VPS not found" } });
+      return;
+    }
     // SSE headers
     res.writeHead(200, {
       "Content-Type": "text/event-stream",
@@ -480,9 +574,10 @@ export class MonitoringService {
     const jobTracker = createJobStreamTracker(res, this.jobActivity, {
       vpsId,
     });
-    res.once("close", () => jobTracker.teardown());
-    res.once("finish", () => jobTracker.teardown());
-    res.once("error", () => jobTracker.teardown());
+    const dockerTracker = this.dockerActivity ? createDockerStreamTracker(res, this.dockerActivity, { vpsId }) : null;
+    res.once("close", () => { jobTracker.teardown(); dockerTracker?.teardown(); });
+    res.once("finish", () => { jobTracker.teardown(); dockerTracker?.teardown(); });
+    res.once("error", () => { jobTracker.teardown(); dockerTracker?.teardown(); });
 
     try {
       // Hello + initial scoped snapshot must complete before loops are added.
@@ -491,16 +586,7 @@ export class MonitoringService {
         intervalMs: this.intervalMs,
       });
 
-      // Build and send filtered snapshot
-      const overview = await this.dashboardService.overview();
-      const vps = overview.servers.find((s) => s.id === vpsId);
-      if (!vps) {
-        sendEvent(res, "monitoring.error", { message: "VPS not found" });
-        jobTracker.teardown();
-        res.end();
-        return;
-      }
-
+      // Build and send filtered snapshot from the prevalidated overview.
       const filteredMetrics = overview.metrics.filter((m) => m.vpsId === vpsId);
       const filteredJobs = overview.jobs.filter((j) => j.vpsId === vpsId);
       const vpsJobIds = new Set(filteredJobs.map((j) => j.id));
@@ -546,6 +632,7 @@ export class MonitoringService {
       sendEvent(res, "monitoring.snapshot", snapshotPayload);
     } catch {
       jobTracker.teardown();
+      dockerTracker?.teardown();
       if (!res.writableEnded) res.end();
       return;
     }
@@ -625,11 +712,13 @@ export class MonitoringService {
     // loop, but filtering stays strictly scoped so another VPS never leaks.
     let lastDockerJson: string | undefined;
     let isFirstTick = true;
+    let inFlight = false;
     const interval = setInterval(async () => {
-      if (res.destroyed) {
-        clearInterval(interval);
+      if (res.destroyed || inFlight) {
+        if (res.destroyed) clearInterval(interval);
         return;
       }
+      inFlight = true;
 
       try {
         const metrics = await this.metricService.list(vpsId);
@@ -665,6 +754,8 @@ export class MonitoringService {
         sendEvent(res, "monitoring.heartbeat", {});
       } catch {
         clearInterval(interval);
+      } finally {
+        inFlight = false;
       }
     }, this.intervalMs);
 

@@ -38,7 +38,7 @@ volumes:
   postgres_data:
 ```
 
-Plain PostgreSQL also works. TimescaleDB is optional.
+Plain PostgreSQL also works. TimescaleDB is optional: core migrations, Docker-monitoring persistence, retention, and repository queries use ordinary PostgreSQL semantics. The CI workflow verifies these live paths against both `timescale/timescaledb:2.17.2-pg16` and `postgres:16`; only the Timescale-backed job exercises the optional extension path.
 
 The root `docker-compose.yml` runs the API in Postgres mode. Set `POSTGRES_PASSWORD` in `.env` or your shell before starting it.
 

@@ -4,6 +4,18 @@ export class VpsNotFoundError extends Error {
   }
 }
 
+export class DockerAlertNotFoundError extends Error {
+  constructor() {
+    super("Docker alert not found");
+  }
+}
+
+export class DockerAlertAcknowledgementForbiddenError extends Error {
+  constructor() {
+    super("Docker alert cannot be acknowledged");
+  }
+}
+
 export class DemoSshDisabledError extends Error {
   constructor() {
     super("Real SSH is disabled in demo mode");

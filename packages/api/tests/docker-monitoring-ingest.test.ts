@@ -1,4 +1,4 @@
-import { mkdtemp, rm } from "node:fs/promises";
+import { mkdtemp, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
@@ -41,6 +41,16 @@ describe("Docker JSON I3 ingest", () => {
     expect((await repo.getStorageLatest("v"))?.snapshotId).toBe("st");
     await expect(repo.ingestV2Unit(unit("2"))).resolves.toMatchObject({ ingestStatus: "replay_ignored" });
   });
+
+  it("commits monitoring alert state with the same JSON ingest mutation", async () => {
+    for (let n = 1; n <= 3; n++) {
+      await repo.ingestV2Unit(unit(String(n), { monitoring: { availability: "unavailable", state: "enabled", effectiveCadenceSeconds: 60 } }));
+    }
+    const alerts = (await repo.listAlerts({ vpsId: "v" })).data;
+    expect(alerts).toHaveLength(1);
+    expect(alerts[0]?.state).toBe("open");
+    expect((await repo.getWatermark("v", "i"))).toBeUndefined();
+  });
   it("handles instance transitions and old-instance retries", async () => {
     await repo.ingestV2Unit(unit("10"));
     await expect(repo.ingestV2Unit(unit("9", { agentInstanceId: "old" }))).rejects.toMatchObject({ code: "active_instance_conflict" });
@@ -55,5 +65,30 @@ describe("Docker JSON I3 ingest", () => {
     await restarted.cleanupForVps({ vpsId: "v", reason: "vps_deleted" });
     expect((await restarted.listHostSamples({ vpsId: "v" })).data).toEqual([]);
     expect(await restarted.getIngestBatch("v", "i", "b20")).toBeUndefined();
+  });
+
+  it("persists history below the JSON cap and returns the typed success status", async () => {
+    // Objective: a payload below the cap must persist samples/events and advance its watermark.
+    const a = batch("1");
+    const result = await repo.ingestV2Unit(a);
+
+    // Arrange / Act / Assert
+    expect(result).toMatchObject({ ingestStatus: "committed", status: "committed" });
+    expect((await repo.listHostSamples({ vpsId: "v" })).data).toHaveLength(1);
+    expect((await repo.listEvents({ vpsId: "v" })).data.map((x) => x.id)).toEqual(["e1"]);
+    expect((await repo.getWatermark("v", "i"))?.timeNano).toBe("1");
+  });
+
+  it("refuses over-cap history atomically and retries after maintenance", async () => {
+    const capped = createJsonDockerMonitoringRepository(join(dir, "capped.json"), { maxBytes: 3000 });
+    await capped.ingestV2Unit(batch("1"));
+    const oversized = batch("2", { events: [event("e2", "2", "x".repeat(5000))] });
+    const result = await capped.ingestV2Unit(oversized);
+
+    expect(result).toMatchObject({ ingestStatus: "rejected", status: "history_capacity_refused" });
+    expect((await capped.listHostSamples({ vpsId: "v" })).data.map((x) => x.id)).toEqual(["h1"]);
+    expect((await capped.listEvents({ vpsId: "v" })).data.map((x) => x.id)).toEqual(["e1"]);
+    expect((await capped.getWatermark("v", "i"))?.timeNano).toBe("1");
+    expect((await capped.getStorageLatest("v"))).toBeUndefined();
   });
 });
