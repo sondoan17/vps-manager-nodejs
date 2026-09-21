@@ -362,7 +362,10 @@ describe("docker monitoring postgres maintenance (PostgreSQL)", () => {
     });
     expect(await repo!.pruneSamplesEventsAndStorage(options)).toEqual({
       samplesRemoved: 0,
+      rollupsRemoved: 0,
       eventsRemoved: 0,
+      alertsRemoved: 0,
+      storageMode: "postgres",
     });
 
     await expect(
