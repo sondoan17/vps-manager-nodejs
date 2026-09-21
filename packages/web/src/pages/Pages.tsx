@@ -57,6 +57,7 @@ export function VpsListPage() {
       onUninstallAgent={ctx.onUninstallAgent}
       onUpgradeAgent={ctx.onUpgradeAgent}
       onRestartAgent={ctx.onRestartAgent}
+      onRotateAgent={ctx.onRotateAgent}
       onToggleDockerMetrics={ctx.onToggleDockerMetrics}
       onEdit={ctx.onEdit}
       onDelete={ctx.onDelete}

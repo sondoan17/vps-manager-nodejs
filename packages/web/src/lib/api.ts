@@ -421,6 +421,13 @@ export function restartAgent(id: string) {
   }>(`${vpsPath(id)}/restart-agent`, { method: "POST" });
 }
 
+export function rotateAgent(id: string) {
+  return request<{
+    jobId: string;
+    state: { status: string; lastInstallJobId?: string };
+  }>(`${vpsPath(id)}/rotate-agent`, { method: "POST" });
+}
+
 export function deleteVps(id: string) {
   return request<null>(`${vpsPath(id)}`, { method: "DELETE" });
 }

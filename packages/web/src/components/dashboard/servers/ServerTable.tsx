@@ -38,6 +38,7 @@ export function ServerTable({
   onUninstallAgent,
   onUpgradeAgent,
   onRestartAgent,
+  onRotateAgent,
   jobs,
   onDelete,
   mode,
@@ -52,6 +53,7 @@ export function ServerTable({
   onUninstallAgent: (vps: VpsRecord) => void;
   onUpgradeAgent: (vps: VpsRecord) => void;
   onRestartAgent: (vps: VpsRecord) => void;
+  onRotateAgent: (vps: VpsRecord) => void;
   jobs: DashboardJob[];
   onDelete: (vps: VpsRecord) => void;
   mode: "demo" | "local";
@@ -61,6 +63,7 @@ export function ServerTable({
   const [uninstallTarget, setUninstallTarget] = useState<VpsRecord | null>(null);
   const [upgradeTarget, setUpgradeTarget] = useState<VpsRecord | null>(null);
   const [restartTarget, setRestartTarget] = useState<VpsRecord | null>(null);
+  const [rotateAgentTarget, setRotateAgentTarget] = useState<VpsRecord | null>(null);
   const [now, setNow] = useState(() => Date.now());
   useEffect(() => {
     const timer = window.setInterval(() => setNow(Date.now()), 30_000);
@@ -102,6 +105,7 @@ export function ServerTable({
               const canUninstall = vps.agentStatus === "online" || vps.agentStatus === "offline" || vps.agentStatus === "failed";
               const canUpgrade = mode !== "demo" && !isLocal && !agentActionRunning && canUninstall;
               const canRestart = mode !== "demo" && !isLocal && Boolean(vps.keyProvisionedAt) && !agentActionRunning && (vps.agentStatus === "offline" || vps.agentStatus === "failed");
+              const canRotateAgent = mode !== "demo" && isLocal && !agentActionRunning;
               const accessProblem = !isLocal && (!vps.keyProvisionedAt || vps.status === "unreachable");
               return (
                 <tr
@@ -176,6 +180,7 @@ export function ServerTable({
                           {!accessProblem ? <DropdownMenuItem disabled={busy || isLocal} onClick={() => onVerify(vps)}><ShieldCheck size={14} /> Verify access</DropdownMenuItem> : null}
                           <DropdownMenuItem disabled={busy || !canUpgrade} onClick={() => window.setTimeout(() => setUpgradeTarget(vps), 0)}><RotateCw size={14} /> Upgrade agent</DropdownMenuItem>
                           {canRestart ? <DropdownMenuItem disabled={busy} onClick={() => window.setTimeout(() => setRestartTarget(vps), 0)}><RotateCw size={14} /> Restart agent</DropdownMenuItem> : null}
+                          {isLocal ? <DropdownMenuItem disabled={busy || !canRotateAgent} onClick={() => window.setTimeout(() => setRotateAgentTarget(vps), 0)}><KeyRound size={14} /> Rotate agent credential</DropdownMenuItem> : null}
                           <DropdownMenuItem disabled={busy || isLocal || !provisionPasswords[vps.id]?.trim()} onClick={() => onProvision(vps)}><KeyRound size={14} /> Reinstall SSH key</DropdownMenuItem>
                           <DropdownMenuItem
                             disabled={busy || isLocal || mode === "demo"}
@@ -211,6 +216,9 @@ export function ServerTable({
       </AlertDialog>
       <AlertDialog open={restartTarget !== null} onOpenChange={(open) => { if (!open) setRestartTarget(null); }}>
         <AlertDialogContent><AlertDialogHeader><AlertDialogTitle>Restart agent on {restartTarget ? vpsDisplayName(restartTarget) : "server"}?</AlertDialogTitle><AlertDialogDescription>This restarts the monitoring agent only. It does not reboot the VPS.</AlertDialogDescription></AlertDialogHeader><AlertDialogFooter><AlertDialogCancel>Cancel</AlertDialogCancel><AlertDialogAction disabled={busy} onClick={() => { if (restartTarget && !busy) onRestartAgent(restartTarget); setRestartTarget(null); }}>Restart agent</AlertDialogAction></AlertDialogFooter></AlertDialogContent>
+      </AlertDialog>
+      <AlertDialog open={rotateAgentTarget !== null} onOpenChange={(open) => { if (!open) setRotateAgentTarget(null); }}>
+        <AlertDialogContent><AlertDialogHeader><AlertDialogTitle>Rotate agent credential on {rotateAgentTarget ? vpsDisplayName(rotateAgentTarget) : "server"}?</AlertDialogTitle><AlertDialogDescription>The agent credential is replaced without exposing the token. The agent reconnects automatically.</AlertDialogDescription></AlertDialogHeader><AlertDialogFooter><AlertDialogCancel>Cancel</AlertDialogCancel><AlertDialogAction disabled={busy} onClick={() => { if (rotateAgentTarget && !busy) onRotateAgent(rotateAgentTarget); setRotateAgentTarget(null); }}>Rotate credential</AlertDialogAction></AlertDialogFooter></AlertDialogContent>
       </AlertDialog>
       <AlertDialog
         open={deleteTarget !== null}

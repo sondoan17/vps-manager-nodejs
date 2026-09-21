@@ -124,6 +124,7 @@ export function ServersPanel(props: ServersPanelProps) {
               onUninstallAgent={props.onUninstallAgent}
               onUpgradeAgent={props.onUpgradeAgent}
               onRestartAgent={props.onRestartAgent}
+              onRotateAgent={props.onRotateAgent}
               jobs={props.jobs}
               onDelete={props.onDelete}
               mode={props.mode}
@@ -148,6 +149,7 @@ export function ServersPanel(props: ServersPanelProps) {
                   onUninstallAgent={props.onUninstallAgent}
                   onUpgradeAgent={props.onUpgradeAgent}
                   onRestartAgent={props.onRestartAgent}
+                  onRotateAgent={props.onRotateAgent}
                   onToggleDockerMetrics={props.onToggleDockerMetrics}
                   onDelete={props.onDelete}
                   mode={props.mode}

@@ -32,6 +32,7 @@ import {
   logoutDashboard,
   provisionKey,
   restartAgent,
+  rotateAgent,
   trustSshHostKey,
   uninstallAgent,
   upgradeAgent,
@@ -102,6 +103,7 @@ export type DashboardCtx = {
   onUninstallAgent: (vps: VpsRecord) => void;
   onUpgradeAgent: (vps: VpsRecord) => void;
   onRestartAgent: (vps: VpsRecord) => void;
+  onRotateAgent: (vps: VpsRecord) => void;
   onToggleDockerMetrics: (vps: VpsRecord) => void;
   onEdit: (vps: VpsRecord, payload: UpdateVpsPayload) => Promise<void>;
   onDelete: (vps: VpsRecord) => void;
@@ -163,7 +165,8 @@ function applyAgentJobState(
         (candidate.type === "install-agent" ||
           candidate.type === "uninstall-agent" ||
           candidate.type === "upgrade-agent" ||
-          candidate.type === "restart-agent"),
+          candidate.type === "restart-agent" ||
+          candidate.type === "rotate-agent"),
     );
     const job = lifecycleJobs.sort((a, b) => {
       const aTime = Date.parse(a.finishedAt || a.startedAt || "") || 0;
@@ -173,17 +176,18 @@ function applyAgentJobState(
     if (!job) return vps;
     const isUninstall = job.type === "uninstall-agent";
     const isRestart = job.type === "restart-agent";
+    const isRotate = job.type === "rotate-agent";
     if (job.status === "queued" || job.status === "running") {
       return {
         ...vps,
-        agentStatus: isRestart ? vps.agentStatus : ("installing" as const),
+        agentStatus: isRestart || isRotate ? vps.agentStatus : ("installing" as const),
         lastAgentInstallJobId: job.id,
       };
     }
     if (job.status === "succeeded") {
       return {
         ...vps,
-        agentStatus: (isRestart
+        agentStatus: (isRestart || isRotate
           ? vps.agentStatus
           : isUninstall
             ? "not_installed"
@@ -784,6 +788,37 @@ export function DashboardProvider({
     });
   }
 
+  async function handleRotateAgent(vps: VpsRecord) {
+    const label = vpsDisplayName(vps);
+    await runAction(`Starting agent credential rotation for ${label}...`, async () => {
+      const result = await rotateAgent(vps.id);
+      setOverview((current) => ({
+        ...current,
+        jobs: mergeJobs(current.jobs, [
+          {
+            id: result.jobId,
+            vpsId: vps.id,
+            type: "rotate-agent",
+            status: "queued",
+            step: "queued",
+            progress: 0,
+          },
+        ]),
+      }));
+      setRecords((current) =>
+        current.map((record) =>
+          record.id === vps.id
+            ? { ...record, lastAgentInstallJobId: result.jobId }
+            : record,
+        ),
+      );
+      setStatus({
+        message: `Agent credential rotation queued for ${label}. Job ${result.jobId} is running in the background.`,
+        kind: "success",
+      });
+    });
+  }
+
   async function handleToggleDockerMetrics(vps: VpsRecord) {
     const nextEnabled = !vps.dockerMetricsEnabled;
     const label = vpsDisplayName(vps);
@@ -898,6 +933,7 @@ export function DashboardProvider({
     onUninstallAgent: handleUninstallAgent,
     onUpgradeAgent: handleUpgradeAgent,
     onRestartAgent: handleRestartAgent,
+    onRotateAgent: handleRotateAgent,
     onToggleDockerMetrics: handleToggleDockerMetrics,
     onEdit: handleEdit,
     onDelete: handleDelete,

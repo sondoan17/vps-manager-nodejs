@@ -28,6 +28,7 @@ import { MetricService } from "../metrics/metric.service.js";
 import { MonitoringService } from "../monitoring/monitoring.service.js";
 import { HostKeyPinService } from "../ssh/host-key-pin.service.js";
 import { VpsService } from "./vps.service.js";
+import { AgentRotationService } from "../agents/agent-rotation.service.js";
 
 @Controller("api/vps")
 @UseGuards(DashboardSessionGuard, OriginGuard)
@@ -39,6 +40,8 @@ export class VpsController {
     @Inject(AuditService) private readonly audit: AuditService,
     @Inject(MonitoringService) private readonly monitoring: MonitoringService,
     @Inject(HostKeyPinService) private readonly hostKeyPin: HostKeyPinService,
+    @Inject(AgentRotationService)
+    private readonly rotation: AgentRotationService,
   ) {}
 
   @Get()
@@ -127,6 +130,22 @@ export class VpsController {
   async restartAgent(@Param("id") id: string) {
     const result = await this.vps.restartAgent(id);
     return { data: { jobId: result.jobId, state: result.state } };
+  }
+
+  /**
+   * Rotate the agent credential for the local/system-managed host only.
+   * Response is redacted: job id + credential id + state, never the raw token.
+   */
+  @Post(":id/rotate-agent")
+  async rotateAgent(@Param("id") id: string) {
+    const result = await this.rotation.rotate(id);
+    return {
+      data: {
+        jobId: result.jobId,
+        credentialId: result.credentialId,
+        state: result.state,
+      },
+    };
   }
 
   // ── Scoped VPS endpoints ───────────────────────────────────────────────

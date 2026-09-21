@@ -42,6 +42,8 @@ import { AgentUninstallerService } from "./agents/agent-uninstaller.service.js";
 import { AgentLifecycleCoordinator } from "./agents/agent-lifecycle-coordinator.js";
 import { AgentUpgraderService } from "./agents/agent-upgrader.service.js";
 import { AgentRestartService } from "./agents/agent-restart.service.js";
+import { AgentRotationService } from "./agents/agent-rotation.service.js";
+import { LocalAgentRotationHelper } from "./agents/local-agent-rotation-helper.service.js";
 import { AgentService } from "./agents/agent.service.js";
 import { JobActivityService } from "./jobs/job-activity.service.js";
 import { VpsService } from "./vps/vps.service.js";
@@ -194,6 +196,8 @@ export function createAppModule(deps: AppDependencies = {}): DynamicModule {
       AgentUninstallerService,
       AgentUpgraderService,
       AgentRestartService,
+      LocalAgentRotationHelper,
+      AgentRotationService,
       LocalAgentSupervisorService,
       JobActivityService,
       {
