@@ -21,6 +21,7 @@ function corePayload() {
 function validDocker(overrides: Record<string, unknown> = {}) {
   return {
     collectedAt: new Date().toISOString(),
+    schemaVersion: 2,
     agentInstanceId: "instance_abc123",
     snapshotId: "snap_abc123",
     sourceSequence: "1",
