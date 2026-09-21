@@ -236,7 +236,16 @@ export class AgentService {
       }
 
       const dockerMetricsEnabled = vps.dockerMetricsEnabled ?? false;
-
+      const config = dockerMetricsEnabled
+        ? {
+            dockerMetricsEnabled: true,
+            maxSchemaVersion: 2 as const,
+            history: true as const,
+            containerHistory: true as const,
+            events: true as const,
+            storage: true as const,
+          }
+        : { dockerMetricsEnabled: false };
       // 2. Validate payload
       let parsed: AgentMetricPayload;
       try {
@@ -381,7 +390,7 @@ export class AgentService {
 
       // Mark host health only after the accepted observation is durably appended.
       await this.vpsRepository.markSeen(credential.vpsId, "healthy", now);
-      return { sample, config: { dockerMetricsEnabled }, ...(docker ? { docker } : {}) };
+      return { sample, config, ...(docker ? { docker } : {}) };
     } finally {
       releaseIngest();
     }

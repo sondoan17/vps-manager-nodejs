@@ -13,9 +13,7 @@ type AgentIngestResponse = {
     ok: true;
     vpsId: string;
     receivedAt: string;
-    config: {
-      dockerMetricsEnabled: boolean;
-    };
+    config: IngestMetricResult["config"];
     docker?: IngestMetricResult["docker"];
   };
 };
