@@ -867,6 +867,7 @@ function validDockerPayload(overrides?: Record<string, unknown>) {
   return {
     collectedAt: new Date().toISOString(),
     agentVersion: "1.0.0",
+    schemaVersion: 2,
     agentInstanceId: "instance_abc123",
     snapshotId: "snap_abc123",
     sourceSequence: "1",
@@ -1216,6 +1217,7 @@ describe("Docker v2 ingest via AgentService", () => {
   function validDockerV2Payload(overrides: Record<string, unknown> = {}) {
     return {
       collectedAt: new Date().toISOString(),
+      schemaVersion: 2,
       agentInstanceId: "instance_abc123",
       snapshotId: "snap_abc123",
       sourceSequence: "1",
