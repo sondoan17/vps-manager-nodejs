@@ -299,7 +299,7 @@ describe("docker monitoring postgres maintenance (PostgreSQL)", () => {
       samplesPerVps: 5000,
       eventsPerVps: 10000,
     });
-    expect(result).toEqual({ samplesRemoved: 2, eventsRemoved: 1 });
+    expect(result).toEqual({ samplesRemoved: 2, rollupsRemoved: 0, eventsRemoved: 1, alertsRemoved: 0, storageMode: "postgres" });
     expect((await repo!.listHostSamples({ vpsId: "vps-a" })).data.map((s) => s.id)).toEqual([
       "new",
     ]);
@@ -330,7 +330,7 @@ describe("docker monitoring postgres maintenance (PostgreSQL)", () => {
       samplesPerVps: 2,
       eventsPerVps: 1,
     });
-    expect(result).toEqual({ samplesRemoved: 1, eventsRemoved: 2 });
+    expect(result).toEqual({ samplesRemoved: 1, rollupsRemoved: 0, eventsRemoved: 2, alertsRemoved: 0, storageMode: "postgres" });
     expect((await repo!.listHostSamples({ vpsId: "vps-a" })).data.map((s) => s.id)).toEqual([
       "a3",
       "a2",
@@ -355,7 +355,10 @@ describe("docker monitoring postgres maintenance (PostgreSQL)", () => {
     };
     expect(await repo!.pruneSamplesEventsAndStorage(options)).toEqual({
       samplesRemoved: 1,
+      rollupsRemoved: 0,
       eventsRemoved: 1,
+      alertsRemoved: 0,
+      storageMode: "postgres",
     });
     expect(await repo!.pruneSamplesEventsAndStorage(options)).toEqual({
       samplesRemoved: 0,
