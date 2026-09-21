@@ -563,7 +563,7 @@ func checkFilePermissions(fi os.FileInfo) error {
 		return nil
 	}
 	if fi.Mode().Perm() != 0o600 {
-		return fmt.Errorf("state: mode %04o: want 0600: fail closed", fi.Mode().Perm())
+        return fmt.Errorf("state: over-permissive mode %04o: want 0600: fail closed", fi.Mode().Perm())
 	}
 	return nil
 }

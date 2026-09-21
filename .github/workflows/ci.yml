@@ -70,8 +70,8 @@ jobs:
         env:
           API_CHANGED: ${{ steps.changes.outputs.api }}
           WEB_CHANGED: ${{ steps.changes.outputs.web }}
-          FORCE_API_BUILD: ${{ github.event_name == 'workflow_dispatch' && inputs.force_api_build || false }}
-          FORCE_WEB_BUILD: ${{ github.event_name == 'workflow_dispatch' && inputs.force_web_build || false }}
+          FORCE_API_BUILD: ${{ github.event_name == 'workflow_dispatch' && inputs.force_api_build || true }}
+          FORCE_WEB_BUILD: ${{ github.event_name == 'workflow_dispatch' && inputs.force_web_build || true }}
         run: |
           if [ "$API_CHANGED" = "true" ] || [ "$FORCE_API_BUILD" = "true" ]; then
             echo "api_changed=true" >> "$GITHUB_OUTPUT"
