@@ -91,10 +91,7 @@ export type AgentDockerContainerMetric = {
   pids: number;
 };
 
-export type AgentDockerContainerMetricV2 = Omit<
-  AgentDockerContainerMetric,
-  "id"
-> & {
+export type AgentDockerContainerMetricV2 = Omit<AgentDockerContainerMetric, "id"> & {
   containerKey: string;
 };
 
@@ -179,6 +176,35 @@ export type AgentDockerStorageAggregate = {
   buildCache: DockerStorageCategory;
 };
 
+export type AgentDockerMetricsInputV1 = {
+  collectedAt: string;
+  agentVersion?: string;
+  engineVersion?: string;
+  apiVersion?: string;
+  os?: string;
+  architecture?: string;
+  schemaVersion: 1;
+  available: boolean;
+  errorCode?:
+    | "socket_missing"
+    | "permission_denied"
+    | "timeout"
+    | "daemon_unreachable"
+    | "unsupported_os"
+    | "bad_response";
+  containerTotal: number;
+  containerRunning: number;
+  cpuPercent: number;
+  memoryUsageBytes: number;
+  memoryLimitBytes?: number;
+  networkRxBytes: number;
+  networkTxBytes: number;
+  blockReadBytes: number;
+  blockWriteBytes: number;
+  pids: number;
+  containers: AgentDockerContainerMetric[];
+};
+
 export type DockerEventWatermark = {
   timeNano: string;
   boundaryDigests: string[];
@@ -202,13 +228,14 @@ export type DockerMonitoringMetadata = {
   state: "enabled" | "disabled" | "unknown";
 };
 
-export type AgentDockerMetricsInput = {
+export type AgentDockerMetricsInputV2 = {
   collectedAt: string;
   agentVersion?: string;
   engineVersion?: string;
   apiVersion?: string;
   os?: string;
   architecture?: string;
+  schemaVersion: 2;
   agentInstanceId: string;
   snapshotId: string;
   /** Monotonically comparable positive canonical decimal sequence supplied by the agent. */
@@ -236,11 +263,11 @@ export type AgentDockerMetricsInput = {
   monitoring?: DockerMonitoringMetadata;
 };
 
-/** Additive discriminated union for the Docker ingest branch. V1 is unchanged. */
+/** Unified service-facing Docker shape; v1 is normalized at ingest. */
+export type AgentDockerMetricsInput = AgentDockerMetricsInputV2;
 
 export type DockerMetricsFreshness = "fresh" | "stale";
 
-/** Derived at read time; freshness is intentionally never persisted. */
 export type AgentDockerMetrics = AgentDockerMetricsInput & {
   vpsId: string;
   receivedAt: string;
@@ -250,12 +277,17 @@ export type AgentDockerMetrics = AgentDockerMetricsInput & {
 };
 
 export type DockerIngestCapability = {
+  maxSchemaVersion: 1 | 2;
   history: boolean;
   containerHistory: boolean;
   events: boolean;
   storage: boolean;
 };
 
+export type DockerIngestStatus = {
+  schemaVersion: 1 | 2;
+  capabilities: DockerIngestCapability;
+};
 export type AgentMetricPayload = {
   vpsId?: string;
   collectedAt: string;

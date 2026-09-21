@@ -382,6 +382,7 @@ function rowToDockerMetrics(row: AgentDockerMetricsRow): AgentDockerMetrics {
     ...(apiVersion === undefined ? {} : { apiVersion }),
     ...(os === undefined ? {} : { os }),
     ...(architecture === undefined ? {} : { architecture }),
+    schemaVersion: 2,
     agentInstanceId: "legacy",
     snapshotId: "legacy",
     sourceSequence: "1",
@@ -397,7 +398,10 @@ function rowToDockerMetrics(row: AgentDockerMetricsRow): AgentDockerMetrics {
     blockReadBytes: row.block_read_bytes,
     blockWriteBytes: row.block_write_bytes,
     pids: row.pids,
-    containers,
+    containers: containers.map((container) => ({
+      ...container,
+      containerKey: "legacy",
+    })),
   };
 }
 
