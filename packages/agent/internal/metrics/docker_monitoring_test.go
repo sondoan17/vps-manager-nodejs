@@ -9,7 +9,6 @@ import (
 func validMonitoringV2() DockerMetricsV2 {
 	return DockerMetricsV2{
 		CollectedAt:      "2026-01-01T00:00:30Z",
-		SchemaVersion:    DockerSchemaVersionV2,
 		AgentInstanceID:  strings.Repeat("a", 32),
 		SnapshotID:       strings.Repeat("b", 64),
 		SourceSequence:   "1",
@@ -25,7 +24,7 @@ func validMonitoringV2() DockerMetricsV2 {
 	}
 }
 
-func TestDockerV2MonitoringSerialization(t *testing.T) {
+func TestDockerMonitoringSerialization(t *testing.T) {
 	m := validMonitoringV2()
 	raw, err := json.Marshal(m)
 	if err != nil {
@@ -49,16 +48,16 @@ func TestDockerV2MonitoringSerialization(t *testing.T) {
 	if roundtrip.Monitoring == nil || roundtrip.Monitoring.EffectiveCadenceSeconds != 60 {
 		t.Fatalf("roundtrip monitoring lost: %+v", roundtrip.Monitoring)
 	}
-	if err := validateDockerV2Metrics(roundtrip); err != nil {
+	if err := validateDockerMetrics(roundtrip); err != nil {
 		t.Fatalf("roundtrip must validate: %v", err)
 	}
 }
 
-func TestDockerV2MonitoringBackwardCompatibility(t *testing.T) {
+func TestDockerMonitoringBackwardCompatibility(t *testing.T) {
 	// Old payload without metadata remains valid and omits the key.
 	m := validMonitoringV2()
 	m.Monitoring = nil
-	if err := validateDockerV2Metrics(m); err != nil {
+	if err := validateDockerMetrics(m); err != nil {
 		t.Fatalf("payload without monitoring must validate: %v", err)
 	}
 	raw, _ := json.Marshal(m)
@@ -66,7 +65,7 @@ func TestDockerV2MonitoringBackwardCompatibility(t *testing.T) {
 		t.Fatalf("absent monitoring must be omitted, got %s", raw)
 	}
 	var decoded DockerMetricsV2
-	if err := json.Unmarshal([]byte(`{"schemaVersion":2}`), &decoded); err != nil {
+	if err := json.Unmarshal([]byte(`{}`), &decoded); err != nil {
 		t.Fatal(err)
 	}
 	if decoded.Monitoring != nil {
@@ -85,7 +84,7 @@ func TestDockerV2MonitoringBackwardCompatibility(t *testing.T) {
 	}
 }
 
-func TestDockerV2MonitoringInvalidValues(t *testing.T) {
+func TestDockerMonitoringInvalidValues(t *testing.T) {
 	cases := []struct {
 		name string
 		mut  func(*DockerMonitoringMetadataV2)
@@ -102,36 +101,36 @@ func TestDockerV2MonitoringInvalidValues(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			meta := &DockerMonitoringMetadataV2{EffectiveCadenceSeconds: 60, Availability: "available", State: "enabled"}
 			tc.mut(meta)
-			if err := validateDockerV2MonitoringMetadata(meta); err == nil {
+			if err := validateDockerMonitoringMetadata(meta); err == nil {
 				t.Fatalf("%s must be rejected", tc.name)
 			}
 			full := validMonitoringV2()
 			full.Monitoring = meta
-			if err := validateDockerV2Metrics(full); err == nil {
+			if err := validateDockerMetrics(full); err == nil {
 				t.Fatalf("%s must fail full metrics validation", tc.name)
 			}
 		})
 	}
 	// Nil metadata is valid.
-	if err := validateDockerV2MonitoringMetadata(nil); err != nil {
+	if err := validateDockerMonitoringMetadata(nil); err != nil {
 		t.Fatalf("nil monitoring must validate: %v", err)
 	}
 	// Boundary values accepted.
 	for _, cadence := range []int{1, 86400} {
 		meta := &DockerMonitoringMetadataV2{EffectiveCadenceSeconds: cadence, Availability: "unknown", State: "unknown"}
-		if err := validateDockerV2MonitoringMetadata(meta); err != nil {
+		if err := validateDockerMonitoringMetadata(meta); err != nil {
 			t.Fatalf("cadence %d must validate: %v", cadence, err)
 		}
 	}
 	for _, av := range []string{"available", "unavailable", "unknown"} {
 		meta := &DockerMonitoringMetadataV2{EffectiveCadenceSeconds: 30, Availability: av, State: "enabled"}
-		if err := validateDockerV2MonitoringMetadata(meta); err != nil {
+		if err := validateDockerMonitoringMetadata(meta); err != nil {
 			t.Fatalf("availability %q must validate: %v", av, err)
 		}
 	}
 	for _, st := range []string{"enabled", "disabled", "unknown"} {
 		meta := &DockerMonitoringMetadataV2{EffectiveCadenceSeconds: 30, Availability: "available", State: st}
-		if err := validateDockerV2MonitoringMetadata(meta); err != nil {
+		if err := validateDockerMonitoringMetadata(meta); err != nil {
 			t.Fatalf("state %q must validate: %v", st, err)
 		}
 	}

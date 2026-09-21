@@ -12,7 +12,6 @@ import (
 	"net/http"
 	"net/url"
 	"regexp"
-	"sync"
 	"time"
 
 	"github.com/vps-manager/agent/internal/config"
@@ -69,7 +68,6 @@ func (e *ErrRetryable) Unwrap() error { return e.Err }
 // v2 capability fields are optional and omitted by old servers.
 type ConfigResponse struct {
 	DockerMetricsEnabled bool  `json:"dockerMetricsEnabled"`
-	MaxSchemaVersion     *int  `json:"maxSchemaVersion,omitempty"`
 	History              *bool `json:"history,omitempty"`
 	ContainerHistory     *bool `json:"containerHistory,omitempty"`
 	Events               *bool `json:"events,omitempty"`
@@ -103,13 +101,11 @@ type PushResult struct {
 
 // Client pushes metrics to the backend.
 type Client struct {
-	backendURL      string
-	token           string
-	httpClient      *http.Client
-	configHandler   func(*ConfigResponse)
-	location        func() *metrics.Location
-	mu              sync.RWMutex
-	dockerV2Enabled bool
+	backendURL    string
+	token         string
+	httpClient    *http.Client
+	configHandler func(*ConfigResponse)
+	location      func() *metrics.Location
 }
 
 // SetConfigHandler registers a callback that receives runtime configuration
@@ -135,14 +131,7 @@ func NewClient(cfg *config.Config) *Client {
 
 // payload is the JSON body sent to the backend.
 //
-// Docker is the API-compatible `docker` wire branch: it carries either the
-// legacy v1 snapshot (*metrics.DockerMetrics, schemaVersion 1) or, when the
-// v2 capability gate is enabled, the canonical flat v2 batch
-// (*metrics.DockerMetricsV2, schemaVersion 2). The API contract
-// (packages/api/src/agents/agent.schemas.ts agentMetricPayloadSchema +
-// agent.models.ts AgentDockerMetricsInput) accepts exactly one `docker`
-// branch as a discriminated union on schemaVersion; there is no separate
-// `dockerV2` wire field.
+// Docker is the canonical Docker metrics payload under the single `docker` wire key.
 type payload struct {
 	VpsId        string              `json:"vpsId,omitempty"`
 	CollectedAt  string              `json:"collectedAt"`
@@ -159,62 +148,12 @@ type payload struct {
 	Docker       any                 `json:"docker,omitempty"`
 }
 
-// IsDockerV2Enabled reports whether v2 serialization is enabled.
-// Default false (fail closed); enabled only via SetDockerV2FromConfig with
-// an advertised ConfigResponse.
-func (c *Client) IsDockerV2Enabled() bool {
-	c.mu.RLock()
-	defer c.mu.RUnlock()
-	return c.dockerV2Enabled
-}
-
-// SetDockerV2Enabled overrides the v2 gate directly (tests and wiring).
-func (c *Client) SetDockerV2Enabled(enabled bool) {
-	c.mu.Lock()
-	defer c.mu.Unlock()
-	c.dockerV2Enabled = enabled
-}
-
-// SetDockerV2FromConfig receives a ConfigResponse and enables v2 only when
-// maxSchemaVersion>=2 and the required capability flags (history,
-// containerHistory, events, storage) are all present and true. Nil,
-// old, partial, or malformed responses leave the gate disabled
-// (fail closed).
-func (c *Client) SetDockerV2FromConfig(cfg *ConfigResponse) {
-	c.SetDockerV2Enabled(dockerV2Advertised(cfg))
-}
-
-func dockerV2Advertised(cfg *ConfigResponse) bool {
-	if cfg == nil {
-		return false
-	}
-	if cfg.MaxSchemaVersion == nil || *cfg.MaxSchemaVersion < 2 {
-		return false
-	}
-	if cfg.History == nil || !*cfg.History {
-		return false
-	}
-	if cfg.ContainerHistory == nil || !*cfg.ContainerHistory {
-		return false
-	}
-	if cfg.Events == nil || !*cfg.Events {
-		return false
-	}
-	if cfg.Storage == nil || !*cfg.Storage {
-		return false
-	}
-	return true
-}
-
 // selectDockerBranch returns the `docker` wire branch for this push:
 // the canonical v2 batch when the gate is enabled and a v2 batch is
 // present, otherwise the legacy v1 snapshot (possibly nil, omitted).
 func (c *Client) selectDockerBranch(m *metrics.SystemMetrics) any {
 	if m == nil {
 		return nil
-	}
-	if c.IsDockerV2Enabled() && m.DockerV2 != nil {
-		return m.DockerV2
 	}
 	if m.Docker != nil {
 		return m.Docker
@@ -296,9 +235,6 @@ func sanitizeConfig(cfg *ConfigResponse) *ConfigResponse {
 		Events:               cfg.Events,
 		Storage:              cfg.Storage,
 	}
-	if cfg.MaxSchemaVersion != nil && (*cfg.MaxSchemaVersion == 1 || *cfg.MaxSchemaVersion == 2) {
-		out.MaxSchemaVersion = cfg.MaxSchemaVersion
-	}
 	return out
 }
 
@@ -357,15 +293,8 @@ func buildSuccessResult(body []byte) *PushResult {
 	return res
 }
 
-// Push sends metrics to the backend. It distinguishes between fatal auth
-// errors (ErrAuth), fatal request errors (ErrFatal), conflicts (ErrConflict),
-// and retryable errors (ErrRetryable). On success it returns a typed
-// PushResult; Docker is nil for old servers and invalid v2 acks.
-//
-// The `docker` wire branch preserves legacy v1 by default and carries the
-// canonical flat v2 batch only when the v2 capability gate is enabled.
-// The gate defaults false and is updated fail-closed from every 2xx
-// ConfigResponse via SetDockerV2FromConfig.
+// Push sends metrics to the backend and distinguishes fatal, conflict, and retryable errors.
+// On success it returns a typed PushResult and applies returned configuration.
 func (c *Client) Push(ctx context.Context, m *metrics.SystemMetrics) (*PushResult, error) {
 	location := m.Location
 	if location == nil && c.location != nil {
@@ -422,9 +351,6 @@ func (c *Client) Push(ctx context.Context, m *metrics.SystemMetrics) (*PushResul
 		if res.Config == nil {
 			res.Config = &ConfigResponse{DockerMetricsEnabled: false}
 		}
-		// Capability gate: v2 enabled only on advertised ConfigResponse;
-		// old/malformed responses fail closed to disabled.
-		c.SetDockerV2FromConfig(res.Config)
 		if c.configHandler != nil {
 			c.configHandler(res.Config)
 		}
@@ -433,14 +359,13 @@ func (c *Client) Push(ctx context.Context, m *metrics.SystemMetrics) (*PushResul
 		return nil, &ErrAuth{StatusCode: resp.StatusCode, Body: sanitizedBody}
 	case resp.StatusCode == 409:
 		return nil, &ErrConflict{StatusCode: resp.StatusCode, Body: sanitizedBody}
-	case resp.StatusCode == 400 && (m.Docker != nil || m.DockerV2 != nil):
+	case resp.StatusCode == 400 && (m.Docker != nil):
 		// Fail closed for downgraded/old servers or schema mismatches: disable
 		// Docker collection and the v2 gate, then retry once without either
 		// Docker branch (v1 or v2) so core host metrics do not become fragile.
 		c.disableDockerConfig()
 		stripped := *m
 		stripped.Docker = nil
-		stripped.DockerV2 = nil
 		res, err := c.Push(ctx, &stripped)
 		if err != nil {
 			return nil, err
@@ -460,7 +385,6 @@ func (c *Client) Push(ctx context.Context, m *metrics.SystemMetrics) (*PushResul
 }
 
 func (c *Client) disableDockerConfig() {
-	c.SetDockerV2Enabled(false)
 	if c.configHandler != nil {
 		c.configHandler(&ConfigResponse{DockerMetricsEnabled: false})
 	}

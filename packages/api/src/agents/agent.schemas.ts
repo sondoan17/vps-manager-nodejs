@@ -77,63 +77,13 @@ const agentDockerContainerMetricSchema = z
   })
   .strict();
 
-/**
- * I0 contract lock: v1 branch is byte-for-byte the pre-Phase-1 validation.
- * Do not widen it. V2 is additive under `docker.schemaVersion: 2`.
- */
-const agentDockerMetricsV1InputSchema = z
-  .object({
-    collectedAt: z
-      .string()
-      .refine((val) => !isNaN(Date.parse(val)), {
-        message: "docker.collectedAt must be a parseable date",
-      })
-      .refine(
-        (val) => {
-          const ts = new Date(val).getTime();
-          const now = Date.now();
-          return ts >= now - TEN_MINUTES_MS && ts <= now + TWO_MINUTES_MS;
-        },
-        { message: "docker.collectedAt must be within -10m / +2m of now" },
-      ),
-    agentVersion: z.string().max(255).optional(),
-    engineVersion: z.string().max(64).optional(),
-    apiVersion: z.string().max(64).optional(),
-    os: z.string().max(32).optional(),
-    architecture: z.string().max(32).optional(),
-    schemaVersion: z.literal(1),
-    available: z.boolean(),
-    errorCode: z
-      .enum([
-        "socket_missing",
-        "permission_denied",
-        "timeout",
-        "daemon_unreachable",
-        "unsupported_os",
-        "bad_response",
-      ])
-      .optional(),
-    containerTotal: z.number().int().finite().min(0).safe(),
-    containerRunning: z.number().int().finite().min(0).safe(),
-    cpuPercent: z.number().finite().min(0).max(100000),
-    memoryUsageBytes: z.number().int().finite().min(0).safe(),
-    memoryLimitBytes: z.number().int().finite().min(0).safe().optional(),
-    networkRxBytes: z.number().int().finite().min(0).safe(),
-    networkTxBytes: z.number().int().finite().min(0).safe(),
-    blockReadBytes: z.number().int().finite().min(0).safe(),
-    blockWriteBytes: z.number().int().finite().min(0).safe(),
-    pids: z.number().int().finite().min(0).safe(),
-    containers: z.array(agentDockerContainerMetricSchema).max(20).default([]),
-  })
-  .strict();
-
 // ── Docker schema v2 (additive, strictly bounded) ────────────────────────
 // Privacy invariant: only the narrow allowlist below is accepted. Env,
 // labels, mounts, commands/entrypoints/args, logs, secrets, configs,
 // inspect payloads, volume names, layer IDs, and arbitrary event/storage
 // attributes are rejected by strict() at every nesting level.
 
-const dockerV2Timestamp = z
+const dockerTimestamp = z
   .string()
   .datetime({ offset: true })
   .refine(
@@ -195,7 +145,9 @@ const dockerAggregateSchema = z
 const dockerEventContextSchema = z
   .object({
     version: z.literal(1),
-    healthStatus: z.enum(["healthy", "unhealthy", "starting", "none"]).optional(),
+    healthStatus: z
+      .enum(["healthy", "unhealthy", "starting", "none"])
+      .optional(),
     exitCode: z.number().int().min(0).max(255).optional(),
     signal: z.number().int().min(0).max(255).optional(),
     oomKilled: z.boolean().optional(),
@@ -316,23 +268,26 @@ const dockerErrorCodeSchema = z.enum([
   "bad_response",
 ]);
 
-const positiveCanonicalDecimal = z.string().regex(/^[1-9][0-9]*$/, "must be a positive canonical decimal string");
+const positiveCanonicalDecimal = z
+  .string()
+  .regex(/^[1-9][0-9]*$/, "must be a positive canonical decimal string");
 
-const dockerMonitoringMetadataSchema = z.object({
-  effectiveCadenceSeconds: z.number().int().finite().positive().max(86400),
-  availability: z.enum(["available", "unavailable", "unknown"]),
-  state: z.enum(["enabled", "disabled", "unknown"]),
-}).strict();
+const dockerMonitoringMetadataSchema = z
+  .object({
+    effectiveCadenceSeconds: z.number().int().finite().positive().max(86400),
+    availability: z.enum(["available", "unavailable", "unknown"]),
+    state: z.enum(["enabled", "disabled", "unknown"]),
+  })
+  .strict();
 
 const agentDockerMetricsV2BaseSchema = z
   .object({
-    collectedAt: dockerV2Timestamp,
+    collectedAt: dockerTimestamp,
     agentVersion: z.string().max(255).optional(),
     engineVersion: z.string().max(64).optional(),
     apiVersion: z.string().max(64).optional(),
     os: z.string().max(32).optional(),
     architecture: z.string().max(32).optional(),
-    schemaVersion: z.literal(2),
     agentInstanceId: agentInstanceId,
     snapshotId: retryId,
     sourceSequence: positiveCanonicalDecimal,
@@ -360,13 +315,8 @@ const agentDockerMetricsV2BaseSchema = z
   })
   .strict();
 
-const agentDockerMetricsInputSchema = z
-  .discriminatedUnion("schemaVersion", [
-    agentDockerMetricsV1InputSchema,
-    agentDockerMetricsV2BaseSchema,
-  ])
-  .superRefine((v, ctx) => {
-    if (v.schemaVersion !== 2) return;
+const agentDockerMetricsInputSchema =
+  agentDockerMetricsV2BaseSchema.superRefine((v, ctx) => {
     // Event protocol is all-or-none: batchId/events/eventWindow/
     // fromWatermark/proposedWatermark travel together (flat plan item 7).
     // A minimal snapshot carries none of them (batchId absent with no event
@@ -376,11 +326,18 @@ const agentDockerMetricsInputSchema = z
     const hasWindow = v.eventWindow !== undefined;
     const hasFrom = v.fromWatermark !== undefined;
     const hasProposed = v.proposedWatermark !== undefined;
-    const present = [hasBatch, hasEvents, hasWindow, hasFrom, hasProposed].filter(Boolean).length;
+    const present = [
+      hasBatch,
+      hasEvents,
+      hasWindow,
+      hasFrom,
+      hasProposed,
+    ].filter(Boolean).length;
     if (present !== 0 && present !== 5) {
       ctx.addIssue({
         code: z.ZodIssueCode.custom,
-        message: "docker event batch must include batchId+events+eventWindow+fromWatermark+proposedWatermark together",
+        message:
+          "docker event batch must include batchId+events+eventWindow+fromWatermark+proposedWatermark together",
       });
       return;
     }
@@ -395,16 +352,23 @@ const agentDockerMetricsInputSchema = z
       // Range: from <= proposed <= until (canonical decimal ordering).
       // Capped windows may report partial complete-boundary progress
       // (since < proposed < until); the remainder is retried next window.
-      if (decimalOrder(v.fromWatermark!.timeNano, v.proposedWatermark!.timeNano) > 0) {
+      if (
+        decimalOrder(v.fromWatermark!.timeNano, v.proposedWatermark!.timeNano) >
+        0
+      ) {
         ctx.addIssue({
           code: z.ZodIssueCode.custom,
-          message: "docker.proposedWatermark.timeNano must not precede docker.fromWatermark.timeNano",
+          message:
+            "docker.proposedWatermark.timeNano must not precede docker.fromWatermark.timeNano",
         });
       }
-      if (decimalOrder(v.proposedWatermark!.timeNano, v.eventWindow!.until) > 0) {
+      if (
+        decimalOrder(v.proposedWatermark!.timeNano, v.eventWindow!.until) > 0
+      ) {
         ctx.addIssue({
           code: z.ZodIssueCode.custom,
-          message: "docker.proposedWatermark.timeNano must not exceed docker.eventWindow.until",
+          message:
+            "docker.proposedWatermark.timeNano must not exceed docker.eventWindow.until",
         });
       }
       // Uncapped fully consumed windows must advance exactly to until.
@@ -412,7 +376,8 @@ const agentDockerMetricsInputSchema = z
         if (v.proposedWatermark!.timeNano !== v.eventWindow!.until) {
           ctx.addIssue({
             code: z.ZodIssueCode.custom,
-            message: "docker.proposedWatermark.timeNano must equal eventWindow.until for uncapped complete windows",
+            message:
+              "docker.proposedWatermark.timeNano must equal eventWindow.until for uncapped complete windows",
           });
         }
       }
@@ -430,7 +395,8 @@ const agentDockerMetricsInputSchema = z
         if (v.proposedWatermark!.timeNano !== v.eventWindow!.until) {
           ctx.addIssue({
             code: z.ZodIssueCode.custom,
-            message: "docker.proposedWatermark.timeNano must equal eventWindow.until for abandoned windows",
+            message:
+              "docker.proposedWatermark.timeNano must equal eventWindow.until for abandoned windows",
           });
         }
       }
@@ -439,7 +405,8 @@ const agentDockerMetricsInputSchema = z
     // actions require a valid opaque key (mirrors agent validator).
     for (let i = 0; i < (v.events ?? []).length; i++) {
       const e = v.events![i]!;
-      const hostScope = e.action === "stream_gap" || e.action === "daemon_restarted";
+      const hostScope =
+        e.action === "stream_gap" || e.action === "daemon_restarted";
       if (!hostScope && e.containerKey === undefined) {
         ctx.addIssue({
           code: z.ZodIssueCode.custom,
@@ -472,13 +439,16 @@ export const agentMetricPayloadSchema = z
         { message: "collectedAt must be within -10m / +2m of now" },
       ),
     agentVersion: z.string().min(1, "agentVersion is required"),
-     vpsId: z.string().optional(),
-     location: z.object({
-       city: z.string().trim().min(1).max(120),
-       country: z.string().trim().min(1).max(120),
-       detectedAt: z.string().datetime({ offset: true }),
-     }).strict().optional(),
-     system: agentSystemInfoInputSchema.optional(),
+    vpsId: z.string().optional(),
+    location: z
+      .object({
+        city: z.string().trim().min(1).max(120),
+        country: z.string().trim().min(1).max(120),
+        detectedAt: z.string().datetime({ offset: true }),
+      })
+      .strict()
+      .optional(),
+    system: agentSystemInfoInputSchema.optional(),
     docker: agentDockerMetricsInputSchema.optional(),
   })
   .strict(); // reject unknown fields

@@ -66,7 +66,6 @@ func collectDockerFromAPI(ctx context.Context, client *http.Client, baseURL stri
 	now := time.Now().UTC().Format(time.RFC3339)
 
 	result := &DockerMetrics{
-		SchemaVersion:  DockerSchemaVersion,
 		Available:      true,
 		CollectedAt:    now,
 		ContainerTotal: containerTotal,

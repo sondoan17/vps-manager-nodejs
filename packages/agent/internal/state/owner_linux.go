@@ -24,7 +24,7 @@ func checkFileOwnershipWithUID(fi os.FileInfo, expected *int) error {
 }
 
 func provisionIdentityOwnerUID() int { return 0 }
-func provisionRuntimeOwnerUID() int { return os.Geteuid() }
+func provisionRuntimeOwnerUID() int  { return os.Geteuid() }
 
 func checkFileOwnership(_ string, fi os.FileInfo) error {
 	st, ok := fi.Sys().(*syscall.Stat_t)

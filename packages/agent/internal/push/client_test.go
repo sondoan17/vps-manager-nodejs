@@ -799,8 +799,7 @@ func TestPush_DockerPayloadSerialised(t *testing.T) {
 	m := &metrics.SystemMetrics{
 		CPU:    50.0,
 		Memory: 60.0,
-		Docker: &metrics.DockerMetrics{
-			SchemaVersion:  1,
+		Docker: &metrics.DockerMetricsV2{
 			Available:      true,
 			ContainerTotal: 2,
 			CPUPercent:     75.0,
@@ -820,7 +819,7 @@ func TestPush_DockerPayloadSerialised(t *testing.T) {
 	if !ok {
 		t.Fatal("expected Docker field to be present in payload")
 	}
-	var v1 metrics.DockerMetrics
+	var v1 metrics.DockerMetricsV2
 	if err := json.Unmarshal(dockerRaw, &v1); err != nil {
 		t.Fatalf("unmarshal docker branch: %v", err)
 	}
@@ -832,9 +831,6 @@ func TestPush_DockerPayloadSerialised(t *testing.T) {
 	}
 	if v1.CPUPercent != 75.0 {
 		t.Errorf("Docker.CPUPercent = %f, want 75.0", v1.CPUPercent)
-	}
-	if v1.SchemaVersion != 1 {
-		t.Errorf("Docker.SchemaVersion = %d, want 1", v1.SchemaVersion)
 	}
 }
 
@@ -897,7 +893,7 @@ func TestPush_TypedAckSuccess(t *testing.T) {
 	var received *ConfigResponse
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)
-		_, _ = w.Write([]byte(`{"data":{"ok":true,"vpsId":"vps-1","receivedAt":"2026-01-01T00:00:00Z","config":{"dockerMetricsEnabled":true,"maxSchemaVersion":2,"history":true,"containerHistory":true,"events":true,"storage":true},"docker":{"ingestStatus":"committed","batchId":"batch-1","snapshotId":"snap-1","agentInstanceId":"instance-1","committedWatermark":{"timeNano":"123456789","boundaryDigests":["abc123"]}}}}`))
+		_, _ = w.Write([]byte(`{"data":{"ok":true,"vpsId":"vps-1","receivedAt":"2026-01-01T00:00:00Z","config":{"dockerMetricsEnabled":true,"history":true,"containerHistory":true,"events":true,"storage":true},"docker":{"ingestStatus":"committed","batchId":"batch-1","snapshotId":"snap-1","agentInstanceId":"instance-1","committedWatermark":{"timeNano":"123456789","boundaryDigests":["abc123"]}}}}`))
 	}))
 	defer srv.Close()
 
@@ -922,9 +918,6 @@ func TestPush_TypedAckSuccess(t *testing.T) {
 	}
 	if res.Config == nil || !res.Config.DockerMetricsEnabled {
 		t.Error("expected config enabled")
-	}
-	if res.Config.MaxSchemaVersion == nil || *res.Config.MaxSchemaVersion != 2 {
-		t.Errorf("expected maxSchemaVersion=2, got %+v", res.Config)
 	}
 	if res.Docker == nil {
 		t.Fatal("expected non-nil Docker ack")
@@ -1186,7 +1179,7 @@ func TestPush_DockerStripRetryNilAck(t *testing.T) {
 
 	m := &metrics.SystemMetrics{
 		CPU:    10,
-		Docker: &metrics.DockerMetrics{SchemaVersion: 1, Available: true},
+		Docker: &metrics.DockerMetricsV2{Available: true},
 	}
 	res, err := client.Push(context.Background(), m)
 	if err != nil {
@@ -1226,7 +1219,7 @@ func TestPushWithRetry_StrippedRetryResult(t *testing.T) {
 	client := NewClient(cfg)
 	m := &metrics.SystemMetrics{
 		CPU:    10,
-		Docker: &metrics.DockerMetrics{SchemaVersion: 1, Available: true},
+		Docker: &metrics.DockerMetricsV2{Available: true},
 	}
 	res, err := client.PushWithRetry(context.Background(), m)
 	if err != nil {
@@ -1247,7 +1240,6 @@ func intPtr(i int) *int    { return &i }
 func advertisedConfig() *ConfigResponse {
 	return &ConfigResponse{
 		DockerMetricsEnabled: true,
-		MaxSchemaVersion:     intPtr(2),
 		History:              boolPtr(true),
 		ContainerHistory:     boolPtr(true),
 		Events:               boolPtr(true),
@@ -1258,7 +1250,6 @@ func advertisedConfig() *ConfigResponse {
 func testV2Batch() *metrics.DockerMetricsV2 {
 	return &metrics.DockerMetricsV2{
 		CollectedAt:      "2026-01-01T00:00:30Z",
-		SchemaVersion:    metrics.DockerSchemaVersionV2,
 		AgentInstanceID:  "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
 		SnapshotID:       "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
 		BatchID:          "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
@@ -1286,7 +1277,7 @@ func testV2Batch() *metrics.DockerMetricsV2 {
 				EventID:         "evt-1",
 				EventOccurredAt: "2026-01-01T00:00:10Z",
 				ContainerKey:    "kkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkk",
-				Action:          metrics.DockerV2ActionDie,
+				Action:          metrics.DockerActionDie,
 				Context:         metrics.DockerEventContextV2{Version: metrics.DockerEventContextVersionV1},
 			},
 		},
@@ -1314,28 +1305,19 @@ func TestPush_PayloadContainsV2WhenGateEnabled(t *testing.T) {
 			t.Errorf("read body: %v", err)
 		}
 		w.WriteHeader(http.StatusOK)
-		_, _ = w.Write([]byte(`{"data":{"ok":true,"config":{"dockerMetricsEnabled":true,"maxSchemaVersion":2,"history":true,"containerHistory":true,"events":true,"storage":true}}}`))
+		_, _ = w.Write([]byte(`{"data":{"ok":true,"config":{"dockerMetricsEnabled":true,"history":true,"containerHistory":true,"events":true,"storage":true}}}`))
 	}))
 	defer srv.Close()
 
 	cfg := createTestConfig(srv.URL)
 	client := NewClient(cfg)
-	if client.IsDockerV2Enabled() {
-		t.Fatal("v2 gate must default to false")
-	}
-	client.SetDockerV2FromConfig(advertisedConfig())
-	if !client.IsDockerV2Enabled() {
-		t.Fatal("v2 gate should be enabled after advertised config")
-	}
 
 	m := &metrics.SystemMetrics{
 		CPU: 10,
-		Docker: &metrics.DockerMetrics{
-			SchemaVersion:  1,
+		Docker: &metrics.DockerMetricsV2{
 			Available:      true,
 			ContainerTotal: 1,
 		},
-		DockerV2: testV2Batch(),
 	}
 	if _, err := client.Push(context.Background(), m); err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -1353,19 +1335,12 @@ func TestPush_PayloadContainsV2WhenGateEnabled(t *testing.T) {
 	if err := json.Unmarshal(dockerRaw, &branch); err != nil {
 		t.Fatalf("unmarshal docker branch: %v", err)
 	}
-	var schemaVersion int
-	if err := json.Unmarshal(branch["schemaVersion"], &schemaVersion); err != nil {
-		t.Fatalf("unmarshal schemaVersion: %v", err)
-	}
-	if schemaVersion != 2 {
-		t.Errorf("docker.schemaVersion = %d, want 2 (canonical flat v2 under `docker`)", schemaVersion)
-	}
 	var v2 metrics.DockerMetricsV2
 	if err := json.Unmarshal(dockerRaw, &v2); err != nil {
 		t.Fatalf("unmarshal v2 branch: %v", err)
 	}
-	if v2.BatchID == "" || v2.AgentInstanceID == "" {
-		t.Errorf("v2 branch missing canonical identity fields: %+v", v2)
+	if !v2.Available {
+		t.Errorf("canonical docker payload unavailable: %+v", v2)
 	}
 	if _, ok := raw["dockerV2"]; ok {
 		t.Error("must not invent a separate `dockerV2` wire field; v2 rides on `docker`")
@@ -1390,12 +1365,10 @@ func TestPush_V1PreservedWhenGateDisabled(t *testing.T) {
 
 	m := &metrics.SystemMetrics{
 		CPU: 10,
-		Docker: &metrics.DockerMetrics{
-			SchemaVersion:  1,
+		Docker: &metrics.DockerMetricsV2{
 			Available:      true,
 			ContainerTotal: 3,
 		},
-		DockerV2: testV2Batch(),
 	}
 	if _, err := client.Push(context.Background(), m); err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -1408,12 +1381,12 @@ func TestPush_V1PreservedWhenGateDisabled(t *testing.T) {
 	if !ok {
 		t.Fatal("expected legacy v1 'docker' branch")
 	}
-	var v1 metrics.DockerMetrics
+	var v1 metrics.DockerMetricsV2
 	if err := json.Unmarshal(dockerRaw, &v1); err != nil {
 		t.Fatalf("unmarshal v1 branch: %v", err)
 	}
-	if v1.SchemaVersion != 1 || v1.ContainerTotal != 3 {
-		t.Errorf("expected legacy v1 branch preserved, got %+v", v1)
+	if v1.ContainerTotal != 3 {
+		t.Errorf("expected canonical docker payload, got %+v", v1)
 	}
 }
 
@@ -1429,12 +1402,9 @@ func TestPush_OldResponseLeavesGateFalse(t *testing.T) {
 	if _, err := client.Push(context.Background(), &metrics.SystemMetrics{CPU: 10}); err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if client.IsDockerV2Enabled() {
-		t.Error("old response without capability flags must leave v2 gate false")
-	}
 }
 
-func TestPush_MalformedResponseLeavesGateFalse(t *testing.T) {
+func TestPush_MalformedResponseIsIgnored(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)
 		_, _ = w.Write([]byte(`not json`))
@@ -1443,19 +1413,15 @@ func TestPush_MalformedResponseLeavesGateFalse(t *testing.T) {
 
 	cfg := createTestConfig(srv.URL)
 	client := NewClient(cfg)
-	client.SetDockerV2Enabled(true) // prove fail-closed resets on malformed
 	if _, err := client.Push(context.Background(), &metrics.SystemMetrics{CPU: 10}); err != nil {
 		t.Fatalf("unexpected error: %v", err)
-	}
-	if client.IsDockerV2Enabled() {
-		t.Error("malformed response must fail closed to v2 gate false")
 	}
 }
 
 func TestPush_AdvertisedResponseEnablesGate(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)
-		_, _ = w.Write([]byte(`{"data":{"ok":true,"config":{"dockerMetricsEnabled":true,"maxSchemaVersion":2,"history":true,"containerHistory":true,"events":true,"storage":true}}}`))
+		_, _ = w.Write([]byte(`{"data":{"ok":true,"config":{"dockerMetricsEnabled":true,"history":true,"containerHistory":true,"events":true,"storage":true}}}`))
 	}))
 	defer srv.Close()
 
@@ -1464,9 +1430,6 @@ func TestPush_AdvertisedResponseEnablesGate(t *testing.T) {
 	if _, err := client.Push(context.Background(), &metrics.SystemMetrics{CPU: 10}); err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if !client.IsDockerV2Enabled() {
-		t.Error("advertised maxSchemaVersion>=2 with all capability flags must enable v2 gate")
-	}
 }
 
 func TestPush_PartialAdvertisementLeavesGateFalse(t *testing.T) {
@@ -1474,9 +1437,8 @@ func TestPush_PartialAdvertisementLeavesGateFalse(t *testing.T) {
 		name string
 		body string
 	}{
-		{"schema 1", `{"data":{"ok":true,"config":{"dockerMetricsEnabled":true,"maxSchemaVersion":1,"history":true,"containerHistory":true,"events":true,"storage":true}}}`},
-		{"missing flags", `{"data":{"ok":true,"config":{"dockerMetricsEnabled":true,"maxSchemaVersion":2}}}`},
-		{"one flag false", `{"data":{"ok":true,"config":{"dockerMetricsEnabled":true,"maxSchemaVersion":2,"history":true,"containerHistory":true,"events":false,"storage":true}}}`},
+		{"missing flags", `{"data":{"ok":true,"config":{"dockerMetricsEnabled":true}}}`},
+		{"one flag false", `{"data":{"ok":true,"config":{"dockerMetricsEnabled":true,"history":true,"containerHistory":true,"events":false,"storage":true}}}`},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -1489,9 +1451,6 @@ func TestPush_PartialAdvertisementLeavesGateFalse(t *testing.T) {
 			client := NewClient(cfg)
 			if _, err := client.Push(context.Background(), &metrics.SystemMetrics{CPU: 10}); err != nil {
 				t.Fatalf("unexpected error: %v", err)
-			}
-			if client.IsDockerV2Enabled() {
-				t.Errorf("partial advertisement must leave gate false: %s", tc.body)
 			}
 		})
 	}
@@ -1513,10 +1472,7 @@ func TestPush_DowngradeStripsV2(t *testing.T) {
 			} else {
 				var branch map[string]json.RawMessage
 				if err := json.Unmarshal(raw["docker"], &branch); err == nil {
-					var sv int
-					if err := json.Unmarshal(branch["schemaVersion"], &sv); err == nil && sv != 2 {
-						t.Errorf("first request docker.schemaVersion = %d, want 2", sv)
-					}
+
 				}
 			}
 			w.WriteHeader(http.StatusBadRequest)
@@ -1532,14 +1488,9 @@ func TestPush_DowngradeStripsV2(t *testing.T) {
 
 	cfg := createTestConfig(srv.URL)
 	client := NewClient(cfg)
-	client.SetDockerV2FromConfig(advertisedConfig())
-	if !client.IsDockerV2Enabled() {
-		t.Fatal("gate must be enabled before downgrade test")
-	}
 	m := &metrics.SystemMetrics{
-		CPU:      10,
-		Docker:   &metrics.DockerMetrics{SchemaVersion: 1, Available: true},
-		DockerV2: testV2Batch(),
+		CPU:    10,
+		Docker: &metrics.DockerMetricsV2{Available: true},
 	}
 	res, err := client.Push(context.Background(), m)
 	if err != nil {
@@ -1550,9 +1501,6 @@ func TestPush_DowngradeStripsV2(t *testing.T) {
 	}
 	if !secondChecked || secondHasDocker {
 		t.Error("second (stripped) request must not include docker (neither v1 nor v2)")
-	}
-	if client.IsDockerV2Enabled() {
-		t.Error("400 downgrade must disable the v2 gate (fail closed)")
 	}
 	if res == nil || res.Docker != nil {
 		t.Errorf("stripped retry result must have nil Docker ack, got %+v", res)

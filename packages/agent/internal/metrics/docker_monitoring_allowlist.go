@@ -19,43 +19,43 @@ import (
 // in I0 (no new collection calls enabled).
 
 const (
-	dockerV2PathVersion      = "/version"
-	dockerV2PathContainers   = "/containers/json"
-	dockerV2PathEvents       = "/events"
-	dockerV2PathSystemDF     = "/system/df"
-	dockerV2StatsPathPrefix  = "/containers/"
-	dockerV2StatsPathSuffix  = "/stats"
-	dockerV2MaxContainerID64 = 64
+	dockerPathVersion      = "/version"
+	dockerPathContainers   = "/containers/json"
+	dockerPathEvents       = "/events"
+	dockerPathSystemDF     = "/system/df"
+	dockerStatsPathPrefix  = "/containers/"
+	dockerStatsPathSuffix  = "/stats"
+	dockerMaxContainerID64 = 64
 
 	// Fixed compile-time /events type filter (container scope only).
-	dockerV2EventsType = "container"
+	dockerEventsType = "container"
 )
 
-// dockerV2EventActionAllowlist is the fixed compile-time set of container
+// dockerEventActionAllowlist is the fixed compile-time set of container
 // lifecycle actions surfaced by monitoring. It is a subset of the wire
 // action allowlist; stream_gap/daemon_restarted are synthesized locally,
 // never requested from the daemon.
-var dockerV2EventActionAllowlist = []string{
-	DockerV2ActionCreate,
-	DockerV2ActionStart,
-	DockerV2ActionRestart,
-	DockerV2ActionDie,
-	DockerV2ActionStop,
-	DockerV2ActionKill,
-	DockerV2ActionDestroy,
-	DockerV2ActionRemove,
-	DockerV2ActionHealthStatus,
+var dockerEventActionAllowlist = []string{
+	DockerActionCreate,
+	DockerActionStart,
+	DockerActionRestart,
+	DockerActionDie,
+	DockerActionStop,
+	DockerActionKill,
+	DockerActionDestroy,
+	DockerActionRemove,
+	DockerActionHealthStatus,
 }
 
-// dockerV2EventsFilters is the fixed JSON-encoded /events filters value:
+// dockerEventsFilters is the fixed JSON-encoded /events filters value:
 // type=container plus the compile-time action allowlist above. It is never
-// caller-supplied; dockerV2EventsRequest is the only user.
-const dockerV2EventsFilters = `{"event":["create","start","restart","die","stop","kill","destroy","remove","health_status"],"type":["container"]}`
+// caller-supplied; dockerEventsRequest is the only user.
+const dockerEventsFilters = `{"event":["create","start","restart","die","stop","kill","destroy","remove","health_status"],"type":["container"]}`
 
-// dockerV2Base validates baseURL exactly: scheme must be http, host must be
+// dockerBase validates baseURL exactly: scheme must be http, host must be
 // present, and no userinfo, path, query, or fragment is permitted. The
 // allowlisted builders append hardcoded paths only.
-func dockerV2Base(baseURL string) (string, error) {
+func dockerBase(baseURL string) (string, error) {
 	trimmed := strings.TrimRight(baseURL, "/")
 	u, err := url.Parse(trimmed)
 	if err != nil {
@@ -73,8 +73,8 @@ func dockerV2Base(baseURL string) (string, error) {
 	return "http://" + u.Host, nil
 }
 
-// dockerV2NewGET builds a GET request for a hardcoded allowlisted path.
-func dockerV2NewGET(ctx context.Context, base, path, rawQuery string) (*http.Request, error) {
+// dockerNewGET builds a GET request for a hardcoded allowlisted path.
+func dockerNewGET(ctx context.Context, base, path, rawQuery string) (*http.Request, error) {
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, base+path, nil)
 	if err != nil {
 		return nil, err
@@ -85,31 +85,31 @@ func dockerV2NewGET(ctx context.Context, base, path, rawQuery string) (*http.Req
 	return req, nil
 }
 
-// dockerV2VersionRequest is GET /version (no query).
-func dockerV2VersionRequest(ctx context.Context, baseURL string) (*http.Request, error) {
-	base, err := dockerV2Base(baseURL)
+// dockerVersionRequest is GET /version (no query).
+func dockerVersionRequest(ctx context.Context, baseURL string) (*http.Request, error) {
+	base, err := dockerBase(baseURL)
 	if err != nil {
 		return nil, err
 	}
-	return dockerV2NewGET(ctx, base, dockerV2PathVersion, "")
+	return dockerNewGET(ctx, base, dockerPathVersion, "")
 }
 
-// dockerV2ListRequest is GET /containers/json?all=1&size=false.
-func dockerV2ListRequest(ctx context.Context, baseURL string) (*http.Request, error) {
-	base, err := dockerV2Base(baseURL)
+// dockerListRequest is GET /containers/json?all=1&size=false.
+func dockerListRequest(ctx context.Context, baseURL string) (*http.Request, error) {
+	base, err := dockerBase(baseURL)
 	if err != nil {
 		return nil, err
 	}
 	q := url.Values{}
 	q.Set("all", "1")
 	q.Set("size", "false")
-	return dockerV2NewGET(ctx, base, dockerV2PathContainers, q.Encode())
+	return dockerNewGET(ctx, base, dockerPathContainers, q.Encode())
 }
 
-// isDockerV2RawContainerID reports whether id is a full 64-char lowercase
+// isDockerRawContainerID reports whether id is a full 64-char lowercase
 // hex Docker container ID. Only full IDs reach the daemon stats path.
-func isDockerV2RawContainerID(id string) bool {
-	if len(id) != dockerV2MaxContainerID64 {
+func isDockerRawContainerID(id string) bool {
+	if len(id) != dockerMaxContainerID64 {
 		return false
 	}
 	for i := 0; i < len(id); i++ {
@@ -121,27 +121,27 @@ func isDockerV2RawContainerID(id string) bool {
 	return true
 }
 
-// dockerV2StatsRequest is GET /containers/{fullID}/stats?stream=false.
+// dockerStatsRequest is GET /containers/{fullID}/stats?stream=false.
 // Only full 64-char hex IDs are accepted; anything else fails closed so a
 // truncated display ID, name, key, or crafted segment can never reach the
 // daemon path.
-func dockerV2StatsRequest(ctx context.Context, baseURL, id string) (*http.Request, error) {
-	if !isDockerV2RawContainerID(id) {
+func dockerStatsRequest(ctx context.Context, baseURL, id string) (*http.Request, error) {
+	if !isDockerRawContainerID(id) {
 		return nil, fmt.Errorf("invalid container id")
 	}
-	base, err := dockerV2Base(baseURL)
+	base, err := dockerBase(baseURL)
 	if err != nil {
 		return nil, err
 	}
 	q := url.Values{}
 	q.Set("stream", "false")
-	return dockerV2NewGET(ctx, base, dockerV2StatsPathPrefix+id+dockerV2StatsPathSuffix, q.Encode())
+	return dockerNewGET(ctx, base, dockerStatsPathPrefix+id+dockerStatsPathSuffix, q.Encode())
 }
 
-// formatDockerV2EventTimestamp encodes canonical decimal-string nanoseconds
+// formatDockerEventTimestamp encodes canonical decimal-string nanoseconds
 // as base-10 Unix seconds with nanosecond fractions accepted by the Engine
 // API. Input must already be canonical; non-canonical input fails closed.
-func formatDockerV2EventTimestamp(nano string) (string, error) {
+func formatDockerEventTimestamp(nano string) (string, error) {
 	if !isCanonicalNanoDecimal(nano) {
 		return "", fmt.Errorf("non-canonical nanosecond value")
 	}
@@ -161,26 +161,26 @@ func formatDockerV2EventTimestamp(nano string) (string, error) {
 	return sec + "." + frac, nil
 }
 
-// dockerV2EventsRequest is GET /events?since=S&until=U with filters built
+// dockerEventsRequest is GET /events?since=S&until=U with filters built
 // internally: fixed type=container plus the compile-time action allowlist.
 // Callers supply only canonical decimal-string since/until bounds; no
 // caller-supplied filter, path, or query is accepted.
-func dockerV2EventsRequest(ctx context.Context, baseURL, sinceNano, untilNano string) (*http.Request, error) {
+func dockerEventsRequest(ctx context.Context, baseURL, sinceNano, untilNano string) (*http.Request, error) {
 	if !isCanonicalNanoDecimal(sinceNano) || !isCanonicalNanoDecimal(untilNano) {
 		return nil, fmt.Errorf("non-canonical nanosecond value")
 	}
 	if cmpCanonicalNano(sinceNano, untilNano) >= 0 {
 		return nil, fmt.Errorf("invalid event window")
 	}
-	since, err := formatDockerV2EventTimestamp(sinceNano)
+	since, err := formatDockerEventTimestamp(sinceNano)
 	if err != nil {
 		return nil, err
 	}
-	until, err := formatDockerV2EventTimestamp(untilNano)
+	until, err := formatDockerEventTimestamp(untilNano)
 	if err != nil {
 		return nil, err
 	}
-	base, err := dockerV2Base(baseURL)
+	base, err := dockerBase(baseURL)
 	if err != nil {
 		return nil, err
 	}
@@ -189,15 +189,15 @@ func dockerV2EventsRequest(ctx context.Context, baseURL, sinceNano, untilNano st
 	q.Set("until", until)
 	// Fixed internal filters: type=container plus the compile-time action
 	// allowlist. Never caller-supplied.
-	q.Set("filters", dockerV2EventsFilters)
-	return dockerV2NewGET(ctx, base, dockerV2PathEvents, q.Encode())
+	q.Set("filters", dockerEventsFilters)
+	return dockerNewGET(ctx, base, dockerPathEvents, q.Encode())
 }
 
-// dockerV2SystemDFRequest is GET /system/df (no query, no params).
-func dockerV2SystemDFRequest(ctx context.Context, baseURL string) (*http.Request, error) {
-	base, err := dockerV2Base(baseURL)
+// dockerSystemDFRequest is GET /system/df (no query, no params).
+func dockerSystemDFRequest(ctx context.Context, baseURL string) (*http.Request, error) {
+	base, err := dockerBase(baseURL)
 	if err != nil {
 		return nil, err
 	}
-	return dockerV2NewGET(ctx, base, dockerV2PathSystemDF, "")
+	return dockerNewGET(ctx, base, dockerPathSystemDF, "")
 }

@@ -65,7 +65,7 @@ function createService(
     vpsRepository as never,
     config,
     new AgentLifecycleCoordinator(),
-    { ingestV2: vi.fn() } as never,
+    { ingest: vi.fn() } as never,
   );
   return { agentRepository, service };
 }
@@ -110,7 +110,9 @@ describe("host health freshness", () => {
     // Objective positive case: a valid but stale observation must derive an unreachable host.
     // Arrange
     const now = Date.parse("2026-09-14T12:00:00.000Z");
-    const lastSeenAt = new Date(now - HOST_FRESHNESS_THRESHOLD_MS).toISOString();
+    const lastSeenAt = new Date(
+      now - HOST_FRESHNESS_THRESHOLD_MS,
+    ).toISOString();
 
     // Act
     const status = deriveHostStatus("healthy", lastSeenAt, now);
@@ -143,20 +145,34 @@ describe("agent freshness", () => {
     [120_000, "offline"],
     [121_000, "offline"],
   ])("derives online state at %sms as %s", (age, expected) => {
-    expect(deriveAgentStatus("online", new Date(now - age).toISOString(), now)).toBe(expected);
+    expect(
+      deriveAgentStatus("online", new Date(now - age).toISOString(), now),
+    ).toBe(expected);
   });
 
-  it.each([undefined, "not-a-timestamp"])("does not claim online with %s timestamp", (lastSeenAt: string | undefined) => {
-    expect(deriveAgentStatus("online", lastSeenAt, now)).toBe("offline");
-  });
+  it.each([undefined, "not-a-timestamp"])(
+    "does not claim online with %s timestamp",
+    (lastSeenAt: string | undefined) => {
+      expect(deriveAgentStatus("online", lastSeenAt, now)).toBe("offline");
+    },
+  );
 
-  it.each(["failed", "offline", "installing"] as const)("preserves explicit %s", (status) => {
-    expect(deriveAgentStatus(status, undefined, now)).toBe(status);
-  });
+  it.each(["failed", "offline", "installing"] as const)(
+    "preserves explicit %s",
+    (status) => {
+      expect(deriveAgentStatus(status, undefined, now)).toBe(status);
+    },
+  );
 
   it("applies the same derivation at the central VPS boundary", () => {
-    const state = { vpsId: "vps-1", status: "online" as const, lastSeenAt: new Date(now - 120_000).toISOString() };
-    expect(applyAgentState({ id: "vps-1" } as VpsRecord, state, now).agentStatus).toBe("offline");
+    const state = {
+      vpsId: "vps-1",
+      status: "online" as const,
+      lastSeenAt: new Date(now - 120_000).toISOString(),
+    };
+    expect(
+      applyAgentState({ id: "vps-1" } as VpsRecord, state, now).agentStatus,
+    ).toBe("offline");
   });
 });
 
@@ -191,7 +207,11 @@ describe("VPS read health", () => {
   it("keeps an online agent host unknown when no host observation exists and derives agent offline", async () => {
     // Objective negative case: agent lifecycle state alone must not fabricate healthy host telemetry.
     // Arrange
-    const stored: VpsRecord = { ...staleRecord, status: "unknown", lastSeenAt: undefined };
+    const stored: VpsRecord = {
+      ...staleRecord,
+      status: "unknown",
+      lastSeenAt: undefined,
+    };
     const state = { vpsId: stored.id, status: "online" as const };
     const store = {
       list: vi.fn().mockResolvedValue([stored]),
@@ -208,9 +228,19 @@ describe("VPS read health", () => {
     const fetched = await service.get(stored.id);
 
     // Assert
-    expect(listed[0]).toMatchObject({ status: "unknown", agentStatus: "offline" });
-    expect(fetched).toMatchObject({ status: "unknown", agentStatus: "offline" });
-    expect(stored).toEqual({ ...staleRecord, status: "unknown", lastSeenAt: undefined });
+    expect(listed[0]).toMatchObject({
+      status: "unknown",
+      agentStatus: "offline",
+    });
+    expect(fetched).toMatchObject({
+      status: "unknown",
+      agentStatus: "offline",
+    });
+    expect(stored).toEqual({
+      ...staleRecord,
+      status: "unknown",
+      lastSeenAt: undefined,
+    });
   });
 });
 

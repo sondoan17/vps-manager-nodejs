@@ -5,7 +5,7 @@ import (
 	"strings"
 )
 
-// Docker monitoring Phase 1 increment I0 — additive schema-v2 validation.
+// Docker monitoring Phase 1 increment I0 — additive schema validation.
 //
 // Fail-closed contract validation for identity/digest/action/context-version
 // fields. Display strings (name/image/state/status/createdAt) may truncate
@@ -39,10 +39,10 @@ func validateSafeID(value string, max int) error {
 }
 
 // isCanonicalNanoDecimal reports whether s is a canonical non-negative
-// decimal integer string: "0" or [1-9][0-9]*, length 1..MaxDockerV2NanoLen.
+// decimal integer string: "0" or [1-9][0-9]*, length 1..MaxDockerNanoLen.
 // Leading zeros (except "0" itself), signs, whitespace, and non-digits fail.
 func isCanonicalNanoDecimal(s string) bool {
-	if s == "" || len(s) > MaxDockerV2NanoLen {
+	if s == "" || len(s) > MaxDockerNanoLen {
 		return false
 	}
 	if s == "0" {
@@ -59,7 +59,7 @@ func isCanonicalNanoDecimal(s string) bool {
 	return true
 }
 
-func validateDockerV2NanoString(value string) error {
+func validateDockerNanoString(value string) error {
 	if !isCanonicalNanoDecimal(value) {
 		return fmt.Errorf("non-canonical nanosecond value")
 	}
@@ -77,75 +77,75 @@ func cmpCanonicalNano(a, b string) int {
 	return strings.Compare(a, b)
 }
 
-// validateDockerV2Identity validates agentInstanceId/snapshotId/batchId
+// validateDockerIdentity validates agentInstanceId/snapshotId/batchId
 // shape (safe charset, bounded). Agent emission length is exactly
 // MaxAgentInstanceIDLen for instance IDs; the API accepts the wider
 // safeId(128), so validation here is fail-closed on charset/bounds.
-func validateDockerV2Identity(value string, max int) error {
+func validateDockerIdentity(value string, max int) error {
 	return validateSafeID(value, max)
 }
 
-func validateDockerV2AgentInstanceID(value string) error {
-	return validateDockerV2Identity(value, MaxAgentInstanceIDLen)
+func validateDockerAgentInstanceID(value string) error {
+	return validateDockerIdentity(value, MaxAgentInstanceIDLen)
 }
 
-func validateDockerV2ContainerKey(value string) error {
-	return validateDockerV2Identity(value, MaxContainerKeyLen)
+func validateDockerContainerKey(value string) error {
+	return validateDockerIdentity(value, MaxContainerKeyLen)
 }
 
-func validateDockerV2Digest(value string) error {
-	return validateSafeID(value, MaxDockerV2DigestLen)
+func validateDockerDigest(value string) error {
+	return validateSafeID(value, MaxDockerDigestLen)
 }
 
-func validateDockerV2EventID(value string) error {
+func validateDockerEventID(value string) error {
 	return validateSafeID(value, MaxEventIDLen)
 }
 
-func validateDockerV2Action(value string) error {
-	if !dockerV2ActionAllowlist[value] {
+func validateDockerAction(value string) error {
+	if !dockerActionAllowlist[value] {
 		return fmt.Errorf("unapproved event action")
 	}
 	return nil
 }
 
-func validateDockerV2Health(value string) error {
+func validateDockerHealth(value string) error {
 	if value == "" {
 		return nil
 	}
-	if !dockerV2HealthAllowlist[value] {
+	if !dockerHealthAllowlist[value] {
 		return fmt.Errorf("unapproved health value")
 	}
 	return nil
 }
 
-func validateDockerV2GapReason(value string) error {
+func validateDockerGapReason(value string) error {
 	if value == "" {
 		return nil
 	}
-	if !dockerV2GapReasonAllowlist[value] {
+	if !dockerGapReasonAllowlist[value] {
 		return fmt.Errorf("unapproved gap reason")
 	}
 	return nil
 }
 
-func validateDockerV2ContextReason(value string) error {
+func validateDockerContextReason(value string) error {
 	if value == "" {
 		return nil
 	}
-	if !dockerV2ContextReasonAllowlist[value] {
+	if !dockerContextReasonAllowlist[value] {
 		return fmt.Errorf("unapproved context reason")
 	}
 	return nil
 }
 
-func validateDockerV2ContextVersion(value int) error {
+func validateDockerContextVersion(value int) error {
 	if value != DockerEventContextVersionV1 {
 		return fmt.Errorf("unsupported event context version")
 	}
 	return nil
 }
 
-func validateDockerV2ExitCode(v *int) error {
+func validateDockerExitCode(v *int) error {
 	if v == nil {
 		return nil
 	}
@@ -155,7 +155,7 @@ func validateDockerV2ExitCode(v *int) error {
 	return nil
 }
 
-func validateDockerV2Signal(v *int) error {
+func validateDockerSignal(v *int) error {
 	if v == nil {
 		return nil
 	}
@@ -165,7 +165,7 @@ func validateDockerV2Signal(v *int) error {
 	return nil
 }
 
-func validateDockerV2SkippedCount(v *int) error {
+func validateDockerSkippedCount(v *int) error {
 	if v == nil {
 		return nil
 	}
@@ -175,7 +175,7 @@ func validateDockerV2SkippedCount(v *int) error {
 	return nil
 }
 
-func validateDockerV2ErrorCode(value string) error {
+func validateDockerErrorCode(value string) error {
 	if value == "" {
 		return nil
 	}
@@ -191,7 +191,7 @@ func validateDockerV2ErrorCode(value string) error {
 	return fmt.Errorf("unapproved error code")
 }
 
-func validateDockerV2Coverage(c DockerCoverageV2) error {
+func validateDockerCoverage(c DockerCoverageV2) error {
 	if c.DetailsSampled < 0 || c.DetailsSampled > MaxContainers {
 		return fmt.Errorf("details sampled out of range")
 	}
@@ -199,39 +199,39 @@ func validateDockerV2Coverage(c DockerCoverageV2) error {
 		return fmt.Errorf("details total eligible out of range")
 	}
 	if c.CohortDigest != "" {
-		if err := validateDockerV2Digest(c.CohortDigest); err != nil {
+		if err := validateDockerDigest(c.CohortDigest); err != nil {
 			return err
 		}
 	}
 	return nil
 }
 
-func validateDockerV2Watermark(w *DockerEventWatermarkV2) error {
+func validateDockerWatermark(w *DockerEventWatermarkV2) error {
 	if w == nil {
 		return nil
 	}
-	if err := validateDockerV2NanoString(w.TimeNano); err != nil {
+	if err := validateDockerNanoString(w.TimeNano); err != nil {
 		return err
 	}
-	if len(w.BoundaryDigests) > MaxDockerV2BoundaryDigests {
+	if len(w.BoundaryDigests) > MaxDockerBoundaryDigests {
 		return fmt.Errorf("boundary digest overflow")
 	}
 	for _, d := range w.BoundaryDigests {
-		if err := validateDockerV2Digest(d); err != nil {
+		if err := validateDockerDigest(d); err != nil {
 			return err
 		}
 	}
 	return nil
 }
 
-func validateDockerV2Window(win *DockerEventWindowV2) error {
+func validateDockerWindow(win *DockerEventWindowV2) error {
 	if win == nil {
 		return nil
 	}
-	if err := validateDockerV2NanoString(win.Since); err != nil {
+	if err := validateDockerNanoString(win.Since); err != nil {
 		return err
 	}
-	if err := validateDockerV2NanoString(win.Until); err != nil {
+	if err := validateDockerNanoString(win.Until); err != nil {
 		return err
 	}
 	if cmpCanonicalNano(win.Since, win.Until) >= 0 {
@@ -244,65 +244,65 @@ func validateDockerV2Window(win *DockerEventWindowV2) error {
 	if !win.Lossy && win.GapReason != "" {
 		return fmt.Errorf("non-lossy window must not carry gap reason")
 	}
-	return validateDockerV2GapReason(win.GapReason)
+	return validateDockerGapReason(win.GapReason)
 }
 
-func validateDockerV2Event(e DockerEventV2) error {
-	if err := validateDockerV2EventID(e.EventID); err != nil {
+func validateDockerEvent(e DockerEventV2) error {
+	if err := validateDockerEventID(e.EventID); err != nil {
 		return err
 	}
 	if e.EventOccurredAt == "" {
 		return fmt.Errorf("missing event time")
 	}
-	if err := validateDockerV2Action(e.Action); err != nil {
+	if err := validateDockerAction(e.Action); err != nil {
 		return err
 	}
 	// Host-scope events (daemon_restarted, stream_gap) omit containerKey;
 	// container-scope events require a valid opaque key.
 	switch e.Action {
-	case DockerV2ActionDaemonRestart, DockerV2ActionStreamGap:
+	case DockerActionDaemonRestart, DockerActionStreamGap:
 		if e.ContainerKey != "" {
-			if err := validateDockerV2ContainerKey(e.ContainerKey); err != nil {
+			if err := validateDockerContainerKey(e.ContainerKey); err != nil {
 				return err
 			}
 		}
 	default:
-		if err := validateDockerV2ContainerKey(e.ContainerKey); err != nil {
+		if err := validateDockerContainerKey(e.ContainerKey); err != nil {
 			return err
 		}
 	}
-	if err := validateDockerV2ContextVersion(e.Context.Version); err != nil {
+	if err := validateDockerContextVersion(e.Context.Version); err != nil {
 		return err
 	}
-	if err := validateDockerV2Health(e.Context.HealthStatus); err != nil {
+	if err := validateDockerHealth(e.Context.HealthStatus); err != nil {
 		return err
 	}
-	if err := validateDockerV2ExitCode(e.Context.ExitCode); err != nil {
+	if err := validateDockerExitCode(e.Context.ExitCode); err != nil {
 		return err
 	}
-	if err := validateDockerV2Signal(e.Context.Signal); err != nil {
+	if err := validateDockerSignal(e.Context.Signal); err != nil {
 		return err
 	}
-	if err := validateDockerV2ContextReason(e.Context.Reason); err != nil {
+	if err := validateDockerContextReason(e.Context.Reason); err != nil {
 		return err
 	}
 	if e.Context.SkippedFromNano != "" {
-		if err := validateDockerV2NanoString(e.Context.SkippedFromNano); err != nil {
+		if err := validateDockerNanoString(e.Context.SkippedFromNano); err != nil {
 			return err
 		}
 	}
 	if e.Context.SkippedThroughNano != "" {
-		if err := validateDockerV2NanoString(e.Context.SkippedThroughNano); err != nil {
+		if err := validateDockerNanoString(e.Context.SkippedThroughNano); err != nil {
 			return err
 		}
 	}
-	if err := validateDockerV2SkippedCount(e.Context.SkippedCount); err != nil {
+	if err := validateDockerSkippedCount(e.Context.SkippedCount); err != nil {
 		return err
 	}
 	return nil
 }
 
-// validateDockerV2Batch enforces the all-or-none event protocol:
+// validateDockerBatch enforces the all-or-none event protocol:
 // batchId/events/eventWindow/fromWatermark/proposedWatermark travel
 // together. The batch is either fully absent (minimal snapshot, no event
 // branch, no batchId) or fully present. Watermark binding retains
@@ -313,7 +313,7 @@ func validateDockerV2Event(e DockerEventV2) error {
 // collection_deadline) must advance proposed exactly to until.
 // boundary_overflow stays partial-tolerant: lossy overflow with
 // proposed < until is accepted.
-func validateDockerV2Batch(m DockerMetricsV2) error {
+func validateDockerBatch(m DockerMetricsV2) error {
 	hasBatch := m.BatchID != ""
 	hasEvents := m.Events != nil
 	hasWindow := m.EventWindow != nil
@@ -350,9 +350,9 @@ func validateDockerV2Batch(m DockerMetricsV2) error {
 		// boundary_overrun_abandoned, response_oversize, collection_deadline.
 		// boundary_overflow remains partial-tolerant.
 		switch {
-		case m.EventWindow.Lossy && m.EventWindow.GapReason == DockerV2GapBoundaryOverrun,
-			m.EventWindow.Lossy && m.EventWindow.GapReason == DockerV2GapResponseOversize,
-			m.EventWindow.Lossy && m.EventWindow.GapReason == DockerV2GapCollectionDeadline:
+		case m.EventWindow.Lossy && m.EventWindow.GapReason == DockerGapBoundaryOverrun,
+			m.EventWindow.Lossy && m.EventWindow.GapReason == DockerGapResponseOversize,
+			m.EventWindow.Lossy && m.EventWindow.GapReason == DockerGapCollectionDeadline:
 			if m.ProposedWatermark.TimeNano != m.EventWindow.Until {
 				return fmt.Errorf("proposedWatermark.timeNano must equal eventWindow.until for abandoned windows")
 			}
@@ -361,84 +361,89 @@ func validateDockerV2Batch(m DockerMetricsV2) error {
 	return nil
 }
 
-// validateDockerV2Metrics validates a full flat v2 wire payload against the
+// validateDockerMetrics validates a full flat v2 wire payload against the
 // canonical API contract: IDs/digests/enums, caps, window/watermark
 // relations, event scoping, and storage shape.
-func validateDockerV2MonitoringMetadata(m *DockerMonitoringMetadataV2) error {
-	if m == nil { return nil }
-	if m.EffectiveCadenceSeconds <= 0 || m.EffectiveCadenceSeconds > 86400 { return fmt.Errorf("effective cadence out of range") }
-	if m.Availability != "available" && m.Availability != "unavailable" && m.Availability != "unknown" { return fmt.Errorf("invalid availability") }
-	if m.State != "enabled" && m.State != "disabled" && m.State != "unknown" { return fmt.Errorf("invalid monitoring state") }
+func validateDockerMonitoringMetadata(m *DockerMonitoringMetadataV2) error {
+	if m == nil {
+		return nil
+	}
+	if m.EffectiveCadenceSeconds <= 0 || m.EffectiveCadenceSeconds > 86400 {
+		return fmt.Errorf("effective cadence out of range")
+	}
+	if m.Availability != "available" && m.Availability != "unavailable" && m.Availability != "unknown" {
+		return fmt.Errorf("invalid availability")
+	}
+	if m.State != "enabled" && m.State != "disabled" && m.State != "unknown" {
+		return fmt.Errorf("invalid monitoring state")
+	}
 	return nil
 }
 
-func validateDockerV2Metrics(m DockerMetricsV2) error {
-	if m.SchemaVersion != DockerSchemaVersionV2 {
-		return fmt.Errorf("unsupported schema version")
-	}
-	if err := validateDockerV2AgentInstanceID(m.AgentInstanceID); err != nil {
+func validateDockerMetrics(m DockerMetricsV2) error {
+	if err := validateDockerAgentInstanceID(m.AgentInstanceID); err != nil {
 		return err
 	}
-	if err := validateDockerV2Identity(m.SnapshotID, MaxSnapshotIDLen); err != nil {
+	if err := validateDockerIdentity(m.SnapshotID, MaxSnapshotIDLen); err != nil {
 		return err
 	}
 	if m.BatchID != "" {
-		if err := validateDockerV2Identity(m.BatchID, MaxBatchIDLen); err != nil {
+		if err := validateDockerIdentity(m.BatchID, MaxBatchIDLen); err != nil {
 			return err
 		}
 	}
-	if err := validateDockerV2ErrorCode(m.ErrorCode); err != nil {
+	if err := validateDockerErrorCode(m.ErrorCode); err != nil {
 		return err
 	}
 	if len(m.Containers) > MaxContainers {
 		return fmt.Errorf("container overflow")
 	}
 	for _, c := range m.Containers {
-		if err := validateDockerV2ContainerKey(c.ContainerKey); err != nil {
+		if err := validateDockerContainerKey(c.ContainerKey); err != nil {
 			return err
 		}
-		if err := validateDockerV2Health(c.Health); err != nil {
+		if err := validateDockerHealth(c.Health); err != nil {
 			return err
 		}
 	}
 	if m.SampledContainerAggregate != nil {
-		if err := validateDockerV2Coverage(m.SampledContainerAggregate.Coverage); err != nil {
+		if err := validateDockerCoverage(m.SampledContainerAggregate.Coverage); err != nil {
 			return err
 		}
 	}
-	if len(m.Events) > MaxDockerV2Events {
+	if len(m.Events) > MaxDockerEvents {
 		return fmt.Errorf("event overflow")
 	}
 	for _, e := range m.Events {
-		if err := validateDockerV2Event(e); err != nil {
+		if err := validateDockerEvent(e); err != nil {
 			return err
 		}
 	}
-	if err := validateDockerV2Window(m.EventWindow); err != nil {
+	if err := validateDockerWindow(m.EventWindow); err != nil {
 		return err
 	}
-	if err := validateDockerV2Watermark(m.FromWatermark); err != nil {
+	if err := validateDockerWatermark(m.FromWatermark); err != nil {
 		return err
 	}
-	if err := validateDockerV2Watermark(m.ProposedWatermark); err != nil {
+	if err := validateDockerWatermark(m.ProposedWatermark); err != nil {
 		return err
 	}
-	if err := validateDockerV2Batch(m); err != nil {
+	if err := validateDockerBatch(m); err != nil {
 		return err
 	}
 	if m.Storage != nil && m.Storage.FormulaVersion != DockerStorageFormulaVersionV1 {
 		return fmt.Errorf("unsupported storage formula version")
 	}
-	if err := validateDockerV2MonitoringMetadata(m.Monitoring); err != nil {
+	if err := validateDockerMonitoringMetadata(m.Monitoring); err != nil {
 		return err
 	}
 	return nil
 }
 
-// sanitizeDockerV2Display truncates display-only strings. Identity, digest,
+// sanitizeDockerDisplay truncates display-only strings. Identity, digest,
 // action, and context-version fields are never truncated: they validate
 // fail-closed via the validators above.
-func sanitizeDockerV2Display(c DockerContainerV2) DockerContainerV2 {
+func sanitizeDockerDisplay(c DockerContainerV2) DockerContainerV2 {
 	c.Name = cappedString(c.Name, MaxNameLen)
 	c.Image = cappedString(c.Image, MaxImageLen)
 	c.State = cappedString(c.State, MaxStateLen)

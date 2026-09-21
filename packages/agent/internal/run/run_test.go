@@ -45,8 +45,8 @@ type mockPusher struct {
 	failCount      int32 // fail for first N PushWithRetry calls
 	err            error
 	handler        func(m *metrics.SystemMetrics) (*push.PushResult, error)
-	gotDockerV2    atomic.Int64 // count of pushes that carried DockerV2
-	lastStripped   atomic.Bool  // last push had nil DockerV2
+	gotDocker      atomic.Int64 // count of pushes that carried Docker
+	lastStripped   atomic.Bool  // last push had nil Docker
 }
 
 func okResult() *push.PushResult {
@@ -66,8 +66,8 @@ func (m *mockPusher) Push(ctx context.Context, metrics *metrics.SystemMetrics) (
 
 func (m *mockPusher) PushWithRetry(ctx context.Context, metrics *metrics.SystemMetrics) (*push.PushResult, error) {
 	m.pushRetryCount.Add(1)
-	if metrics != nil && metrics.DockerV2 != nil {
-		m.gotDockerV2.Add(1)
+	if metrics != nil && metrics.Docker != nil {
+		m.gotDocker.Add(1)
 		m.lastStripped.Store(false)
 	} else {
 		m.lastStripped.Store(true)
@@ -117,9 +117,8 @@ func makeV2(s *state.Store, batch, snap string, proposedNano int64) *metrics.Sys
 	exit := 137
 	return &metrics.SystemMetrics{
 		CPU: 50,
-		DockerV2: &metrics.DockerMetricsV2{
+		Docker: &metrics.DockerMetricsV2{
 			CollectedAt:     "2026-01-01T00:00:30Z",
-			SchemaVersion:   metrics.DockerSchemaVersionV2,
 			AgentInstanceID: s.InstanceID(),
 			SnapshotID:      snap,
 			SourceSequence:  strconv.FormatUint(s.Sequence(), 10),
@@ -133,7 +132,7 @@ func makeV2(s *state.Store, batch, snap string, proposedNano int64) *metrics.Sys
 					Name:             "/web-nginx",
 					Image:            "nginx:1.25",
 					State:            "running",
-					Health:           metrics.DockerV2HealthHealthy,
+					Health:           metrics.DockerHealthHealthy,
 					CPUPercent:       12.3,
 					MemoryUsageBytes: 65536000,
 					PIDs:             12,
@@ -144,14 +143,14 @@ func makeV2(s *state.Store, batch, snap string, proposedNano int64) *metrics.Sys
 					EventID:         "evt-die-0001",
 					EventOccurredAt: "2026-01-01T00:00:10Z",
 					ContainerKey:    "kkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkk",
-					Action:          metrics.DockerV2ActionDie,
+					Action:          metrics.DockerActionDie,
 					Context:         metrics.DockerEventContextV2{Version: metrics.DockerEventContextVersionV1, ExitCode: &exit},
 				},
 				{
 					EventID:         "evt-stop-0002",
 					EventOccurredAt: "2026-01-01T00:00:20Z",
 					ContainerKey:    "kkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkk",
-					Action:          metrics.DockerV2ActionStop,
+					Action:          metrics.DockerActionStop,
 					Context:         metrics.DockerEventContextV2{Version: metrics.DockerEventContextVersionV1},
 				},
 			},
@@ -178,13 +177,13 @@ func makeV2(s *state.Store, batch, snap string, proposedNano int64) *metrics.Sys
 	}
 }
 
-// marshalV2JSON returns the exact wire bytes of the DockerV2 branch.
+// marshalV2JSON returns the exact wire bytes of the Docker branch.
 func marshalV2JSON(t *testing.T, m *metrics.SystemMetrics) string {
 	t.Helper()
-	if m == nil || m.DockerV2 == nil {
-		t.Fatal("expected non-nil DockerV2")
+	if m == nil || m.Docker == nil {
+		t.Fatal("expected non-nil Docker")
 	}
-	b, err := json.Marshal(m.DockerV2)
+	b, err := json.Marshal(m.Docker)
 	if err != nil {
 		t.Fatalf("marshal v2: %v", err)
 	}
@@ -372,9 +371,9 @@ func TestRunLoop_StopsOnFatalPushError(t *testing.T) {
 // V2 success + commit
 // ---------------------------------------------------------------------------
 
-func TestFinalizeDockerV2_AssignsIdentityAndOnlyCompleteBatchID(t *testing.T) {
+func TestFinalizeDocker_AssignsIdentityAndOnlyCompleteBatchID(t *testing.T) {
 	s := mustState(t)
-	fin := FinalizeDockerV2(s)
+	fin := FinalizeDocker(s)
 	minimal := &metrics.DockerMetricsV2{}
 	fin(minimal)
 	if minimal.AgentInstanceID != s.InstanceID() || minimal.SnapshotID == "" {
@@ -682,7 +681,7 @@ func TestV2_PendingExists_BlocksLaterWindow_RetriesExactPending(t *testing.T) {
 	pusher := &mockPusher{
 		handler: func(got *metrics.SystemMetrics) (*push.PushResult, error) {
 			pushed = append(pushed, got)
-			b, _ := json.Marshal(got.DockerV2)
+			b, _ := json.Marshal(got.Docker)
 			pushedJSON = append(pushedJSON, string(b))
 			// First cycle fails at transport; second cycle (blocked new
 			// window) must retry the exact first payload.
@@ -709,8 +708,8 @@ func TestV2_PendingExists_BlocksLaterWindow_RetriesExactPending(t *testing.T) {
 	if len(pushed) != 2 {
 		t.Fatalf("expected 2 pushes, got %d", len(pushed))
 	}
-	if pushed[1].DockerV2 == nil || pushed[1].DockerV2.BatchID != "b1" {
-		t.Fatalf("second push must retry exact pending b1, got %+v", pushed[1].DockerV2)
+	if pushed[1].Docker == nil || pushed[1].Docker.BatchID != "b1" {
+		t.Fatalf("second push must retry exact pending b1, got %+v", pushed[1].Docker)
 	}
 	if pushedJSON[1] != firstJSON {
 		t.Fatalf("second push JSON must equal first push JSON:\n got=%s\nwant=%s", pushedJSON[1], firstJSON)
@@ -731,7 +730,7 @@ func TestV2_RestartReplaysExactPendingJSON(t *testing.T) {
 		t.Fatal(err)
 	}
 	m1 := makeV2(s1, "b1", "s1", 100)
-	if len(m1.DockerV2.Events) == 0 || len(m1.DockerV2.Containers) == 0 || m1.DockerV2.Storage == nil {
+	if len(m1.Docker.Events) == 0 || len(m1.Docker.Containers) == 0 || m1.Docker.Storage == nil {
 		t.Fatal("makeV2 must carry non-empty events, containers, storage")
 	}
 	wantJSON := marshalV2JSON(t, m1)
@@ -765,7 +764,7 @@ func TestV2_RestartReplaysExactPendingJSON(t *testing.T) {
 	var gotHostCPU float64
 	pusher2 := &mockPusher{
 		handler: func(got *metrics.SystemMetrics) (*push.PushResult, error) {
-			b, _ := json.Marshal(got.DockerV2)
+			b, _ := json.Marshal(got.Docker)
 			gotJSON = string(b)
 			gotHostCPU = got.CPU
 			return ackFor("test-vps", "b1", "s1", s2.InstanceID(), "committed", "100"), nil
@@ -817,7 +816,7 @@ func TestV2_RestartIdenticalCollectorReplaysIdenticalJSON(t *testing.T) {
 	var gotJSON string
 	pusher2 := &mockPusher{
 		handler: func(got *metrics.SystemMetrics) (*push.PushResult, error) {
-			b, _ := json.Marshal(got.DockerV2)
+			b, _ := json.Marshal(got.Docker)
 			gotJSON = string(b)
 			return ackFor("test-vps", "cb", "cs", s2.InstanceID(), "committed", "77"), nil
 		},
@@ -1024,7 +1023,7 @@ func TestV2_PersistError_HostContinues(t *testing.T) {
 	sawV2 = &b
 	pusher := &mockPusher{
 		handler: func(got *metrics.SystemMetrics) (*push.PushResult, error) {
-			*sawV2 = got.DockerV2 != nil
+			*sawV2 = got.Docker != nil
 			return okResult(), nil
 		},
 	}
@@ -1041,11 +1040,11 @@ func TestV2_PersistError_HostContinues(t *testing.T) {
 func TestV2_InvalidCollectedBatch_HostContinues(t *testing.T) {
 	s := mustState(t)
 	m := makeV2(s, "b1", "s1", 100)
-	m.DockerV2.AgentInstanceID = "wrong-instance"
+	m.Docker.AgentInstanceID = "wrong-instance"
 	var sawV2 bool
 	pusher := &mockPusher{
 		handler: func(got *metrics.SystemMetrics) (*push.PushResult, error) {
-			sawV2 = got.DockerV2 != nil
+			sawV2 = got.Docker != nil
 			return okResult(), nil
 		},
 	}

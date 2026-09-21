@@ -5,13 +5,12 @@ import "time"
 // DockerMetrics is a bounded sanitized snapshot of Docker container metrics
 // sent from the Go agent to the backend.
 type DockerMetrics struct {
-	VpsId         string `json:"vpsId,omitempty"`
-	CollectedAt   string `json:"collectedAt,omitempty"`
-	ReceivedAt    string `json:"receivedAt,omitempty"`
-	AgentVersion  string `json:"agentVersion,omitempty"`
-	SchemaVersion int    `json:"schemaVersion"`
-	Available     bool   `json:"available"`
-	ErrorCode     string `json:"errorCode,omitempty"`
+	VpsId        string `json:"vpsId,omitempty"`
+	CollectedAt  string `json:"collectedAt,omitempty"`
+	ReceivedAt   string `json:"receivedAt,omitempty"`
+	AgentVersion string `json:"agentVersion,omitempty"`
+	Available    bool   `json:"available"`
+	ErrorCode    string `json:"errorCode,omitempty"`
 	// Engine capability fields are intentionally limited to this whitelist.
 	EngineVersion    string                  `json:"engineVersion,omitempty"`
 	APIVersion       string                  `json:"apiVersion,omitempty"`
@@ -32,8 +31,8 @@ type DockerMetrics struct {
 
 // DockerContainerMetric is a bounded sanitized per-container metric snapshot.
 type DockerContainerMetric struct {
-	ID               string  `json:"id"`
-	fullID           string  // daemon ID retained internally for v2 derivation
+	ID     string `json:"id"`
+	fullID string // daemon ID retained internally for v2 derivation
 
 	Name             string  `json:"name"`
 	Image            string  `json:"image"`
@@ -52,7 +51,6 @@ type DockerContainerMetric struct {
 
 // Docker schema version and bounded field limits.
 const (
-	DockerSchemaVersion         = 1
 	MaxContainers               = 20
 	MaxDockerCPUPercent         = 100000
 	MaxSafeJSONNumberUint64     = uint64(9007199254740991)
@@ -129,10 +127,9 @@ func dockerUintToInt(value uint64) int {
 // and Available=false.
 func unavailableDocker(errorCode string) *DockerMetrics {
 	return &DockerMetrics{
-		SchemaVersion: DockerSchemaVersion,
-		Available:     false,
-		ErrorCode:     errorCode,
-		CollectedAt:   time.Now().UTC().Format(time.RFC3339),
-		Containers:    []DockerContainerMetric{},
+		Available:   false,
+		ErrorCode:   errorCode,
+		CollectedAt: time.Now().UTC().Format(time.RFC3339),
+		Containers:  []DockerContainerMetric{},
 	}
 }

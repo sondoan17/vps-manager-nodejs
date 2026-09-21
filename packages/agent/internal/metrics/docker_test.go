@@ -16,8 +16,7 @@ import (
 // ---------------------------------------------------------------------------
 
 func TestDockerMetricsSerialization(t *testing.T) {
-	m := &DockerMetrics{
-		SchemaVersion:    1,
+	m := &DockerMetricsV2{
 		Available:        true,
 		ErrorCode:        "",
 		ContainerTotal:   3,
@@ -30,9 +29,9 @@ func TestDockerMetricsSerialization(t *testing.T) {
 		BlockReadBytes:   1e4,
 		BlockWriteBytes:  5e3,
 		PIDs:             42,
-		Containers: []DockerContainerMetric{
+		Containers: []DockerContainerV2{
 			{
-				ID:               "abc123def456",
+				ContainerKey:     "container-key",
 				Name:             "web",
 				Image:            "nginx:latest",
 				State:            "running",
@@ -55,14 +54,11 @@ func TestDockerMetricsSerialization(t *testing.T) {
 		t.Fatalf("marshal: %v", err)
 	}
 
-	var decoded DockerMetrics
+	var decoded DockerMetricsV2
 	if err := json.Unmarshal(data, &decoded); err != nil {
 		t.Fatalf("unmarshal: %v", err)
 	}
 
-	if decoded.SchemaVersion != 1 {
-		t.Errorf("SchemaVersion = %d, want 1", decoded.SchemaVersion)
-	}
 	if !decoded.Available {
 		t.Error("Available should be true")
 	}
@@ -75,8 +71,8 @@ func TestDockerMetricsSerialization(t *testing.T) {
 	if len(decoded.Containers) != 1 {
 		t.Fatalf("len(Containers) = %d, want 1", len(decoded.Containers))
 	}
-	if decoded.Containers[0].ID != "abc123def456" {
-		t.Errorf("Container[0].ID = %q", decoded.Containers[0].ID)
+	if decoded.Containers[0].ContainerKey != "container-key" {
+		t.Errorf("Container[0].ContainerKey = %q", decoded.Containers[0].ContainerKey)
 	}
 	if decoded.Containers[0].CPUPercent != 45.2 {
 		t.Errorf("Container[0].CPUPercent = %f", decoded.Containers[0].CPUPercent)
@@ -84,10 +80,9 @@ func TestDockerMetricsSerialization(t *testing.T) {
 }
 
 func TestDockerMetricsSerialization_Unavailable(t *testing.T) {
-	m := &DockerMetrics{
-		SchemaVersion: 1,
-		Available:     false,
-		ErrorCode:     DockerErrorSocketMissing,
+	m := &DockerMetricsV2{
+		Available: false,
+		ErrorCode: DockerErrorSocketMissing,
 	}
 
 	data, err := json.Marshal(m)
@@ -95,7 +90,7 @@ func TestDockerMetricsSerialization_Unavailable(t *testing.T) {
 		t.Fatalf("marshal: %v", err)
 	}
 
-	var decoded DockerMetrics
+	var decoded DockerMetricsV2
 	if err := json.Unmarshal(data, &decoded); err != nil {
 		t.Fatalf("unmarshal: %v", err)
 	}
@@ -135,9 +130,8 @@ func TestDockerMetricsPresentWhenSet(t *testing.T) {
 	sm := &SystemMetrics{
 		CPU:    50.0,
 		Memory: 60.0,
-		Docker: &DockerMetrics{
-			SchemaVersion: 1,
-			Available:     true,
+		Docker: &DockerMetricsV2{
+			Available: true,
 		},
 	}
 
@@ -183,9 +177,6 @@ func TestUnavailableDocker(t *testing.T) {
 	}
 	if m.ErrorCode != DockerErrorTimeout {
 		t.Errorf("ErrorCode = %q, want %q", m.ErrorCode, DockerErrorTimeout)
-	}
-	if m.SchemaVersion != DockerSchemaVersion {
-		t.Errorf("SchemaVersion = %d, want %d", m.SchemaVersion, DockerSchemaVersion)
 	}
 }
 

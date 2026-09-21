@@ -94,15 +94,15 @@ func main() {
 		log.Printf("docker v2 state unavailable; continuing with host/v1 metrics: %v", e)
 		runner = run.New(cfg, collector, pushClient)
 	} else {
-		collector.SetDockerV2ContainerKeyFunc(st.ContainerKey)
-		collector.SetDockerV2FinalizeHook(run.FinalizeDockerV2(st))
-		collector.SetDockerV2EventInputProvider(func() (metrics.DockerV2EventInput, bool) {
+		collector.SetDockerContainerKeyFunc(st.ContainerKey)
+		collector.SetDockerFinalizeHook(run.FinalizeDocker(st))
+		collector.SetDockerEventInputProvider(func() (metrics.DockerEventInput, bool) {
 			if st.GetPending() != nil {
-				return metrics.DockerV2EventInput{}, false
+				return metrics.DockerEventInput{}, false
 			}
-			return metrics.DockerV2EventInput{SinceNano: fmt.Sprint(st.GetWatermark().TimeNano), UntilNano: fmt.Sprint(time.Now().Add(-time.Second).UnixNano()), AgentInstanceID: st.InstanceID(), FromDigests: st.GetWatermark().BoundaryDigests}, true
+			return metrics.DockerEventInput{SinceNano: fmt.Sprint(st.GetWatermark().TimeNano), UntilNano: fmt.Sprint(time.Now().Add(-time.Second).UnixNano()), AgentInstanceID: st.InstanceID(), FromDigests: st.GetWatermark().BoundaryDigests}, true
 		})
-		collector.SetDockerV2StorageEnabled(true)
+		collector.SetDockerStorageEnabled(true)
 		runner = run.NewWithState(cfg, collector, pushClient, st)
 	}
 	pushClient.SetLocationProvider(func() *metrics.Location {
@@ -117,11 +117,6 @@ func main() {
 	// collector's Docker metrics state on every successful push.
 	pushClient.SetConfigHandler(func(cfg *push.ConfigResponse) {
 		collector.SetDockerMetricsEnabled(cfg.DockerMetricsEnabled)
-		// Docker v2 is independently fail-closed and only follows the
-		// canonical capability advertisement (schema >= 2 plus all required
-		// history/events/storage flags).
-		pushClient.SetDockerV2FromConfig(cfg)
-		collector.SetDockerV2Enabled(pushClient.IsDockerV2Enabled())
 	})
 
 	ctx, cancel := context.WithCancel(context.Background())

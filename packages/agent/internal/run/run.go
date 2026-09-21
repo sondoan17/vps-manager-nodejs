@@ -80,8 +80,8 @@ func (r *Runner) SetDockerState(st DockerState) {
 	r.docker = st
 }
 
-// FinalizeDockerV2 attaches durable identity and event-protocol metadata before PersistPending.
-func FinalizeDockerV2(st DockerState) func(*metrics.DockerMetricsV2) {
+// FinalizeDocker attaches durable identity and event-protocol metadata before PersistPending.
+func FinalizeDocker(st DockerState) func(*metrics.DockerMetricsV2) {
 	return func(v2 *metrics.DockerMetricsV2) {
 		if v2 == nil || st == nil {
 			return
@@ -179,11 +179,11 @@ func (r *Runner) collectAndPush(ctx context.Context) error {
 // pushWithState implements I2 pending/ack semantics around PushWithRetry.
 // V1/config-only path (no complete v2 batch, or no state wired) pushes
 // directly with no state interaction. V2 path persists the exact marshalled
-// DockerV2 branch before push, replays the exact durable payload after
+// Docker branch before push, replays the exact durable payload after
 // restart, validates the typed ack, and commits only on matching committed
 // watermark.
 func (r *Runner) pushWithState(ctx context.Context, m *metrics.SystemMetrics) error {
-	v2 := m.DockerV2
+	v2 := m.Docker
 	if !isCompleteV2Batch(v2) {
 		// Preserve v1 behavior: no state interaction.
 		if _, err := r.pusher.PushWithRetry(ctx, m); err != nil {
@@ -201,7 +201,7 @@ func (r *Runner) pushWithState(ctx context.Context, m *metrics.SystemMetrics) er
 
 	if existing := r.docker.GetPending(); existing != nil {
 		// A pending batch already exists: never collect/create a later
-		// event window. Reconstruct the exact durable DockerV2 branch,
+		// event window. Reconstruct the exact durable Docker branch,
 		// validate it, attach it to the newly collected host metrics,
 		// and push the reconstructed exact branch.
 		// Never log event bodies; log only counts/ids.
@@ -211,7 +211,7 @@ func (r *Runner) pushWithState(ctx context.Context, m *metrics.SystemMetrics) er
 			return fmt.Errorf("docker v2: pending batch %q corrupt: %w", existing.BatchID, err)
 		}
 		retry := *m
-		retry.DockerV2 = recon
+		retry.Docker = recon
 		log.Printf("docker v2: pending batchId=%q exists, retrying exact pending payload", existing.BatchID)
 		res, err := r.pusher.PushWithRetry(ctx, &retry)
 		if err != nil {
@@ -229,7 +229,7 @@ func (r *Runner) pushWithState(ctx context.Context, m *metrics.SystemMetrics) er
 	cand, err := derivePendingWithPayload(v2, r.docker.InstanceID())
 	if err != nil {
 		log.Printf("docker v2: collected batch invalid, pushing host-only")
-		stripped := stripDockerV2(m)
+		stripped := stripDocker(m)
 		if _, pushErr := r.pusher.PushWithRetry(ctx, stripped); pushErr != nil {
 			return pushErr
 		}
@@ -334,17 +334,17 @@ func isCompleteV2Batch(v2 *metrics.DockerMetricsV2) bool {
 	return true
 }
 
-func stripDockerV2(m *metrics.SystemMetrics) *metrics.SystemMetrics {
+func stripDocker(m *metrics.SystemMetrics) *metrics.SystemMetrics {
 	if m == nil {
 		return nil
 	}
 	cp := *m
-	cp.DockerV2 = nil
+	cp.Docker = nil
 	return &cp
 }
 
 // derivePendingWithPayload builds the durable representation from a collected
-// complete batch. The exact DockerV2 branch is marshalled with stable JSON
+// complete batch. The exact Docker branch is marshalled with stable JSON
 // (encoding/json over the fixed struct shape), its SHA-256 digest computed,
 // and both payload and metadata persisted in PendingBatch before push.
 func derivePendingWithPayload(v2 *metrics.DockerMetricsV2, instanceID string) (state.PendingBatch, error) {

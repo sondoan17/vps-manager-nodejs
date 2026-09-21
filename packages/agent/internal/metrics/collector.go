@@ -20,20 +20,16 @@ var (
 
 // SystemMetrics represents a single snapshot of system metrics.
 type SystemMetrics struct {
-	CPU         float64        `json:"cpu"`
-	Memory      float64        `json:"memory"`
-	Disk        float64        `json:"disk"`
-	LoadAverage float64        `json:"loadAverage"`
-	NetworkRx   float64        `json:"networkRx"`
-	NetworkTx   float64        `json:"networkTx"`
-	Uptime      float64        `json:"uptime"`
-	System      *SystemInfo    `json:"system,omitempty"`
-	Docker      *DockerMetrics `json:"docker,omitempty"`
-	// DockerV2 carries the additive minimal schema-v2 snapshot when the
-	// explicit v2 capability gate is enabled. Nil when the gate is off or
-	// derivation fails. Never affects host/v1 collection.
-	DockerV2 *DockerMetricsV2 `json:"dockerV2,omitempty"`
-	Location *Location        `json:"location,omitempty"`
+	CPU         float64          `json:"cpu"`
+	Memory      float64          `json:"memory"`
+	Disk        float64          `json:"disk"`
+	LoadAverage float64          `json:"loadAverage"`
+	NetworkRx   float64          `json:"networkRx"`
+	NetworkTx   float64          `json:"networkTx"`
+	Uptime      float64          `json:"uptime"`
+	System      *SystemInfo      `json:"system,omitempty"`
+	Docker      *DockerMetricsV2 `json:"docker,omitempty"`
+	Location    *Location        `json:"location,omitempty"`
 }
 
 // CPUStats holds raw CPU time values from /proc/stat.
@@ -63,7 +59,6 @@ type Collector struct {
 
 	// Docker metrics collection (thread-safe, off by default).
 	dockerEnabled    bool
-	dockerV2Enabled  bool
 	dockerMu         sync.RWMutex
 	dockerHTTPClient *http.Client
 	dockerBaseURL    string
@@ -71,12 +66,12 @@ type Collector struct {
 	// Additive v2 runtime hooks (gate defaults off). The key func derives
 	// stable opaque containerKeys; the finalize hook lets Runner attach
 	// durable batch metadata before push. Neither performs I/O.
-	dockerV2KeyFunc     DockerV2ContainerKeyFunc
-	dockerV2Finalize    DockerV2FinalizeFunc
-	dockerV2EventInput  DockerV2EventInputProvider
-	dockerV2Storage     bool
-	dockerV2LastStorage time.Time
-	dockerV2Rotation    uint64
+	dockerKeyFunc     DockerContainerKeyFunc
+	dockerFinalize    DockerFinalizeFunc
+	dockerEventInput  DockerEventInputProvider
+	dockerStorage     bool
+	dockerLastStorage time.Time
+	dockerRotation    uint64
 }
 
 // NewCollector creates a new Collector.
@@ -139,9 +134,9 @@ func (c *Collector) Collect(ctx context.Context) (*SystemMetrics, error) {
 		collectionStart := time.Now()
 		dockerCtx, cancel := context.WithTimeout(ctx, DefaultDockerTimeoutSeconds*time.Second)
 		defer cancel()
-		metrics.Docker = c.collectDocker(dockerCtx)
-		if c.isDockerV2Enabled() && metrics.Docker != nil {
-			metrics.DockerV2 = c.collectDockerV2(dockerCtx, metrics.Docker, collectionStart)
+		legacy := c.collectDocker(dockerCtx)
+		if legacy != nil {
+			metrics.Docker = c.collectDockerSnapshot(dockerCtx, legacy, collectionStart)
 		}
 	}
 

@@ -297,9 +297,6 @@ func TestClassifyDockerError_Table(t *testing.T) {
 			if dm.ErrorCode != tc.want {
 				t.Errorf("ErrorCode=%q want %q", dm.ErrorCode, tc.want)
 			}
-			if dm.SchemaVersion != DockerSchemaVersion {
-				t.Errorf("SchemaVersion=%d want %d", dm.SchemaVersion, DockerSchemaVersion)
-			}
 			if dm.Containers == nil {
 				t.Error("Containers must never be nil")
 			}

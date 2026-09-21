@@ -5,7 +5,6 @@ import type { AppConfig } from "../config/app-config.js";
 import type {
   AgentCredential,
   AgentCredentialStatus,
-  AgentDockerMetrics,
   AgentMetricPayload,
 } from "./agent.models.js";
 import type { MetricSample } from "../metrics/metrics.models.js";
@@ -22,19 +21,18 @@ import { agentMetricPayloadSchema } from "./agent.schemas.js";
 import { VpsNotFoundError } from "../common/errors.js";
 import { AgentLifecycleCoordinator } from "./agent-lifecycle-coordinator.js";
 import { DockerMonitoringService } from "../docker/docker-monitoring.service.js";
-import type { DockerV2IngestResult } from "../docker/docker-monitoring.models.js";
+import type { DockerIngestResult } from "../docker/docker-monitoring.models.js";
 
 export type IngestMetricResult = {
   sample: MetricSample;
   config: { dockerMetricsEnabled: boolean };
   docker?: {
-    ingestStatus: DockerV2IngestResult["ingestStatus"];
+    ingestStatus: DockerIngestResult["ingestStatus"];
     snapshotId: string;
     agentInstanceId: string;
     batchId?: string;
     revision: number;
     capabilities: {
-      maxSchemaVersion: 2;
       history: true;
       containerHistory: true;
       events: true;
@@ -239,7 +237,6 @@ export class AgentService {
       const config = dockerMetricsEnabled
         ? {
             dockerMetricsEnabled: true,
-            maxSchemaVersion: 2 as const,
             history: true as const,
             containerHistory: true as const,
             events: true as const,
@@ -307,10 +304,10 @@ export class AgentService {
         });
       }
 
-      // 8. V2 Docker observations use the durable monitoring ingest path.
+      // 8. Canonical Docker observations use the durable monitoring ingest path.
       let docker: IngestMetricResult["docker"];
-      if (parsed.docker && dockerMetricsEnabled && parsed.docker.schemaVersion === 2) {
-        const result = await this.dockerMonitoringService.ingestV2(
+      if (parsed.docker && dockerMetricsEnabled) {
+        const result = await this.dockerMonitoringService.ingest(
           credential.vpsId,
           parsed.docker,
           now,
@@ -322,43 +319,12 @@ export class AgentService {
           ...(result.batchId ? { batchId: result.batchId } : {}),
           revision: result.revision,
           capabilities: {
-            maxSchemaVersion: 2,
             history: true,
             containerHistory: true,
             events: true,
             storage: true,
           },
         };
-      } else if (parsed.docker && dockerMetricsEnabled) {
-        // The v2 branch above is handled by DockerMonitoringService. This
-        // legacy path is intentionally narrowed to the v1 DTO so its opaque
-        // container identifiers remain compatible with agent_docker_metrics.
-        const dockerV1 = parsed.docker as Extract<typeof parsed.docker, { schemaVersion?: 1 }>;
-        const dockerMetrics: AgentDockerMetrics = {
-          vpsId: credential.vpsId,
-          collectedAt: dockerV1.collectedAt,
-          receivedAt: now,
-          agentVersion: dockerV1.agentVersion ?? parsed.agentVersion,
-          engineVersion: dockerV1.engineVersion,
-          apiVersion: dockerV1.apiVersion,
-          os: dockerV1.os,
-          architecture: dockerV1.architecture,
-          schemaVersion: 1,
-          available: dockerV1.available,
-          errorCode: dockerV1.errorCode,
-          containerTotal: dockerV1.containerTotal,
-          containerRunning: dockerV1.containerRunning,
-          cpuPercent: dockerV1.cpuPercent,
-          memoryUsageBytes: dockerV1.memoryUsageBytes,
-          memoryLimitBytes: dockerV1.memoryLimitBytes,
-          networkRxBytes: dockerV1.networkRxBytes,
-          networkTxBytes: dockerV1.networkTxBytes,
-          blockReadBytes: dockerV1.blockReadBytes,
-          blockWriteBytes: dockerV1.blockWriteBytes,
-          pids: dockerV1.pids,
-          containers: dockerV1.containers ?? [],
-        };
-        await this.agentRepository.upsertDockerMetrics(dockerMetrics);
       }
       // When dockerMetricsEnabled is false, any Docker payload is silently ignored.
 

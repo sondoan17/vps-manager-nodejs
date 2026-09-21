@@ -1,18 +1,9 @@
 package metrics
 
-// Docker monitoring Phase 1 increment I0 — additive schema-v2 contract.
-//
-// Canonical wire contract: flat API shape (packages/api/src/agents/
-// agent.models.ts + agent.schemas.ts). V1 (DockerMetrics,
-// DockerContainerMetric, DockerSchemaVersion = 1) is preserved exactly.
-// Nothing here is wired into collection, push, durable state, or storage.
-// Display strings may truncate; identity/digest/action/context-version
-// fields validate fail-closed and are never truncated or coerced.
-
+// Canonical Docker monitoring payload types and validation helpers.
+// The payload is unversioned on the wire; storage and event sub-formulas
+// retain their own compatibility versions where required.
 const (
-	// DockerSchemaVersionV2 is the additive discriminated schema version.
-	DockerSchemaVersionV2 = 2
-
 	// Storage formula version persisted with every storage observation.
 	DockerStorageFormulaVersionV1 = 1
 
@@ -32,86 +23,86 @@ const (
 	MaxEventIDLen    = 128
 
 	// Event batch transmit/storage caps (plan section 3).
-	MaxDockerV2Events           = 100
-	MaxDockerV2EventBranchBytes = 64 * 1024
+	MaxDockerEvents           = 100
+	MaxDockerEventBranchBytes = 64 * 1024
 
 	// Event watermark boundary digest cap (plan section 3).
-	MaxDockerV2BoundaryDigests = 256
-	MaxDockerV2DigestLen       = 64
+	MaxDockerBoundaryDigests = 256
+	MaxDockerDigestLen       = 64
 
 	// Storage overview response read cap (plan section 3).
-	MaxDockerV2SystemDFBytes = 256 * 1024
+	MaxDockerSystemDFBytes = 256 * 1024
 
 	// Canonical decimal-string bounds for exact nanosecond fields.
-	MaxDockerV2NanoLen = 32
+	MaxDockerNanoLen = 32
 )
 
 // Typed allowlisted container health values (API enum).
 const (
-	DockerV2HealthHealthy   = "healthy"
-	DockerV2HealthUnhealthy = "unhealthy"
-	DockerV2HealthStarting  = "starting"
-	DockerV2HealthNone      = "none"
+	DockerHealthHealthy   = "healthy"
+	DockerHealthUnhealthy = "unhealthy"
+	DockerHealthStarting  = "starting"
+	DockerHealthNone      = "none"
 )
 
 // Typed allowlisted event actions (API enum).
 const (
-	DockerV2ActionCreate        = "create"
-	DockerV2ActionStart         = "start"
-	DockerV2ActionRestart       = "restart"
-	DockerV2ActionDie           = "die"
-	DockerV2ActionStop          = "stop"
-	DockerV2ActionKill          = "kill"
-	DockerV2ActionDestroy       = "destroy"
-	DockerV2ActionRemove        = "remove"
-	DockerV2ActionHealthStatus  = "health_status"
-	DockerV2ActionStreamGap     = "stream_gap"
-	DockerV2ActionDaemonRestart = "daemon_restarted"
+	DockerActionCreate        = "create"
+	DockerActionStart         = "start"
+	DockerActionRestart       = "restart"
+	DockerActionDie           = "die"
+	DockerActionStop          = "stop"
+	DockerActionKill          = "kill"
+	DockerActionDestroy       = "destroy"
+	DockerActionRemove        = "remove"
+	DockerActionHealthStatus  = "health_status"
+	DockerActionStreamGap     = "stream_gap"
+	DockerActionDaemonRestart = "daemon_restarted"
 )
 
 // Typed allowlisted gap reasons (API enum).
 const (
-	DockerV2GapBoundaryOverflow   = "boundary_overflow"
-	DockerV2GapBoundaryOverrun    = "boundary_overrun_abandoned"
-	DockerV2GapResponseOversize   = "response_oversize"
-	DockerV2GapCollectionDeadline = "collection_deadline"
-	DockerV2ReasonDaemonRestarted = "daemon_restarted"
+	DockerGapBoundaryOverflow   = "boundary_overflow"
+	DockerGapBoundaryOverrun    = "boundary_overrun_abandoned"
+	DockerGapResponseOversize   = "response_oversize"
+	DockerGapCollectionDeadline = "collection_deadline"
+	DockerReasonDaemonRestarted = "daemon_restarted"
 )
 
-var dockerV2HealthAllowlist = map[string]bool{
-	DockerV2HealthHealthy:   true,
-	DockerV2HealthUnhealthy: true,
-	DockerV2HealthStarting:  true,
-	DockerV2HealthNone:      true,
+var dockerHealthAllowlist = map[string]bool{
+	DockerHealthHealthy:   true,
+	DockerHealthUnhealthy: true,
+	DockerHealthStarting:  true,
+	DockerHealthNone:      true,
 }
 
-var dockerV2ActionAllowlist = map[string]bool{
-	DockerV2ActionCreate:        true,
-	DockerV2ActionStart:         true,
-	DockerV2ActionRestart:       true,
-	DockerV2ActionDie:           true,
-	DockerV2ActionStop:          true,
-	DockerV2ActionKill:          true,
-	DockerV2ActionDestroy:       true,
-	DockerV2ActionRemove:        true,
-	DockerV2ActionHealthStatus:  true,
-	DockerV2ActionStreamGap:     true,
-	DockerV2ActionDaemonRestart: true,
+var dockerActionAllowlist = map[string]bool{
+	DockerActionCreate:        true,
+	DockerActionStart:         true,
+	DockerActionRestart:       true,
+	DockerActionDie:           true,
+	DockerActionStop:          true,
+	DockerActionKill:          true,
+	DockerActionDestroy:       true,
+	DockerActionRemove:        true,
+	DockerActionHealthStatus:  true,
+	DockerActionStreamGap:     true,
+	DockerActionDaemonRestart: true,
 }
 
-var dockerV2GapReasonAllowlist = map[string]bool{
-	DockerV2GapBoundaryOverflow:   true,
-	DockerV2GapBoundaryOverrun:    true,
-	DockerV2GapResponseOversize:   true,
-	DockerV2GapCollectionDeadline: true,
+var dockerGapReasonAllowlist = map[string]bool{
+	DockerGapBoundaryOverflow:   true,
+	DockerGapBoundaryOverrun:    true,
+	DockerGapResponseOversize:   true,
+	DockerGapCollectionDeadline: true,
 }
 
-var dockerV2ContextReasonAllowlist = map[string]bool{
-	DockerV2GapBoundaryOverflow:   true,
-	DockerV2GapBoundaryOverrun:    true,
-	DockerV2GapResponseOversize:   true,
-	DockerV2GapCollectionDeadline: true,
-	DockerV2ReasonDaemonRestarted: true,
+var dockerContextReasonAllowlist = map[string]bool{
+	DockerGapBoundaryOverflow:   true,
+	DockerGapBoundaryOverrun:    true,
+	DockerGapResponseOversize:   true,
+	DockerGapCollectionDeadline: true,
+	DockerReasonDaemonRestarted: true,
 }
 
 // DockerCoverageV2 mirrors API DockerCoverage.
@@ -226,11 +217,10 @@ type DockerMonitoringMetadataV2 struct {
 	State                   string `json:"state"`
 }
 
-// DockerMetricsV2 is the canonical flat API wire contract (schemaVersion 2).
-// Top-level host aggregate fields remain required as API v2 expects; event
-// batch fields are flat (batchId/snapshotId/agentInstanceId/fromWatermark/
-// proposedWatermark/events/eventWindow). Not attached to SystemMetrics or
-// any collection path in I0.
+// DockerMetrics is the canonical flat API wire contract.
+// Top-level host aggregate fields remain required; event batch fields are
+// flat (batchId/snapshotId/agentInstanceId/fromWatermark/proposedWatermark/
+// events/eventWindow). It is the sole Docker payload on SystemMetrics.
 type DockerMetricsV2 struct {
 	CollectedAt               string                             `json:"collectedAt"`
 	AgentVersion              string                             `json:"agentVersion,omitempty"`
@@ -238,7 +228,6 @@ type DockerMetricsV2 struct {
 	APIVersion                string                             `json:"apiVersion,omitempty"`
 	OS                        string                             `json:"os,omitempty"`
 	Architecture              string                             `json:"architecture,omitempty"`
-	SchemaVersion             int                                `json:"schemaVersion"`
 	AgentInstanceID           string                             `json:"agentInstanceId"`
 	SnapshotID                string                             `json:"snapshotId"`
 	SourceSequence            string                             `json:"sourceSequence"`

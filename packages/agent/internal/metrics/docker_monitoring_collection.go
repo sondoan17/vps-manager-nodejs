@@ -22,35 +22,35 @@ import (
 // One global 5s context (DefaultDockerTimeoutSeconds) and v1 behavior preserved.
 
 const (
-	dockerV2DecodeMaxEvents = 10000
-	dockerV2DecodeMaxBytes  = 2 * 1024 * 1024
+	dockerDecodeMaxEvents = 10000
+	dockerDecodeMaxBytes  = 2 * 1024 * 1024
 
-	dockerV2BoundaryMaxEvents = 1000
-	dockerV2BoundaryMaxBytes  = 512 * 1024
+	dockerBoundaryMaxEvents = 1000
+	dockerBoundaryMaxBytes  = 512 * 1024
 
-	// DockerV2StorageCadence is the slower /system/df cadence from the plan.
-	DockerV2StorageCadence = 5 * time.Minute
+	// DockerStorageCadence is the slower /system/df cadence from the plan.
+	DockerStorageCadence = 5 * time.Minute
 )
 
-// DockerV2Selection is the minimal transient input for deterministic selection.
-type DockerV2Selection struct {
+// DockerSelection is the minimal transient input for deterministic selection.
+type DockerSelection struct {
 	ContainerKey string
 	Running      bool
 	Unhealthy    bool
 	StateChanged bool
 }
 
-// selectDockerV2Containers is deterministic by containerKey: unhealthy or
+// selectDockerContainers is deterministic by containerKey: unhealthy or
 // state-changed first, then running, then remainder rotated by key.
 // Input is never mutated. Limit is capped at MaxContainers.
-func selectDockerV2Containers(in []DockerV2Selection, limit int, rotation uint64) []DockerV2Selection {
+func selectDockerContainers(in []DockerSelection, limit int, rotation uint64) []DockerSelection {
 	if limit <= 0 {
 		return nil
 	}
 	if limit > MaxContainers {
 		limit = MaxContainers
 	}
-	v := append([]DockerV2Selection(nil), in...)
+	v := append([]DockerSelection(nil), in...)
 	sort.SliceStable(v, func(i, j int) bool {
 		ri := selectionRank(v[i])
 		rj := selectionRank(v[j])
@@ -69,7 +69,7 @@ func selectDockerV2Containers(in []DockerV2Selection, limit int, rotation uint64
 	if cut >= limit {
 		return v[:limit]
 	}
-	out := append([]DockerV2Selection(nil), v[:cut]...)
+	out := append([]DockerSelection(nil), v[:cut]...)
 	tail := v[cut:]
 	start := int(rotation % uint64(len(tail)))
 	for len(out) < limit && len(out)-cut < len(tail) {
@@ -78,7 +78,7 @@ func selectDockerV2Containers(in []DockerV2Selection, limit int, rotation uint64
 	return out
 }
 
-func selectionRank(x DockerV2Selection) int {
+func selectionRank(x DockerSelection) int {
 	if x.Unhealthy || x.StateChanged {
 		return 0
 	}
@@ -88,16 +88,16 @@ func selectionRank(x DockerV2Selection) int {
 	return 2
 }
 
-// dockerV2CohortDigest is SHA-256 over sorted sampled keys, hex encoded.
-func dockerV2CohortDigest(keys []string) string {
+// dockerCohortDigest is SHA-256 over sorted sampled keys, hex encoded.
+func dockerCohortDigest(keys []string) string {
 	cp := append([]string(nil), keys...)
 	sort.Strings(cp)
 	h := sha256.Sum256([]byte(strings.Join(cp, "\x00")))
 	return hex.EncodeToString(h[:])
 }
 
-// dockerV2Coverage builds explicit coverage metadata.
-func dockerV2Coverage(sampled int, total int, keys []string) DockerCoverageV2 {
+// dockerCoverage builds explicit coverage metadata.
+func dockerCoverage(sampled int, total int, keys []string) DockerCoverageV2 {
 	complete := sampled == total
 	c := DockerCoverageV2{
 		DetailsSampled:       sampled,
@@ -105,16 +105,16 @@ func dockerV2Coverage(sampled int, total int, keys []string) DockerCoverageV2 {
 		Complete:             complete,
 	}
 	if sampled > 0 && sampled == total {
-		c.CohortDigest = dockerV2CohortDigest(keys)
+		c.CohortDigest = dockerCohortDigest(keys)
 	} else if sampled > 0 {
-		c.CohortDigest = dockerV2CohortDigest(keys)
+		c.CohortDigest = dockerCohortDigest(keys)
 	}
 	return c
 }
 
-// dockerV2SampledAggregate sums only successfully sampled containers.
+// dockerSampledAggregate sums only successfully sampled containers.
 // Host totals remain authoritative elsewhere; this aggregate never claims them.
-func dockerV2SampledAggregate(containers []DockerContainerV2, total int) DockerSampledContainerAggregateV2 {
+func dockerSampledAggregate(containers []DockerContainerV2, total int) DockerSampledContainerAggregateV2 {
 	keys := make([]string, 0, len(containers))
 	agg := DockerSampledContainerAggregateV2{}
 	for _, c := range containers {
@@ -133,32 +133,32 @@ func dockerV2SampledAggregate(containers []DockerContainerV2, total int) DockerS
 	agg.NetworkTxBytes = cappedDockerFloat(agg.NetworkTxBytes)
 	agg.BlockReadBytes = cappedDockerFloat(agg.BlockReadBytes)
 	agg.BlockWriteBytes = cappedDockerFloat(agg.BlockWriteBytes)
-	agg.Coverage = dockerV2Coverage(len(containers), total, keys)
+	agg.Coverage = dockerCoverage(len(containers), total, keys)
 	return agg
 }
 
-// dockerV2RemainingBudget reports whether a bounded sub-operation may start
+// dockerRemainingBudget reports whether a bounded sub-operation may start
 // without consuming the required collection budget.
-func dockerV2RemainingBudget(start time.Time, budget, reserve time.Duration) bool {
+func dockerRemainingBudget(start time.Time, budget, reserve time.Duration) bool {
 	return time.Since(start)+reserve < budget
 }
 
-// dockerV2StorageDue reports the 5-minute storage cadence (or first cycle).
-func dockerV2StorageDue(last, now time.Time) bool {
+// dockerStorageDue reports the 5-minute storage cadence (or first cycle).
+func dockerStorageDue(last, now time.Time) bool {
 	if last.IsZero() {
 		return true
 	}
-	return !now.Before(last.Add(DockerV2StorageCadence))
+	return !now.Before(last.Add(DockerStorageCadence))
 }
 
 // ---------------------------------------------------------------------------
 // /events fixed-window streaming decoder.
 // ---------------------------------------------------------------------------
 
-// DockerV2RawEvent is the allowlisted subset of a daemon event object.
+// DockerRawEvent is the allowlisted subset of a daemon event object.
 // Only Type/Action/Actor/Time fields are read; Attributes are allowlisted
 // downstream and never persisted wholesale.
-type DockerV2RawEvent struct {
+type DockerRawEvent struct {
 	Type   string `json:"Type"`
 	Action string `json:"Action"`
 	Actor  struct {
@@ -180,28 +180,28 @@ func (c *countingReader) Read(p []byte) (int, error) {
 	return n, err
 }
 
-// dockerV2EventDigest is the safe identity over
+// dockerEventDigest is the safe identity over
 // (agentInstanceId, eventTimeNano, action, containerKey, contextVersion, context).
-func dockerV2EventDigest(instance, nano, action, key string, ctx DockerEventContextV2) string {
+func dockerEventDigest(instance, nano, action, key string, ctx DockerEventContextV2) string {
 	b, _ := json.Marshal(ctx)
 	parts := strings.Join([]string{instance, nano, action, key, strconv.Itoa(ctx.Version), string(b)}, "\x00")
 	h := sha256.Sum256([]byte(parts))
 	return hex.EncodeToString(h[:])
 }
 
-// dockerV2SafeContext builds the minimal typed safe context for a daemon event.
+// dockerSafeContext builds the minimal typed safe context for a daemon event.
 // Only allowlisted scalar fields are admitted; Attributes are never copied.
-func dockerV2SafeContext(raw DockerV2RawEvent) DockerEventContextV2 {
+func dockerSafeContext(raw DockerRawEvent) DockerEventContextV2 {
 	ctx := DockerEventContextV2{Version: DockerEventContextVersionV1}
-	if raw.Action == DockerV2ActionHealthStatus {
+	if raw.Action == DockerActionHealthStatus {
 		if v, ok := raw.Actor.Attributes["health_status"]; ok {
 			switch v {
-			case DockerV2HealthHealthy, DockerV2HealthUnhealthy, DockerV2HealthStarting, DockerV2HealthNone:
+			case DockerHealthHealthy, DockerHealthUnhealthy, DockerHealthStarting, DockerHealthNone:
 				ctx.HealthStatus = v
 			}
 		}
 	}
-	if raw.Action == DockerV2ActionDie {
+	if raw.Action == DockerActionDie {
 		if v, ok := raw.Actor.Attributes["exitCode"]; ok {
 			if n, err := strconv.Atoi(v); err == nil && n >= 0 && n <= 255 {
 				cp := n
@@ -218,7 +218,7 @@ func dockerV2SafeContext(raw DockerV2RawEvent) DockerEventContextV2 {
 	return ctx
 }
 
-func dockerV2NormalizeNano(e DockerV2RawEvent) (string, bool, bool) {
+func dockerNormalizeNano(e DockerRawEvent) (string, bool, bool) {
 	if e.TimeNano != nil && *e.TimeNano != 0 {
 		if *e.TimeNano < 0 {
 			return "", false, false
@@ -239,7 +239,7 @@ func dockerV2NormalizeNano(e DockerV2RawEvent) (string, bool, bool) {
 	return nano, true, true
 }
 
-func dockerV2EventOccurredAt(nano string) string {
+func dockerEventOccurredAt(nano string) string {
 	for _, r := range nano {
 		if r < '0' || r > '9' {
 			return time.Now().UTC().Format(time.RFC3339Nano)
@@ -260,62 +260,62 @@ func dockerV2EventOccurredAt(nano string) string {
 	return time.Unix(s, f).UTC().Format(time.RFC3339Nano)
 }
 
-type dockerV2SafeEvent struct {
+type dockerSafeEvent struct {
 	nano string
 	key  string
 	ev   DockerEventV2
 	size int
 }
 
-// errDockerV2EventObjectOversize signals a single event object that exceeds
+// errDockerEventObjectOversize signals a single event object that exceeds
 // the decode byte budget. Callers map it to oversize (lossy gap), never to a
 // hard error, so a hostile object cannot grow framing memory.
-var errDockerV2EventObjectOversize = errors.New("docker v2: event object oversize")
+var errDockerEventObjectOversize = errors.New("docker monitoring: event object oversize")
 
-// dockerV2MaxObjectDepth bounds JSON nesting inside one event object.
+// dockerMaxObjectDepth bounds JSON nesting inside one event object.
 // Daemon events are flat; deeper nesting is hostile or corrupt.
-const dockerV2MaxObjectDepth = 64
+const dockerMaxObjectDepth = 64
 
-// dockerV2RawEventAttrCap bounds the daemon Attributes map decoded from one
+// dockerRawEventAttrCap bounds the daemon Attributes map decoded from one
 // event object before any accumulation. Only allowlisted scalar entries are
 // ever copied downstream; the raw map itself is never persisted.
-const dockerV2RawEventAttrCap = 256
+const dockerRawEventAttrCap = 256
 
-// dockerV2RawEventAttrBytesCap bounds the total key+value bytes of one
+// dockerRawEventAttrBytesCap bounds the total key+value bytes of one
 // event's Attributes map before accumulation.
-const dockerV2RawEventAttrBytesCap = 8 * 1024
+const dockerRawEventAttrBytesCap = 8 * 1024
 
-// dockerV2RawFieldCap bounds Type/Action/Actor.ID rune lengths decoded from
+// dockerRawFieldCap bounds Type/Action/Actor.ID rune lengths decoded from
 // one event object before key derivation or accumulation.
-const dockerV2RawFieldCap = 256
+const dockerRawFieldCap = 256
 
-// dockerV2RawEventBounded reports whether a decoded raw event is within the
+// dockerRawEventBounded reports whether a decoded raw event is within the
 // pre-accumulation object bounds (attributes count/bytes and short fields).
-func dockerV2RawEventBounded(e DockerV2RawEvent) bool {
-	if len(e.Type) > dockerV2RawFieldCap || len(e.Action) > dockerV2RawFieldCap || len(e.Actor.ID) > dockerV2RawFieldCap {
+func dockerRawEventBounded(e DockerRawEvent) bool {
+	if len(e.Type) > dockerRawFieldCap || len(e.Action) > dockerRawFieldCap || len(e.Actor.ID) > dockerRawFieldCap {
 		return false
 	}
-	if len(e.Actor.Attributes) > dockerV2RawEventAttrCap {
+	if len(e.Actor.Attributes) > dockerRawEventAttrCap {
 		return false
 	}
 	var total int
 	for k, v := range e.Actor.Attributes {
 		total += len(k) + len(v)
-		if total > dockerV2RawEventAttrBytesCap {
+		if total > dockerRawEventAttrBytesCap {
 			return false
 		}
 	}
 	return true
 }
 
-// decodeDockerV2EventStream decodes a finite /events response with
+// decodeDockerEventStream decodes a finite /events response with
 // io.LimitReader(max+1) sentinel semantics. It returns raw events and
 // oversize=true when the source exceeds max events or max bytes.
 // No open stream is ever used; callers pass the fixed-window response body.
-// nextDockerV2JSONValue frames one complete top-level JSON object without decoder read-ahead.
-func nextDockerV2JSONValue(br *bufio.Reader, maxObjectBytes int64) ([]byte, error) {
+// nextDockerJSONValue frames one complete top-level JSON object without decoder read-ahead.
+func nextDockerJSONValue(br *bufio.Reader, maxObjectBytes int64) ([]byte, error) {
 	if maxObjectBytes <= 0 {
-		maxObjectBytes = dockerV2DecodeMaxBytes + 1
+		maxObjectBytes = dockerDecodeMaxBytes + 1
 	}
 	var read int64
 	for {
@@ -328,13 +328,13 @@ func nextDockerV2JSONValue(br *bufio.Reader, maxObjectBytes int64) ([]byte, erro
 		}
 		read++
 		if read > maxObjectBytes {
-			return nil, errDockerV2EventObjectOversize
+			return nil, errDockerEventObjectOversize
 		}
 		if c == ' ' || c == '\t' || c == '\r' || c == '\n' {
 			continue
 		}
 		if c != '{' {
-			return nil, fmt.Errorf("docker v2: event stream must contain objects")
+			return nil, fmt.Errorf("docker monitoring: event stream must contain objects")
 		}
 		b := []byte{c}
 		depth := 1
@@ -349,11 +349,11 @@ func nextDockerV2JSONValue(br *bufio.Reader, maxObjectBytes int64) ([]byte, erro
 			}
 			read++
 			if read > maxObjectBytes {
-				return nil, errDockerV2EventObjectOversize
+				return nil, errDockerEventObjectOversize
 			}
 			b = append(b, c)
 			if int64(len(b)) > maxObjectBytes {
-				return nil, errDockerV2EventObjectOversize
+				return nil, errDockerEventObjectOversize
 			}
 			if inString {
 				if escaped {
@@ -371,8 +371,8 @@ func nextDockerV2JSONValue(br *bufio.Reader, maxObjectBytes int64) ([]byte, erro
 			}
 			if c == '{' {
 				depth++
-				if depth > dockerV2MaxObjectDepth {
-					return nil, fmt.Errorf("docker v2: event object too deep")
+				if depth > dockerMaxObjectDepth {
+					return nil, fmt.Errorf("docker monitoring: event object too deep")
 				}
 			}
 			if c == '}' {
@@ -385,24 +385,24 @@ func nextDockerV2JSONValue(br *bufio.Reader, maxObjectBytes int64) ([]byte, erro
 	}
 }
 
-func decodeDockerV2EventStream(r io.Reader, maxEvents int, maxBytes int64) ([]DockerV2RawEvent, bool, error) {
+func decodeDockerEventStream(r io.Reader, maxEvents int, maxBytes int64) ([]DockerRawEvent, bool, error) {
 	br := bufio.NewReader(r)
 	var consumed int64
 	if maxEvents <= 0 {
-		maxEvents = dockerV2DecodeMaxEvents
+		maxEvents = dockerDecodeMaxEvents
 	}
 	if maxBytes <= 0 {
-		maxBytes = dockerV2DecodeMaxBytes
+		maxBytes = dockerDecodeMaxBytes
 	}
 	perObject := maxBytes + 1
-	out := make([]DockerV2RawEvent, 0, 64)
+	out := make([]DockerRawEvent, 0, 64)
 	for {
-		raw, err := nextDockerV2JSONValue(br, perObject)
+		raw, err := nextDockerJSONValue(br, perObject)
 		consumed += int64(len(raw))
 		if err == io.EOF {
 			return out, false, nil
 		}
-		if errors.Is(err, errDockerV2EventObjectOversize) || consumed > maxBytes {
+		if errors.Is(err, errDockerEventObjectOversize) || consumed > maxBytes {
 			return out, true, nil
 		}
 		if err != nil {
@@ -411,21 +411,21 @@ func decodeDockerV2EventStream(r io.Reader, maxEvents int, maxBytes int64) ([]Do
 		if consumed > maxBytes {
 			return out, true, nil
 		}
-		var e DockerV2RawEvent
+		var e DockerRawEvent
 		if err := json.Unmarshal(raw, &e); err != nil {
 			return out, false, err
 		}
-		if !dockerV2RawEventBounded(e) {
-			return out, false, fmt.Errorf("docker v2: event object unbounded")
+		if !dockerRawEventBounded(e) {
+			return out, false, fmt.Errorf("docker monitoring: event object unbounded")
 		}
 		out = append(out, e)
 		if len(out) == maxEvents {
-			raw, err = nextDockerV2JSONValue(br, perObject)
+			raw, err = nextDockerJSONValue(br, perObject)
 			consumed += int64(len(raw))
 			if err == nil || consumed > maxBytes {
 				return out, true, nil
 			}
-			if errors.Is(err, errDockerV2EventObjectOversize) {
+			if errors.Is(err, errDockerEventObjectOversize) {
 				return out, true, nil
 			}
 			if err != io.EOF {
@@ -436,8 +436,8 @@ func decodeDockerV2EventStream(r io.Reader, maxEvents int, maxBytes int64) ([]Do
 	}
 }
 
-func isDockerV2WantedAction(a string) bool {
-	for _, w := range dockerV2EventActionAllowlist {
+func isDockerWantedAction(a string) bool {
+	for _, w := range dockerEventActionAllowlist {
 		if a == w {
 			return true
 		}
@@ -445,7 +445,7 @@ func isDockerV2WantedAction(a string) bool {
 	return false
 }
 
-// collectDockerV2EventWindow applies transmit caps, timestamp-boundary overrun,
+// collectDockerEventWindow applies transmit caps, timestamp-boundary overrun,
 // digest dedupe, gap synthesis, and proposed-watermark semantics.
 //
 // sinceNano/untilNano are canonical decimal strings with since < until.
@@ -453,11 +453,11 @@ func isDockerV2WantedAction(a string) bool {
 // keyForID maps a full daemon actor ID to an opaque containerKey.
 // Transmit caps: 100 events / 64KiB encoded. Decode caps: 10k / 2MiB.
 // Boundary overrun: 1000 events / 512KiB, limit+1 sentinel.
-func collectDockerV2EventWindow(ctx context.Context, r io.Reader, sinceNano, untilNano, agentInstanceID string, fromDigests []string, keyForID func(string) string) ([]DockerEventV2, *DockerEventWindowV2, *DockerEventWatermarkV2, error) {
+func collectDockerEventWindow(ctx context.Context, r io.Reader, sinceNano, untilNano, agentInstanceID string, fromDigests []string, keyForID func(string) string) ([]DockerEventV2, *DockerEventWindowV2, *DockerEventWatermarkV2, error) {
 	if !isCanonicalNanoDecimal(sinceNano) || !isCanonicalNanoDecimal(untilNano) || cmpCanonicalNano(sinceNano, untilNano) >= 0 {
 		return nil, nil, nil, fmt.Errorf("invalid event window")
 	}
-	if err := validateDockerV2AgentInstanceID(agentInstanceID); err != nil {
+	if err := validateDockerAgentInstanceID(agentInstanceID); err != nil {
 		return nil, nil, nil, err
 	}
 	if keyForID == nil {
@@ -469,7 +469,7 @@ func collectDockerV2EventWindow(ctx context.Context, r io.Reader, sinceNano, unt
 	for _, d := range fromDigests {
 		dup[d] = true
 	}
-	out := make([]dockerV2SafeEvent, 0, MaxDockerV2Events)
+	out := make([]dockerSafeEvent, 0, MaxDockerEvents)
 	boundary := false
 	var bt string
 	var sourceN int
@@ -478,32 +478,38 @@ func collectDockerV2EventWindow(ctx context.Context, r io.Reader, sinceNano, unt
 	boundaryOverrun := false
 	var acc int
 	gap := func(reason string) ([]DockerEventV2, *DockerEventWindowV2, *DockerEventWatermarkV2, error) {
-		tr, a := truncateDockerV2Transmit(out, true)
-		g := dockerV2GapEvent(sinceNano, untilNano, len(out)-len(tr), agentInstanceID, untilNano)
+		tr, a := truncateDockerTransmit(out, true)
+		g := dockerGapEvent(sinceNano, untilNano, len(out)-len(tr), agentInstanceID, untilNano)
 		g.Context.Reason = reason
-		tr = appendDockerV2GapFitting(tr, a, g)
+		tr = appendDockerGapFitting(tr, a, g)
 		return tr, &DockerEventWindowV2{Since: sinceNano, Until: untilNano, Capped: true, Lossy: true, GapReason: reason}, &DockerEventWatermarkV2{TimeNano: untilNano}, nil
 	}
 	for {
 		select {
 		case <-ctx.Done():
-			return gap(DockerV2GapCollectionDeadline)
+			return gap(DockerGapCollectionDeadline)
 		default:
 		}
 		before := sourceBytes
-		raw, err := nextDockerV2JSONValue(br, dockerV2DecodeMaxBytes+1)
+		raw, err := nextDockerJSONValue(br, dockerDecodeMaxBytes+1)
 		sourceBytes += int64(len(raw))
-		if errors.Is(err, errDockerV2EventObjectOversize) {
-			return gap(DockerV2GapResponseOversize)
+		if errors.Is(err, errDockerEventObjectOversize) {
+			return gap(DockerGapResponseOversize)
 		}
-		var e DockerV2RawEvent
-		if err == nil { err = json.Unmarshal(raw, &e) }
+		var e DockerRawEvent
+		if err == nil {
+			err = json.Unmarshal(raw, &e)
+		}
 		if err == io.EOF {
 			break
 		}
 		if err != nil {
-			if ctx.Err() != nil { return gap(DockerV2GapCollectionDeadline) }
-			if sourceBytes > dockerV2DecodeMaxBytes { return gap(DockerV2GapResponseOversize) }
+			if ctx.Err() != nil {
+				return gap(DockerGapCollectionDeadline)
+			}
+			if sourceBytes > dockerDecodeMaxBytes {
+				return gap(DockerGapResponseOversize)
+			}
 			return nil, nil, nil, err
 		}
 		sourceN++
@@ -511,27 +517,29 @@ func collectDockerV2EventWindow(ctx context.Context, r io.Reader, sinceNano, unt
 		if boundary {
 			boundaryDecoded++
 		}
-		if sourceN > dockerV2DecodeMaxEvents || after > dockerV2DecodeMaxBytes {
-			return gap(DockerV2GapResponseOversize)
+		if sourceN > dockerDecodeMaxEvents || after > dockerDecodeMaxBytes {
+			return gap(DockerGapResponseOversize)
 		}
 		// Bounded object decoding before any timestamp, key, digest, or
 		// accumulation work: oversized fields/attributes are skipped without
 		// deriving keys or appending to the batch.
-		if !dockerV2RawEventBounded(e) {
-			if boundary && after-boundaryStart > dockerV2BoundaryMaxBytes {
-				return gap(DockerV2GapBoundaryOverrun)
+		if !dockerRawEventBounded(e) {
+			if boundary && after-boundaryStart > dockerBoundaryMaxBytes {
+				return gap(DockerGapBoundaryOverrun)
 			}
 			continue
 		}
-		nano, reduced, ok := dockerV2NormalizeNano(e)
+		nano, reduced, ok := dockerNormalizeNano(e)
 		if ok && boundary && nano != bt {
-			if boundaryOverrun { return gap(DockerV2GapBoundaryOverrun) }
+			if boundaryOverrun {
+				return gap(DockerGapBoundaryOverrun)
+			}
 			dig := boundaryDigestsFor(out, bt, agentInstanceID)
 			return appendEventsBoundary(out, sinceNano, untilNano, bt, dig, agentInstanceID)
 		}
-		if !ok || e.Type != dockerV2EventsType || !isDockerV2WantedAction(e.Action) {
-			if boundary && after-boundaryStart > dockerV2BoundaryMaxBytes {
-				return gap(DockerV2GapBoundaryOverrun)
+		if !ok || e.Type != dockerEventsType || !isDockerWantedAction(e.Action) {
+			if boundary && after-boundaryStart > dockerBoundaryMaxBytes {
+				return gap(DockerGapBoundaryOverrun)
 			}
 			continue
 		}
@@ -539,70 +547,70 @@ func collectDockerV2EventWindow(ctx context.Context, r io.Reader, sinceNano, unt
 			continue
 		}
 		if boundary && nano != bt {
-			if sourceBytes > dockerV2DecodeMaxBytes {
-				return gap(DockerV2GapResponseOversize)
+			if sourceBytes > dockerDecodeMaxBytes {
+				return gap(DockerGapResponseOversize)
 			}
 			if boundaryOverrun {
-				return gap(DockerV2GapBoundaryOverrun)
+				return gap(DockerGapBoundaryOverrun)
 			}
 			dig := boundaryDigestsFor(out, bt, agentInstanceID)
 			return appendEventsBoundary(out, sinceNano, untilNano, bt, dig, agentInstanceID)
 		}
-		if boundary && (boundaryDecoded > dockerV2BoundaryMaxEvents || after-boundaryStart > dockerV2BoundaryMaxBytes) {
+		if boundary && (boundaryDecoded > dockerBoundaryMaxEvents || after-boundaryStart > dockerBoundaryMaxBytes) {
 			boundaryOverrun = true
 		}
 		key := keyForID(e.Actor.ID)
-		if validateDockerV2ContainerKey(key) != nil {
+		if validateDockerContainerKey(key) != nil {
 			continue
 		}
-		sc := dockerV2SafeContext(e)
+		sc := dockerSafeContext(e)
 		if reduced {
 			sc.ReducedPrecision = true
 		}
-		d := dockerV2EventDigest(agentInstanceID, nano, e.Action, key, sc)
+		d := dockerEventDigest(agentInstanceID, nano, e.Action, key, sc)
 		if nano == sinceNano && dup[d] {
 			continue
 		}
-		ev := DockerEventV2{EventID: d[:32], EventOccurredAt: dockerV2EventOccurredAt(nano), ContainerKey: key, Action: e.Action, Context: sc}
-		if validateDockerV2Event(ev) != nil {
+		ev := DockerEventV2{EventID: d[:32], EventOccurredAt: dockerEventOccurredAt(nano), ContainerKey: key, Action: e.Action, Context: sc}
+		if validateDockerEvent(ev) != nil {
 			continue
 		}
 		b, _ := json.Marshal(ev)
-		s := dockerV2SafeEvent{nano: nano, ev: ev, size: len(b)}
-		if !boundary && (len(out)+1 > MaxDockerV2Events || acc+s.size+1 > MaxDockerV2EventBranchBytes) {
+		s := dockerSafeEvent{nano: nano, ev: ev, size: len(b)}
+		if !boundary && (len(out)+1 > MaxDockerEvents || acc+s.size+1 > MaxDockerEventBranchBytes) {
 			boundary = true
 			bt = nano
 			boundaryStart = before
 			boundaryDecoded = 1
-			if boundaryDecoded > dockerV2BoundaryMaxEvents || after-before > dockerV2BoundaryMaxBytes {
-				return gap(DockerV2GapBoundaryOverrun)
+			if boundaryDecoded > dockerBoundaryMaxEvents || after-before > dockerBoundaryMaxBytes {
+				return gap(DockerGapBoundaryOverrun)
 			}
 		}
 		out = append(out, s)
 		acc += s.size + 1
 	}
-	if sourceBytes > dockerV2DecodeMaxBytes {
-		return gap(DockerV2GapResponseOversize)
+	if sourceBytes > dockerDecodeMaxBytes {
+		return gap(DockerGapResponseOversize)
 	}
 	if boundaryOverrun {
-		return gap(DockerV2GapBoundaryOverrun)
+		return gap(DockerGapBoundaryOverrun)
 	}
 	if boundary {
 		dig := boundaryDigestsFor(out, bt, agentInstanceID)
 		return appendEventsBoundary(out, sinceNano, untilNano, bt, dig, agentInstanceID)
 	}
-	return finalizeDockerV2Complete(out, sinceNano, untilNano)
+	return finalizeDockerComplete(out, sinceNano, untilNano)
 }
 
-func appendEventsBoundary(out []dockerV2SafeEvent, since, until, bt string, dig []string, instance string) ([]DockerEventV2, *DockerEventWindowV2, *DockerEventWatermarkV2, error) {
-	tr, a := truncateDockerV2Transmit(out, true)
-	g := dockerV2GapEvent(since, bt, len(out)-len(tr), instance, bt)
-	g.Context.Reason = DockerV2GapBoundaryOverflow
-	tr = appendDockerV2GapFitting(tr, a, g)
-	return tr, &DockerEventWindowV2{Since: since, Until: until, Capped: true, Lossy: true, GapReason: DockerV2GapBoundaryOverflow}, &DockerEventWatermarkV2{TimeNano: bt, BoundaryDigests: dig}, nil
+func appendEventsBoundary(out []dockerSafeEvent, since, until, bt string, dig []string, instance string) ([]DockerEventV2, *DockerEventWindowV2, *DockerEventWatermarkV2, error) {
+	tr, a := truncateDockerTransmit(out, true)
+	g := dockerGapEvent(since, bt, len(out)-len(tr), instance, bt)
+	g.Context.Reason = DockerGapBoundaryOverflow
+	tr = appendDockerGapFitting(tr, a, g)
+	return tr, &DockerEventWindowV2{Since: since, Until: until, Capped: true, Lossy: true, GapReason: DockerGapBoundaryOverflow}, &DockerEventWatermarkV2{TimeNano: bt, BoundaryDigests: dig}, nil
 }
 
-func finalizeDockerV2Complete(safe []dockerV2SafeEvent, sinceNano, untilNano string) ([]DockerEventV2, *DockerEventWindowV2, *DockerEventWatermarkV2, error) {
+func finalizeDockerComplete(safe []dockerSafeEvent, sinceNano, untilNano string) ([]DockerEventV2, *DockerEventWindowV2, *DockerEventWatermarkV2, error) {
 	evs := make([]DockerEventV2, 0, len(safe))
 	for _, s := range safe {
 		evs = append(evs, s.ev)
@@ -612,13 +620,13 @@ func finalizeDockerV2Complete(safe []dockerV2SafeEvent, sinceNano, untilNano str
 	return evs, win, prop, nil
 }
 
-func boundaryDigestsFor(safe []dockerV2SafeEvent, nano, instance string) []string {
+func boundaryDigestsFor(safe []dockerSafeEvent, nano, instance string) []string {
 	set := map[string]bool{}
 	for _, s := range safe {
 		if s.nano != nano {
 			continue
 		}
-		d := dockerV2EventDigest(instance, s.nano, s.ev.Action, s.ev.ContainerKey, s.ev.Context)
+		d := dockerEventDigest(instance, s.nano, s.ev.Action, s.ev.ContainerKey, s.ev.Context)
 		set[d] = true
 	}
 	out := make([]string, 0, len(set))
@@ -629,7 +637,7 @@ func boundaryDigestsFor(safe []dockerV2SafeEvent, nano, instance string) []strin
 	return out
 }
 
-func finalizeDockerV2Capped(ctx context.Context, safe []dockerV2SafeEvent, capIdx int, sinceNano, untilNano, instance string) ([]DockerEventV2, *DockerEventWindowV2, *DockerEventWatermarkV2, error) {
+func finalizeDockerCapped(ctx context.Context, safe []dockerSafeEvent, capIdx int, sinceNano, untilNano, instance string) ([]DockerEventV2, *DockerEventWindowV2, *DockerEventWatermarkV2, error) {
 	capNano := safe[capIdx].nano
 	// Find the full boundary run containing capIdx.
 	lo := capIdx
@@ -649,8 +657,8 @@ func finalizeDockerV2Capped(ctx context.Context, safe []dockerV2SafeEvent, capId
 			trans = append(trans, s.ev)
 		}
 		digests := boundaryDigestsFor(safe[:capIdx], prevNano, instance)
-		if len(digests) > MaxDockerV2BoundaryDigests {
-			digests = digests[:MaxDockerV2BoundaryDigests]
+		if len(digests) > MaxDockerBoundaryDigests {
+			digests = digests[:MaxDockerBoundaryDigests]
 		}
 		win := &DockerEventWindowV2{Since: sinceNano, Until: untilNano, Capped: true}
 		prop := &DockerEventWatermarkV2{TimeNano: prevNano, BoundaryDigests: digests}
@@ -661,31 +669,31 @@ func finalizeDockerV2Capped(ctx context.Context, safe []dockerV2SafeEvent, capId
 	// past the transmit cap, limit+1 sentinel. Here over decoded safe events
 	// past capIdx plus ctx-deadline and digest-overflow checks.
 	overEvents := (hi - capIdx) + 1
-	if overEvents > dockerV2BoundaryMaxEvents {
-		return abandonDockerV2ThroughU(safe, capIdx, sinceNano, untilNano, instance, DockerV2GapBoundaryOverrun)
+	if overEvents > dockerBoundaryMaxEvents {
+		return abandonDockerThroughU(safe, capIdx, sinceNano, untilNano, instance, DockerGapBoundaryOverrun)
 	}
 	var overBytes int
 	for _, s := range safe[capIdx : hi+1] {
 		overBytes += s.size + 1
 	}
-	if overBytes > dockerV2BoundaryMaxBytes {
-		return abandonDockerV2ThroughU(safe, capIdx, sinceNano, untilNano, instance, DockerV2GapBoundaryOverrun)
+	if overBytes > dockerBoundaryMaxBytes {
+		return abandonDockerThroughU(safe, capIdx, sinceNano, untilNano, instance, DockerGapBoundaryOverrun)
 	}
 	select {
 	case <-ctx.Done():
-		return abandonDockerV2ThroughU(safe, capIdx, sinceNano, untilNano, instance, DockerV2GapCollectionDeadline)
+		return abandonDockerThroughU(safe, capIdx, sinceNano, untilNano, instance, DockerGapCollectionDeadline)
 	default:
 	}
 	digests := boundaryDigestsFor(safe, capNano, instance)
-	if len(digests) > MaxDockerV2BoundaryDigests {
-		return abandonDockerV2ThroughU(safe, capIdx, sinceNano, untilNano, instance, DockerV2GapBoundaryOverrun)
+	if len(digests) > MaxDockerBoundaryDigests {
+		return abandonDockerThroughU(safe, capIdx, sinceNano, untilNano, instance, DockerGapBoundaryOverrun)
 	}
 	// Boundary completes within overrun: transmit as many events through the
 	// completed boundary as fit (reserving one slot for the gap) plus one
 	// boundary_overflow gap covering the omitted remainder at capNano.
 	// safe[:lo] fits by construction (lo <= capIdx, the first exceed index).
 	candidate := safe[:hi+1]
-	trans, acc := truncateDockerV2Transmit(candidate, true)
+	trans, acc := truncateDockerTransmit(candidate, true)
 	keptAtBoundary := 0
 	for _, s := range candidate[:len(trans)] {
 		if s.nano == capNano {
@@ -697,33 +705,33 @@ func finalizeDockerV2Capped(ctx context.Context, safe []dockerV2SafeEvent, capId
 	if skipped < 0 {
 		skipped = 0
 	}
-	gap := dockerV2GapEvent(sinceNano, capNano, skipped, instance, capNano)
-	gap.Context.Reason = DockerV2GapBoundaryOverflow
-	trans = appendDockerV2GapFitting(trans, acc, gap)
-	win := &DockerEventWindowV2{Since: sinceNano, Until: untilNano, Capped: true, Lossy: true, GapReason: DockerV2GapBoundaryOverflow}
+	gap := dockerGapEvent(sinceNano, capNano, skipped, instance, capNano)
+	gap.Context.Reason = DockerGapBoundaryOverflow
+	trans = appendDockerGapFitting(trans, acc, gap)
+	win := &DockerEventWindowV2{Since: sinceNano, Until: untilNano, Capped: true, Lossy: true, GapReason: DockerGapBoundaryOverflow}
 	prop := &DockerEventWatermarkV2{TimeNano: capNano, BoundaryDigests: digests}
 	return trans, win, prop, nil
 }
 
-func appendDockerV2GapFitting(trans []DockerEventV2, acc int, gap DockerEventV2) []DockerEventV2 {
+func appendDockerGapFitting(trans []DockerEventV2, acc int, gap DockerEventV2) []DockerEventV2 {
 	gb, _ := json.Marshal(gap)
 	need := len(gb) + 1
-	for len(trans) > 0 && (len(trans)+1 > MaxDockerV2Events || acc+need > MaxDockerV2EventBranchBytes) {
+	for len(trans) > 0 && (len(trans)+1 > MaxDockerEvents || acc+need > MaxDockerEventBranchBytes) {
 		b, _ := json.Marshal(trans[len(trans)-1])
 		acc -= len(b) + 1
 		trans = trans[:len(trans)-1]
 	}
-	if len(trans)+1 > MaxDockerV2Events || acc+need > MaxDockerV2EventBranchBytes {
+	if len(trans)+1 > MaxDockerEvents || acc+need > MaxDockerEventBranchBytes {
 		// Gap alone must still validate; it is small by construction.
 		return []DockerEventV2{gap}
 	}
 	return append(trans, gap)
 }
 
-func truncateDockerV2Transmit(safe []dockerV2SafeEvent, reserveGap bool) ([]DockerEventV2, int) {
-	limit := MaxDockerV2Events
+func truncateDockerTransmit(safe []dockerSafeEvent, reserveGap bool) ([]DockerEventV2, int) {
+	limit := MaxDockerEvents
 	if reserveGap {
-		limit = MaxDockerV2Events - 1
+		limit = MaxDockerEvents - 1
 	}
 	out := make([]DockerEventV2, 0, len(safe))
 	acc := 0
@@ -731,7 +739,7 @@ func truncateDockerV2Transmit(safe []dockerV2SafeEvent, reserveGap bool) ([]Dock
 		if len(out)+1 > limit {
 			break
 		}
-		if acc+s.size+1 > MaxDockerV2EventBranchBytes {
+		if acc+s.size+1 > MaxDockerEventBranchBytes {
 			break
 		}
 		out = append(out, s.ev)
@@ -740,19 +748,19 @@ func truncateDockerV2Transmit(safe []dockerV2SafeEvent, reserveGap bool) ([]Dock
 	return out, acc
 }
 
-func abandonDockerV2ThroughU(safe []dockerV2SafeEvent, capIdx int, sinceNano, untilNano, instance, reason string) ([]DockerEventV2, *DockerEventWindowV2, *DockerEventWatermarkV2, error) {
-	trans, acc := truncateDockerV2Transmit(safe[:capIdx], true)
+func abandonDockerThroughU(safe []dockerSafeEvent, capIdx int, sinceNano, untilNano, instance, reason string) ([]DockerEventV2, *DockerEventWindowV2, *DockerEventWatermarkV2, error) {
+	trans, acc := truncateDockerTransmit(safe[:capIdx], true)
 	skipped := len(safe) - len(trans)
-	gap := dockerV2GapEvent(sinceNano, untilNano, skipped, instance, untilNano)
+	gap := dockerGapEvent(sinceNano, untilNano, skipped, instance, untilNano)
 	gap.Context.Reason = reason
-	trans = appendDockerV2GapFitting(trans, acc, gap)
+	trans = appendDockerGapFitting(trans, acc, gap)
 	win := &DockerEventWindowV2{Since: sinceNano, Until: untilNano, Capped: true, Lossy: true, GapReason: reason}
 	prop := &DockerEventWatermarkV2{TimeNano: untilNano, BoundaryDigests: []string{}}
 	return trans, win, prop, nil
 }
 
-func dockerV2GapEvent(fromNano, throughNano string, skipped int, instance, occurredNano string) DockerEventV2 {
-	occurred := dockerV2GapOccurredAt(occurredNano)
+func dockerGapEvent(fromNano, throughNano string, skipped int, instance, occurredNano string) DockerEventV2 {
+	occurred := dockerGapOccurredAt(occurredNano)
 	if skipped < 0 {
 		skipped = 0
 	}
@@ -762,7 +770,7 @@ func dockerV2GapEvent(fromNano, throughNano string, skipped int, instance, occur
 	sc := skipped
 	gapCtx := DockerEventContextV2{
 		Version:            DockerEventContextVersionV1,
-		Reason:             DockerV2GapBoundaryOverflow,
+		Reason:             DockerGapBoundaryOverflow,
 		SkippedFromNano:    fromNano,
 		SkippedThroughNano: throughNano,
 		SkippedCount:       &sc,
@@ -775,12 +783,12 @@ func dockerV2GapEvent(fromNano, throughNano string, skipped int, instance, occur
 	return DockerEventV2{
 		EventID:         "gap-" + id,
 		EventOccurredAt: occurred,
-		Action:          DockerV2ActionStreamGap,
+		Action:          DockerActionStreamGap,
 		Context:         gapCtx,
 	}
 }
 
-func dockerV2GapOccurredAt(occurredNano string) string {
+func dockerGapOccurredAt(occurredNano string) string {
 	if n, err := strconv.ParseInt(occurredNano, 10, 64); err == nil && n >= 0 {
 		return time.Unix(0, n).UTC().Format(time.RFC3339Nano)
 	}
@@ -791,18 +799,18 @@ func dockerV2GapOccurredAt(occurredNano string) string {
 // /system/df sanitized aggregate decoder.
 // ---------------------------------------------------------------------------
 
-// decodeDockerV2SystemDF reads through io.LimitReader(256KiB+1) and rejects
+// decodeDockerSystemDF reads through io.LimitReader(256KiB+1) and rejects
 // when the sentinel byte exists. Only aggregate numeric/bool fields are used;
 // names, paths, IDs, and object arrays are never persisted. Images use
 // top-level LayersSize (never summed Sizes, which share layers). Missing
 // categories become supported=false. A malformed category marks only itself
 // unsupported.
-func decodeDockerV2SystemDF(r io.Reader) (*DockerStorageAggregateV2, error) {
-	b, err := io.ReadAll(io.LimitReader(r, int64(MaxDockerV2SystemDFBytes)+1))
+func decodeDockerSystemDF(r io.Reader) (*DockerStorageAggregateV2, error) {
+	b, err := io.ReadAll(io.LimitReader(r, int64(MaxDockerSystemDFBytes)+1))
 	if err != nil {
 		return nil, err
 	}
-	if len(b) > MaxDockerV2SystemDFBytes {
+	if len(b) > MaxDockerSystemDFBytes {
 		return nil, fmt.Errorf("system df response oversize")
 	}
 	var raw struct {
@@ -844,7 +852,7 @@ func decodeDockerV2SystemDF(r io.Reader) (*DockerStorageAggregateV2, error) {
 			if imagesPresent && raw.Images != nil {
 				agg.Images.Count = len(raw.Images)
 			}
-			est, okEst := dockerV2ImageEstimate(raw.Images)
+			est, okEst := dockerImageEstimate(raw.Images)
 			if okEst {
 				agg.Images.EstimatedReclaimableBytes = est
 			}
@@ -863,7 +871,7 @@ func decodeDockerV2SystemDF(r io.Reader) (*DockerStorageAggregateV2, error) {
 	}
 	// Containers.
 	if _, ok := presence["Containers"]; ok && raw.Containers != nil {
-		total, reclaim, okCat := dockerV2ContainerTotals(raw.Containers)
+		total, reclaim, okCat := dockerContainerTotals(raw.Containers)
 		agg.Containers.Supported = okCat
 		agg.Containers.Count = len(raw.Containers)
 		if okCat {
@@ -875,7 +883,7 @@ func decodeDockerV2SystemDF(r io.Reader) (*DockerStorageAggregateV2, error) {
 	}
 	// Volumes.
 	if _, ok := presence["Volumes"]; ok && raw.Volumes != nil {
-		total, reclaim, okCat := dockerV2VolumeTotals(raw.Volumes)
+		total, reclaim, okCat := dockerVolumeTotals(raw.Volumes)
 		agg.LocalVolumes.Supported = okCat
 		agg.LocalVolumes.Count = len(raw.Volumes)
 		if okCat {
@@ -887,7 +895,7 @@ func decodeDockerV2SystemDF(r io.Reader) (*DockerStorageAggregateV2, error) {
 	}
 	// BuildCache.
 	if _, ok := presence["BuildCache"]; ok && raw.BuildCache != nil {
-		total, reclaim, okCat := dockerV2BuildCacheTotals(raw.BuildCache)
+		total, reclaim, okCat := dockerBuildCacheTotals(raw.BuildCache)
 		agg.BuildCache.Supported = okCat
 		agg.BuildCache.Count = len(raw.BuildCache)
 		if okCat {
@@ -901,7 +909,7 @@ func decodeDockerV2SystemDF(r io.Reader) (*DockerStorageAggregateV2, error) {
 	return agg, nil
 }
 
-func dockerV2ImageEstimate(images []struct {
+func dockerImageEstimate(images []struct {
 	Size       *int64 `json:"Size"`
 	SharedSize *int64 `json:"SharedSize"`
 }) (float64, bool) {
@@ -927,7 +935,7 @@ func dockerV2ImageEstimate(images []struct {
 	return float64(est), true
 }
 
-func dockerV2ContainerTotals(containers []struct {
+func dockerContainerTotals(containers []struct {
 	State  *string `json:"State"`
 	SizeRw *int64  `json:"SizeRw"`
 }) (float64, float64, bool) {
@@ -951,7 +959,7 @@ func dockerV2ContainerTotals(containers []struct {
 	return float64(total), float64(reclaim), true
 }
 
-func dockerV2VolumeTotals(volumes []struct {
+func dockerVolumeTotals(volumes []struct {
 	UsageData *struct {
 		Size     *int64 `json:"Size"`
 		RefCount *int64 `json:"RefCount"`
@@ -976,7 +984,7 @@ func dockerV2VolumeTotals(volumes []struct {
 	return float64(total), float64(reclaim), true
 }
 
-func dockerV2BuildCacheTotals(entries []struct {
+func dockerBuildCacheTotals(entries []struct {
 	Size  *int64 `json:"Size"`
 	InUse *bool  `json:"InUse"`
 }) (float64, float64, bool) {

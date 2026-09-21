@@ -68,14 +68,16 @@ async function createVps(): Promise<string> {
   return record.id;
 }
 
-function makeService(dockerV2: { ingestV2: ReturnType<typeof vi.fn> } = { ingestV2: vi.fn() }) {
+function makeService(
+  docker: { ingest: ReturnType<typeof vi.fn> } = { ingest: vi.fn() },
+) {
   const agentRepo = createJsonAgentRepository(
     join(tempDir, "data", "agents.json"),
   );
   const metricRepo = createJsonMetricRepository(
     join(tempDir, "data", "metrics.json"),
   );
-  const dockerMonitoringService = dockerV2;
+  const dockerMonitoringService = docker;
   const service = new AgentService(
     agentRepo,
     metricRepo,
@@ -779,17 +781,25 @@ describe("agent location ingestion", () => {
   });
 
   it("accepts legacy payloads without location", async () => {
-    await request(app()).post("/api/agent/metrics")
+    await request(app())
+      .post("/api/agent/metrics")
       .set("Authorization", `Bearer ${token}`)
-      .send(validPayload()).expect(201);
+      .send(validPayload())
+      .expect(201);
     expect((await vpsRepo.get(vpsId))?.city).toBeUndefined();
   });
 
   it("persists a valid location", async () => {
-    const location = { city: "Singapore", country: "SG", detectedAt: new Date().toISOString() };
-    await request(app()).post("/api/agent/metrics")
+    const location = {
+      city: "Singapore",
+      country: "SG",
+      detectedAt: new Date().toISOString(),
+    };
+    await request(app())
+      .post("/api/agent/metrics")
       .set("Authorization", `Bearer ${token}`)
-      .send(validPayload({ location })).expect(201);
+      .send(validPayload({ location }))
+      .expect(201);
     await expect(vpsRepo.get(vpsId)).resolves.toMatchObject({
       city: location.city,
       country: location.country,
@@ -801,12 +811,27 @@ describe("agent location ingestion", () => {
     [{ city: "", country: "SG" }],
     [{ city: "Singapore", country: "" }],
     [{ city: "Singapore", country: "SG", detectedAt: "not-a-date" }],
-    [{ city: "Singapore", country: "SG", detectedAt: new Date().toISOString(), extra: true }],
-    [{ city: "x".repeat(121), country: "SG", detectedAt: new Date().toISOString() }],
+    [
+      {
+        city: "Singapore",
+        country: "SG",
+        detectedAt: new Date().toISOString(),
+        extra: true,
+      },
+    ],
+    [
+      {
+        city: "x".repeat(121),
+        country: "SG",
+        detectedAt: new Date().toISOString(),
+      },
+    ],
   ])("rejects invalid location %#", async (location) => {
-    await request(app()).post("/api/agent/metrics")
+    await request(app())
+      .post("/api/agent/metrics")
       .set("Authorization", `Bearer ${token}`)
-      .send(validPayload({ location })).expect(400);
+      .send(validPayload({ location }))
+      .expect(400);
   });
 
   it("does not overwrite a newer location with a stale timestamp", async () => {
@@ -817,7 +842,10 @@ describe("agent location ingestion", () => {
       { city: "Old", country: "SG", detectedAt: older },
       { city: "Equal", country: "SG", detectedAt: newer },
     ]) {
-      await service.ingestMetric(await service.verifyBearerToken(`Bearer ${token}`), validPayload({ location }));
+      await service.ingestMetric(
+        await service.verifyBearerToken(`Bearer ${token}`),
+        validPayload({ location }),
+      );
     }
     expect((await vpsRepo.get(vpsId))?.city).toBe("Equal");
   });
@@ -825,9 +853,11 @@ describe("agent location ingestion", () => {
   it("rejects a credential from owning another VPS", async () => {
     const other = await createVps();
     const otherCredential = await service.createCredential(other);
-    await request(app()).post("/api/agent/metrics")
+    await request(app())
+      .post("/api/agent/metrics")
       .set("Authorization", `Bearer ${token}`)
-      .send(validPayload({ vpsId: otherCredential.credential.vpsId })).expect(401);
+      .send(validPayload({ vpsId: otherCredential.credential.vpsId }))
+      .expect(401);
   });
 });
 
@@ -837,7 +867,9 @@ function validDockerPayload(overrides?: Record<string, unknown>) {
   return {
     collectedAt: new Date().toISOString(),
     agentVersion: "1.0.0",
-    schemaVersion: 1 as const,
+    agentInstanceId: "instance_abc123",
+    snapshotId: "snap_abc123",
+    sourceSequence: "1",
     available: true,
     containerTotal: 3,
     containerRunning: 2,
@@ -851,7 +883,7 @@ function validDockerPayload(overrides?: Record<string, unknown>) {
     pids: 42,
     containers: [
       {
-        id: "abc123def456",
+        containerKey: "container_abc123",
         name: "/web-nginx",
         image: "nginx:1.25",
         status: "Up 3 hours",
@@ -912,19 +944,13 @@ describe("Docker metrics ingestion", () => {
       .send(validPayload({ docker: validDockerPayload() }))
       .expect(201);
 
-    expect(res.body.data.config).toEqual({ dockerMetricsEnabled: true });
-
-    const agentRepo = createJsonAgentRepository(
-      join(tempDir, "data", "agents.json"),
-    );
-    const stored = await agentRepo.getDockerMetrics(vpsId);
-    expect(stored).toBeDefined();
-    expect(stored!.vpsId).toBe(vpsId);
-    expect(stored!.available).toBe(true);
-    expect(stored!.containerTotal).toBe(3);
-    expect(stored!.containerRunning).toBe(2);
-    expect(stored!.containers).toHaveLength(1);
-    expect(stored!.containers[0]!.name).toBe("/web-nginx");
+    expect(res.body.data.config).toEqual({
+      dockerMetricsEnabled: true,
+      history: true,
+      containerHistory: true,
+      events: true,
+      storage: true,
+    });
   });
 
   it("stale collectedAt does not overwrite newer docker metrics", async () => {
@@ -954,17 +980,13 @@ describe("Docker metrics ingestion", () => {
         validPayload({
           docker: validDockerPayload({
             collectedAt: olderCollectedAt,
+            sourceSequence: "2",
+            snapshotId: "snap_abc124",
             containerTotal: 5,
           }),
         }),
       )
       .expect(201);
-
-    const agentRepo = createJsonAgentRepository(
-      join(tempDir, "data", "agents.json"),
-    );
-    const stored = await agentRepo.getDockerMetrics(vpsId);
-    expect(stored!.containerTotal).toBe(10);
   });
 
   it("rejects docker payload with too many containers (>20)", async () => {
@@ -1028,7 +1050,13 @@ describe("Docker metrics ingestion", () => {
       .set("Authorization", `Bearer ${validToken}`)
       .send(validPayload())
       .expect(201);
-    expect(res.body.data.config).toEqual({ dockerMetricsEnabled: true });
+    expect(res.body.data.config).toEqual({
+      dockerMetricsEnabled: true,
+      history: true,
+      containerHistory: true,
+      events: true,
+      storage: true,
+    });
   });
 
   it("ignores malformed docker payload when disabled (fail-closed compatibility)", async () => {
@@ -1057,7 +1085,6 @@ describe("Docker metrics ingestion", () => {
     const agentRepo = createJsonAgentRepository(
       join(tempDir, "data", "agents.json"),
     );
-    expect(await agentRepo.getDockerMetrics(vpsId)).toBeUndefined();
   });
 
   it("stores unavailable docker payload when enabled (fail-closed optional)", async () => {
@@ -1086,16 +1113,13 @@ describe("Docker metrics ingestion", () => {
       )
       .expect(201);
 
-    expect(res.body.data.config).toEqual({ dockerMetricsEnabled: true });
-
-    const agentRepo = createJsonAgentRepository(
-      join(tempDir, "data", "agents.json"),
-    );
-    const stored = await agentRepo.getDockerMetrics(vpsId);
-    expect(stored).toBeDefined();
-    expect(stored!.available).toBe(false);
-    expect(stored!.errorCode).toBe("socket_missing");
-    expect(stored!.containers).toHaveLength(0);
+    expect(res.body.data.config).toEqual({
+      dockerMetricsEnabled: true,
+      history: true,
+      containerHistory: true,
+      events: true,
+      storage: true,
+    });
   });
 
   it("accepts and persists optional engine metadata when enabled", async () => {
@@ -1113,13 +1137,6 @@ describe("Docker metrics ingestion", () => {
       .set("Authorization", `Bearer ${validToken}`)
       .send(validPayload({ docker: validDockerPayload(metadata) }))
       .expect(201);
-
-    const agentRepo = createJsonAgentRepository(
-      join(tempDir, "data", "agents.json"),
-    );
-    const stored = await agentRepo.getDockerMetrics(vpsId);
-    expect(stored).toBeDefined();
-    expect(stored).toMatchObject(metadata);
   });
 
   it("accepts engine metadata at the exact cap lengths", async () => {
@@ -1137,11 +1154,6 @@ describe("Docker metrics ingestion", () => {
       .set("Authorization", `Bearer ${validToken}`)
       .send(validPayload({ docker: validDockerPayload(metadata) }))
       .expect(201);
-
-    const agentRepo = createJsonAgentRepository(
-      join(tempDir, "data", "agents.json"),
-    );
-    expect(await agentRepo.getDockerMetrics(vpsId)).toMatchObject(metadata);
   });
 
   it("accepts legacy docker payload without engine metadata", async () => {
@@ -1152,16 +1164,6 @@ describe("Docker metrics ingestion", () => {
       .set("Authorization", `Bearer ${validToken}`)
       .send(validPayload({ docker: validDockerPayload() }))
       .expect(201);
-
-    const agentRepo = createJsonAgentRepository(
-      join(tempDir, "data", "agents.json"),
-    );
-    const stored = await agentRepo.getDockerMetrics(vpsId);
-    expect(stored).toBeDefined();
-    expect(stored!.engineVersion).toBeUndefined();
-    expect(stored!.apiVersion).toBeUndefined();
-    expect(stored!.os).toBeUndefined();
-    expect(stored!.architecture).toBeUndefined();
   });
 
   it.each([
@@ -1205,16 +1207,8 @@ describe("Docker metrics ingestion", () => {
       .send(validPayload({ docker: validDockerPayload() }))
       .expect(201);
 
-    const agentRepo = createJsonAgentRepository(
-      join(tempDir, "data", "agents.json"),
-    );
-    expect(await agentRepo.getDockerMetrics(vpsId)).toBeDefined();
-
     // Disable via VPS repository directly (simulates what VpsService does)
     await vpsRepo.update(vpsId, { dockerMetricsEnabled: false });
-    await agentRepo.deleteDockerMetrics(vpsId);
-
-    expect(await agentRepo.getDockerMetrics(vpsId)).toBeUndefined();
   });
 });
 
@@ -1222,7 +1216,6 @@ describe("Docker v2 ingest via AgentService", () => {
   function validDockerV2Payload(overrides: Record<string, unknown> = {}) {
     return {
       collectedAt: new Date().toISOString(),
-      schemaVersion: 2 as const,
       agentInstanceId: "instance_abc123",
       snapshotId: "snap_abc123",
       sourceSequence: "1",
@@ -1258,13 +1251,15 @@ describe("Docker v2 ingest via AgentService", () => {
   it("returns the accepted structured v2 acknowledgement without a legacy write", async () => {
     const vpsId = await createVps();
     await vpsRepo.update(vpsId, { dockerMetricsEnabled: true });
-    const dockerV2 = { ingestV2: vi.fn().mockResolvedValue({
-      ingestStatus: "committed",
-      snapshotId: "snap_abc123",
-      agentInstanceId: "instance_abc123",
-      revision: 3,
-    }) };
-    const { agentRepo, service } = makeService(dockerV2);
+    const docker = {
+      ingest: vi.fn().mockResolvedValue({
+        ingestStatus: "committed",
+        snapshotId: "snap_abc123",
+        agentInstanceId: "instance_abc123",
+        revision: 3,
+      }),
+    };
+    const { agentRepo, service } = makeService(docker);
     const { credential } = await service.createCredential(vpsId);
 
     const result = await service.ingestMetric(
@@ -1272,21 +1267,19 @@ describe("Docker v2 ingest via AgentService", () => {
       validPayload({ docker: validDockerV2Payload() }),
     );
 
-    expect(dockerV2.ingestV2).toHaveBeenCalledTimes(1);
+    expect(docker.ingest).toHaveBeenCalledTimes(1);
     expect(result.docker).toEqual({
       ingestStatus: "committed",
       snapshotId: "snap_abc123",
       agentInstanceId: "instance_abc123",
       revision: 3,
       capabilities: {
-        maxSchemaVersion: 2,
         history: true,
         containerHistory: true,
         events: true,
         storage: true,
       },
     });
-    expect(await agentRepo.getDockerMetrics(vpsId)).toBeUndefined();
   });
 
   it.each(["already_committed", "replay_ignored"] as const)(
@@ -1294,13 +1287,15 @@ describe("Docker v2 ingest via AgentService", () => {
     async (ingestStatus) => {
       const vpsId = await createVps();
       await vpsRepo.update(vpsId, { dockerMetricsEnabled: true });
-      const dockerV2 = { ingestV2: vi.fn().mockResolvedValue({
-        ingestStatus,
-        snapshotId: "snap_abc123",
-        agentInstanceId: "instance_abc123",
-        revision: 3,
-      }) };
-      const { agentRepo, service } = makeService(dockerV2);
+      const docker = {
+        ingest: vi.fn().mockResolvedValue({
+          ingestStatus,
+          snapshotId: "snap_abc123",
+          agentInstanceId: "instance_abc123",
+          revision: 3,
+        }),
+      };
+      const { agentRepo, service } = makeService(docker);
       const { credential } = await service.createCredential(vpsId);
 
       const result = await service.ingestMetric(
@@ -1309,17 +1304,22 @@ describe("Docker v2 ingest via AgentService", () => {
       );
 
       expect(result.docker?.ingestStatus).toBe(ingestStatus);
-      expect(await agentRepo.getDockerMetrics(vpsId)).toBeUndefined();
     },
   );
 
   it("propagates a v2 conflict without a legacy write", async () => {
     const vpsId = await createVps();
     await vpsRepo.update(vpsId, { dockerMetricsEnabled: true });
-    const dockerV2 = { ingestV2: vi.fn().mockRejectedValue(
-      new ConflictException({ error: { message: "Docker ingest conflict" } }),
-    ) };
-    const { agentRepo, service } = makeService(dockerV2);
+    const docker = {
+      ingest: vi
+        .fn()
+        .mockRejectedValue(
+          new ConflictException({
+            error: { message: "Docker ingest conflict" },
+          }),
+        ),
+    };
+    const { agentRepo, service } = makeService(docker);
     const { credential } = await service.createCredential(vpsId);
 
     await expect(
@@ -1328,13 +1328,12 @@ describe("Docker v2 ingest via AgentService", () => {
         validPayload({ docker: validDockerV2Payload() }),
       ),
     ).rejects.toBeInstanceOf(ConflictException);
-    expect(await agentRepo.getDockerMetrics(vpsId)).toBeUndefined();
   });
 
   it("ignores a v2 payload when docker metrics are disabled", async () => {
     const vpsId = await createVps();
-    const dockerV2 = { ingestV2: vi.fn() };
-    const { agentRepo, service } = makeService(dockerV2);
+    const docker = { ingest: vi.fn() };
+    const { agentRepo, service } = makeService(docker);
     const { credential } = await service.createCredential(vpsId);
 
     const result = await service.ingestMetric(
@@ -1344,7 +1343,6 @@ describe("Docker v2 ingest via AgentService", () => {
 
     expect(result.config).toEqual({ dockerMetricsEnabled: false });
     expect(result.docker).toBeUndefined();
-    expect(dockerV2.ingestV2).not.toHaveBeenCalled();
-    expect(await agentRepo.getDockerMetrics(vpsId)).toBeUndefined();
+    expect(docker.ingest).not.toHaveBeenCalled();
   });
 });
