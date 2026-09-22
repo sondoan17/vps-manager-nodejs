@@ -20,6 +20,7 @@ export type VpsRecord = {
   kind?: "remote" | "local";
   managedBy?: "user" | "system";
   dockerMetricsEnabled?: boolean;
+  dockerManagementEnabled?: boolean;
   agentStatus?:
     "not_installed" | "installing" | "online" | "offline" | "failed";
   lastAgentInstallJobId?: string;
@@ -45,6 +46,10 @@ export type DashboardDockerContainerMetric = {
 
 export type DashboardDockerMetrics = {
   vpsId: string;
+  /** Explicit agent identity (v2); absent when the snapshot predates identity. */
+  agentInstanceId?: string;
+  /** Explicit snapshot identity (v2); absent when the snapshot predates identity. */
+  snapshotId?: string;
   collectedAt: string;
   receivedAt: string;
   agentVersion?: string;
@@ -353,6 +358,7 @@ export type UpdateVpsPayload = Partial<
     | "provider"
     | "notes"
     | "dockerMetricsEnabled"
+    | "dockerManagementEnabled"
   >
 >;
 
@@ -498,7 +504,129 @@ export function listVpsDockerRollups(id: string, params: DockerHistoryQuery = {}
 export function listVpsDockerEvents(id: string, params: DockerEventsQuery = {}) { return requestEnvelope<DockerPage<DockerOperationalEvent>>(`${vpsPath(id)}/docker/events${dockerQueryString(params)}`); }
 export function getVpsDockerStorage(id: string) { return request<DockerStorageLatest | null>(`${vpsPath(id)}/docker/storage`); }
 export function listVpsDockerAlerts(id: string, params: DockerAlertsQuery = {}) { return requestEnvelope<DockerPage<DockerAlert>>(`${vpsPath(id)}/docker/alerts${dockerQueryString(params)}`); }
-export function acknowledgeVpsDockerAlert(id: string, alertId: string) { return requestEnvelope<{ data: DockerAlert }>(`${vpsPath(id)}/docker/alerts/${encodeURIComponent(alertId)}/acknowledge`, { method: "POST" }); }
+export function acknowledgeVpsDockerAlert(id: string, alertId: string) { return requestEnvelope<DockerAlert>(`${vpsPath(id)}/docker/alerts/${encodeURIComponent(alertId)}/acknowledge`, { method: "POST" }); }
+
+// ── Docker container management ─────────────────────────────────────
+// Management requests use the backend's strict action envelope. Failures
+// remain visible to the user; container state is never updated optimistically.
+//   GET  /api/vps/:id/docker/management/capability
+//   POST /api/vps/:id/docker/management/actions { agentInstanceId, containerKey, action }
+//   GET  /api/vps/:id/docker/management/actions/:operationId
+//   GET  /api/vps/:id/docker/management/logs?agentInstanceId=&containerKey=&lines=
+// All bounds are enforced client-side; logs render as text only.
+
+export type DockerManagementAction = "start" | "stop" | "restart";
+export type DockerManagementTarget = {
+  containerKey: string;
+  name: string;
+  image?: string;
+  state?: string;
+  agentInstanceId?: string;
+};
+export type DockerManagementCapability = {
+  supported: boolean;
+  reason?: string;
+  actions: DockerManagementAction[];
+  logsSupported: boolean;
+  maxLogLines: number;
+  targets: DockerManagementTarget[];
+};
+export type DockerManagementTargetInput = {
+  containerKey: string;
+  agentInstanceId?: string;
+};
+export type DockerManagementOperationStatus =
+  | "queued"
+  | "claimed"
+  | "succeeded"
+  | "failed"
+  | "cancelled";
+export type DockerManagementOperation = {
+  id: string;
+  vpsId: string;
+  idempotencyKey: string;
+  requestDigest: string;
+  action: DockerManagementAction;
+  target: DockerManagementTargetInput;
+  status: DockerManagementOperationStatus;
+  claimedBy?: string;
+  leaseExpiresAt?: string;
+  result?: { ok: boolean; exitCode?: number; message?: string };
+  cancelReason?: string;
+  createdAt: string;
+  updatedAt: string;
+};
+export type DockerContainerLogs = {
+  lines: string[];
+  truncated: boolean;
+};
+
+const DOCKER_MANAGEMENT_LOG_LINE_LIMIT = 200;
+
+function dockerManagementPath(id: string): string {
+  return `${vpsPath(id)}/docker/management`;
+}
+
+export function getVpsDockerManagementCapability(id: string, signal?: AbortSignal) {
+  return request<DockerManagementCapability | null>(
+    `${dockerManagementPath(id)}/capability`,
+    { signal },
+  );
+}
+
+export function requestVpsDockerContainerAction(
+  id: string,
+  target: DockerManagementTargetInput,
+  action: DockerManagementAction,
+  signal?: AbortSignal,
+) {
+  const idempotencyKey = crypto.randomUUID().replace(/-/g, "");
+  return request<DockerManagementOperation>(
+    `${dockerManagementPath(id)}/actions`,
+    {
+      method: "POST",
+      body: JSON.stringify({
+        action,
+        target,
+        confirmation: { confirmed: true },
+        idempotencyKey,
+      }),
+      signal,
+    },
+  );
+}
+
+export function getVpsDockerManagementOperation(
+  id: string,
+  operationId: string,
+  signal?: AbortSignal,
+) {
+  return request<DockerManagementOperation>(
+    `${dockerManagementPath(id)}/actions/${encodeURIComponent(operationId)}`,
+    { signal },
+  );
+}
+
+export function getVpsDockerContainerLogs(
+  id: string,
+  target: DockerManagementTargetInput,
+  lines = 100,
+  signal?: AbortSignal,
+) {
+  const bounded = Math.min(
+    Math.max(Math.floor(lines) || 100, 1),
+    DOCKER_MANAGEMENT_LOG_LINE_LIMIT,
+  );
+  const query = dockerQueryString({
+    agentInstanceId: target.agentInstanceId,
+    containerKey: target.containerKey,
+    lines: bounded,
+  });
+  return request<DockerContainerLogs>(
+    `${dockerManagementPath(id)}/logs${query}`,
+    { signal },
+  );
+}
 
 // ── Scoped VPS endpoints (Phase 4) ──────────────────────────────────
 

@@ -27,3 +27,11 @@ The MVP uses JSON files under `data/` and key material under `private/`. JSON wr
 ## Deployment
 
 `Dockerfile` builds web assets into `public/`, compiles the API into `dist/`, runs as a non-root user, exposes port 3000, and checks `/api/health`. `docker-compose.yml` starts demo mode with writable volumes for `/app/data` and `/app/private`.
+
+## Docker Management
+
+Docker monitoring remains read-only and can be enabled independently from `dockerManagementEnabled`, which defaults to `false`. Dashboard mutations are limited to confirmed `start`, `stop`, and `restart` actions scoped to a VPS, agent instance, and opaque container key. The API stores bounded operation state in the configured JSON or PostgreSQL repository and never opens the Docker socket.
+
+The agent owns Docker socket access. Its independent command worker claims authenticated operations, records bounded receipts, enforces deadlines and target identity, and reports uncertain outcomes without replaying a mutation. Container logs are manually requested, bounded, text-only, and held only in memory; they are not written to jobs, audit, SSE, or persistent storage.
+
+Deploy an agent containing the command worker before enabling Docker management for a VPS. Management capability and target discovery remain available when Docker monitoring is disabled; monitoring data itself is still controlled by `dockerMetricsEnabled`.

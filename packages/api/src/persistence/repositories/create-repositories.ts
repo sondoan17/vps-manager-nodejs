@@ -45,6 +45,11 @@ import {
   type DockerMonitoringRepository,
 } from "./docker-monitoring.repository.js";
 import { createPostgresDockerMonitoringRepository } from "./docker-monitoring.postgres.repository.js";
+import {
+  createJsonDockerManagementRepository,
+  type DockerManagementRepository,
+} from "./docker-management.repository.js";
+import { createPostgresDockerManagementRepository } from "./docker-management.repository.js";
 
 export type RepositorySet = {
   vps: VpsRepository;
@@ -56,6 +61,7 @@ export type RepositorySet = {
   adminCredential: AdminCredentialRepository;
   hostKeyPins: HostKeyPinRepository;
   dockerMonitoring: DockerMonitoringRepository;
+  dockerManagement: DockerManagementRepository;
   pool?: Pool;
 };
 
@@ -82,6 +88,7 @@ export function createRepositories(
       adminCredential: createPostgresAdminCredentialRepository(pool),
       hostKeyPins: createPostgresHostKeyPinRepository(pool),
       dockerMonitoring: createPostgresDockerMonitoringRepository(pool),
+      dockerManagement: createPostgresDockerManagementRepository(pool),
     };
   }
 
@@ -104,5 +111,8 @@ export function createRepositories(
        join(config.dataDir, "docker-monitoring.json"),
        { maxBytes: config.dockerJsonMaxBytes, maintenanceMaxRewriteBytes: config.dockerJsonMaintenanceMaxRewriteBytes },
      ),
+    dockerManagement: createJsonDockerManagementRepository(
+      join(config.dataDir, "docker-management.json"),
+    ),
   };
 }

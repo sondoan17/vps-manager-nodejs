@@ -3,23 +3,40 @@ import type { DockerAlert } from "../../../lib/api";
 import { acknowledgeVpsDockerAlert } from "../../../lib/api";
 import { EmptyState } from "../shared/EmptyState";
 
-/** Bounded Docker alerts panel (read-only state/summary/occurrences). */
+/** Bounded Docker alerts panel (state/summary/occurrences with acknowledge). */
 export function DockerAlertsPanel({
   alerts,
-  retained,
   loading,
   error,
   vpsId,
   onAcknowledged,
 }: {
   alerts: DockerAlert[];
-  retained: number;
+  retained?: number;
   loading: boolean;
   error?: string | null;
   vpsId?: string;
   onAcknowledged?: (alert: DockerAlert) => void;
 }) {
   const [busy, setBusy] = useState<string | null>(null);
+  const [ackError, setAckError] = useState<string | null>(null);
+
+  const acknowledge = async (alertId: string) => {
+    if (!vpsId || busy) return;
+    setBusy(alertId);
+    setAckError(null);
+    try {
+      const updated = await acknowledgeVpsDockerAlert(vpsId, alertId);
+      onAcknowledged?.(updated);
+    } catch (err) {
+      setAckError(
+        err instanceof Error ? err.message : "Unable to acknowledge this alert.",
+      );
+    } finally {
+      setBusy(null);
+    }
+  };
+
   if (loading) {
     return (
       <section aria-label="Docker alerts" aria-busy="true" className="rounded-none border border-white/10 bg-black/10 p-4">
@@ -39,8 +56,13 @@ export function DockerAlertsPanel({
     <section aria-label="Docker alerts" className="rounded-none border border-white/10 bg-black/10 p-4">
       <h3 className="text-xs font-medium text-white/75">Alerts</h3>
       <p className="mt-1 text-[11px] text-white/40">
-        showing {alerts.length} retained details of authoritative total {retained}
+        showing {alerts.length} loaded alerts
       </p>
+      {ackError ? (
+        <p role="alert" className="mt-2 text-[11px] text-rose-200">
+          {ackError}
+        </p>
+      ) : null}
       {alerts.length === 0 ? (
         <div className="mt-2">
           <EmptyState>No Docker alerts retained. New alerts appear here as read-only state, summary, and occurrence counts.</EmptyState>
@@ -51,7 +73,7 @@ export function DockerAlertsPanel({
             <li key={alert.id} className="rounded-none border border-white/10 bg-black/20 px-3 py-2 text-[12px]">
               <p className="flex items-center justify-between gap-2">
                 <span className="font-medium text-white/85">{alert.ruleKind}</span>
-                <span className="flex items-center gap-2 text-white/50">{alert.state}{vpsId && alert.state === "open" ? <button type="button" disabled={busy === alert.id} className="text-sky-200 underline" onClick={async () => { setBusy(alert.id); try { const result = await acknowledgeVpsDockerAlert(vpsId, alert.id); onAcknowledged?.(result.data); } finally { setBusy(null); } }}>{busy === alert.id ? "Acknowledging…" : "Acknowledge"}</button> : null}</span>
+                <span className="flex items-center gap-2 text-white/50">{alert.state}{vpsId && alert.state === "open" ? <button type="button" disabled={busy === alert.id} className="text-sky-200 underline" onClick={() => { void acknowledge(alert.id); }}>{busy === alert.id ? "Acknowledging…" : "Acknowledge"}</button> : null}</span>
               </p>
               <p className="mt-0.5 text-white/60">{alert.summary}</p>
               <p className="mt-0.5 text-white/40">

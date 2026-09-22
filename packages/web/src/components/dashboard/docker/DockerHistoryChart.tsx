@@ -86,7 +86,7 @@ export function DockerHistoryChart({
       <h3 className="text-xs font-medium text-white/75">History</h3>
       <p className="mt-1 text-[11px] text-white/40">Raw host samples; {rollups?.length ?? 0} hourly rollups available for longer-range context.</p>
       <p className="mt-1 text-[11px] text-white/40">
-        showing {samples.length} retained raw host samples{retained > samples.length ? ` of ${retained} available` : ""}
+        showing {samples.length} loaded raw host samples
       </p>
       <p className="mt-1 text-[11px] text-white/40">
         {first && last ? `${new Date(first.effectiveAt).toLocaleString()} – ${new Date(last.effectiveAt).toLocaleString()}` : "No source range"}

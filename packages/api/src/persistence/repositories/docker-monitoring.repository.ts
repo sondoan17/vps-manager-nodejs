@@ -893,6 +893,7 @@ export function createJsonDockerMonitoringRepository(
             agentInstanceId: unit.agentInstanceId,
             batchId: unit.batchId,
             receivedAt: unit.receivedAt,
+            committedWatermark: unit.eventProtocol?.proposedWatermark,
             revision: snapshotKey.revision,
           };
           return store;
@@ -907,6 +908,7 @@ export function createJsonDockerMonitoringRepository(
             agentInstanceId: unit.agentInstanceId,
             batchId: unit.batchId,
             receivedAt: unit.receivedAt,
+            committedWatermark: unit.eventProtocol?.proposedWatermark,
             revision: batchKey.revision ?? store.revision,
           };
           return store;
@@ -968,7 +970,7 @@ export function createJsonDockerMonitoringRepository(
             w.vpsId === unit.vpsId &&
             w.agentInstanceId === unit.agentInstanceId,
         );
-        if (unit.events?.length && unit.eventProtocol) {
+        if (unit.eventProtocol) {
           if (
             watermark &&
             compareDockerWatermarks(
@@ -988,7 +990,7 @@ export function createJsonDockerMonitoringRepository(
           events: [...store.events, ...(unit.events ?? [])],
           watermarks: [...store.watermarks],
         };
-        if (unit.events?.length && unit.eventProtocol) {
+        if (unit.eventProtocol) {
           const wi = historyCandidate.watermarks.findIndex(
             (w) =>
               w.vpsId === unit.vpsId &&
@@ -1016,7 +1018,7 @@ export function createJsonDockerMonitoringRepository(
           return store;
         }
         store.events.push(...(unit.events ?? []));
-        if (unit.events?.length && unit.eventProtocol) {
+        if (unit.eventProtocol) {
           const wi = store.watermarks.findIndex(
             (w) =>
               w.vpsId === unit.vpsId &&
@@ -1299,9 +1301,7 @@ export function createJsonDockerMonitoringRepository(
           agentInstanceId: unit.agentInstanceId,
           batchId: unit.batchId,
           receivedAt: unit.receivedAt,
-          committedWatermark: unit.events?.length
-            ? unit.eventProtocol?.proposedWatermark
-            : undefined,
+          committedWatermark: unit.eventProtocol?.proposedWatermark,
           revision: store.revision,
         };
 

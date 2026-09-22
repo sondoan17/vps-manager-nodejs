@@ -1,7 +1,9 @@
-import { Body, Controller, Inject, Post, Req } from "@nestjs/common";
+import { Body, Controller, Inject, Post, Req, Param, UnauthorizedException } from "@nestjs/common";
 import type { Request } from "express";
 import type { AgentMetricPayload } from "./agent.models.js";
 import { AgentService, type IngestMetricResult } from "./agent.service.js";
+import { DockerManagementService } from "../docker/docker-management.service.js";
+import { dockerManagementClaimSchema, dockerManagementResultSchema } from "../docker/docker-management.schemas.js";
 
 /**
  * Extended response for successful metric ingest.
@@ -22,6 +24,7 @@ type AgentIngestResponse = {
 export class AgentController {
   constructor(
     @Inject(AgentService) private readonly agentService: AgentService,
+    @Inject(DockerManagementService) private readonly management: DockerManagementService,
   ) {}
 
   /**
@@ -57,5 +60,25 @@ export class AgentController {
          ...(docker ? { docker } : {}),
        },
     };
+  }
+
+  @Post("docker-management/:vpsId/:operationId/claim")
+  async claim(@Param("vpsId") vpsId: string, @Param("operationId") operationId: string, @Req() req: Request, @Body() body: unknown) {
+    const credential = await this.agentService.verifyBearerToken(req.header("authorization"));
+    if (credential.vpsId !== vpsId) throw new UnauthorizedException();
+    const input = dockerManagementClaimSchema.parse(body);
+    const agentIdentity = req.header("x-agent-instance");
+    if (!agentIdentity || input.claimedBy !== agentIdentity) {
+      throw new UnauthorizedException({ error: { message: "Agent identity mismatch" } });
+    }
+    return { data: this.management.claim(vpsId, operationId, agentIdentity) };
+  }
+
+  @Post("docker-management/:vpsId/:operationId/result")
+  async result(@Param("vpsId") vpsId: string, @Param("operationId") operationId: string, @Req() req: Request, @Body() body: unknown) {
+    const credential = await this.agentService.verifyBearerToken(req.header("authorization"));
+    if (credential.vpsId !== vpsId) throw new UnauthorizedException();
+    const input = dockerManagementResultSchema.parse(body);
+    return { data: this.management.result(vpsId, operationId, req.header("x-agent-instance") ?? "", input) };
   }
 }

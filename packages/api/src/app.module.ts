@@ -51,10 +51,13 @@ import type { VpsRepository } from "./persistence/repositories/vps.repository.js
 import { LocalAgentSupervisorService } from "./agents/local-agent-supervisor.service.js";
 import { TerminalSessionService } from "./terminal/terminal-session.service.js";
 import { DockerMonitoringController } from "./docker/docker-monitoring.controller.js";
+import { DockerManagementController } from "./docker/docker-management.controller.js";
+import { DockerManagementService } from "./docker/docker-management.service.js";
 import { DockerMonitoringService } from "./docker/docker-monitoring.service.js";
 import { DockerMonitoringMaintenanceService } from "./docker/docker-monitoring-maintenance.service.js";
 import { DockerActivityService } from "./docker/docker-activity.service.js";
 import type { DockerMonitoringRepository } from "./persistence/repositories/docker-monitoring.repository.js";
+import type { DockerManagementRepository } from "./persistence/repositories/docker-management.repository.js";
 import {
   ADMIN_CREDENTIAL_REPOSITORY,
   AGENT_REPOSITORY,
@@ -62,6 +65,7 @@ import {
   AUDIT_REPOSITORY,
   DATABASE_POOL,
   DOCKER_MONITORING_REPOSITORY,
+  DOCKER_MANAGEMENT_REPOSITORY,
   HOST_KEY_PIN_REPOSITORY,
   JOB_REPOSITORY,
   KEY_SERVICE,
@@ -77,6 +81,7 @@ export {
   AUDIT_REPOSITORY,
   DATABASE_POOL,
   DOCKER_MONITORING_REPOSITORY,
+  DOCKER_MANAGEMENT_REPOSITORY,
   HOST_KEY_PIN_REPOSITORY,
   JOB_REPOSITORY,
   KEY_SERVICE,
@@ -99,6 +104,7 @@ export type AppDependencies = {
   adminCredential?: AdminCredentialRepository;
   hostKeyPins?: HostKeyPinRepository;
   dockerMonitoring?: DockerMonitoringRepository;
+  dockerManagement?: DockerManagementRepository;
   /** Optional pre-created DB pool. Caller owns lifecycle unless ownsPool=true. */
   pool?: Pool;
   ownsPool?: boolean;
@@ -132,7 +138,8 @@ export function createAppModule(deps: AppDependencies = {}): DynamicModule {
     !deps.sessions ||
     !deps.adminCredential ||
     !deps.hostKeyPins ||
-    !deps.dockerMonitoring;
+    !deps.dockerMonitoring ||
+    !deps.dockerManagement;
   const repositories = needsRepositories
     ? createRepositories(config, deps.pool)
     : undefined;
@@ -154,6 +161,7 @@ export function createAppModule(deps: AppDependencies = {}): DynamicModule {
       AgentController,
       AuthController,
       DockerMonitoringController,
+      DockerManagementController,
     ],
     providers: [
       { provide: APP_CONFIG, useValue: config },
@@ -242,8 +250,13 @@ export function createAppModule(deps: AppDependencies = {}): DynamicModule {
         provide: DOCKER_MONITORING_REPOSITORY,
         useValue: deps.dockerMonitoring ?? repositories!.dockerMonitoring,
       },
+      {
+        provide: DOCKER_MANAGEMENT_REPOSITORY,
+        useValue: deps.dockerManagement ?? repositories!.dockerManagement,
+      },
        DockerActivityService,
        DockerMonitoringService,
+       DockerManagementService,
        DockerMonitoringMaintenanceService,
        HostKeyPinService,
       {

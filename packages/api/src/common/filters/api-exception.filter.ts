@@ -6,6 +6,7 @@ import {
 } from "@nestjs/common";
 import type { Request, Response } from "express";
 import { ZodError } from "zod";
+import { DockerManagementConflict } from "../../docker/docker-management.models.js";
 import {
   AgentAuthError,
   DemoMutationBlockedError,
@@ -35,6 +36,10 @@ export class ApiExceptionFilter implements ExceptionFilter {
 
     if (error instanceof VpsNotFoundError) {
       return response.status(404).json(errorBody("VPS not found", requestId));
+    }
+
+    if (error instanceof DockerManagementConflict) {
+      return response.status(409).json(errorBody("Docker management operation conflict", requestId));
     }
 
     if (

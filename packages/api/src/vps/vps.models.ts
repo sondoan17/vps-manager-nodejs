@@ -22,6 +22,7 @@ export type VpsRecord = {
   kind?: "remote" | "local";
   managedBy?: "user" | "system";
   dockerMetricsEnabled?: boolean;
+  dockerManagementEnabled?: boolean;
   /** Persisted agent lifecycle state (from agent_states), surfaced on VPS data. */
   agentStatus?: "not_installed" | "installing" | "online" | "offline" | "failed";
   /** Job that last drove agent install/uninstall (used to track progress live). */
@@ -85,4 +86,5 @@ export type CreateVpsInput = {
 
 export type UpdateVpsInput = Partial<Omit<CreateVpsInput, "password">> & {
   dockerMetricsEnabled?: boolean;
+  dockerManagementEnabled?: boolean;
 };

@@ -33,6 +33,7 @@ type VpsRow = {
   kind: string | null;
   managed_by: string | null;
   docker_metrics_enabled: boolean | null;
+  docker_management_enabled: boolean | null;
   city: string | null;
   country: string | null;
   location_detected_at: Date | string | null;
@@ -60,8 +61,8 @@ export function createPostgresVpsRepository(pool: DatabasePool): VpsRepository {
       const now = new Date();
       const id = `vps_${nanoid(12)}`;
       const result = await pool.query<VpsRow>(
-        `INSERT INTO vps (id, name, host, port, username, provider, region, tags, status, notes, display_name, kind, managed_by, docker_metrics_enabled, created_at, updated_at)
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $15)
+        `INSERT INTO vps (id, name, host, port, username, provider, region, tags, status, notes, display_name, kind, managed_by, docker_metrics_enabled, docker_management_enabled, created_at, updated_at)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $16, $15, $15)
          RETURNING *`,
         [
           id,
@@ -79,6 +80,7 @@ export function createPostgresVpsRepository(pool: DatabasePool): VpsRepository {
           "user",
           false,
           now,
+          false,
         ],
       );
       return rowToVps(result.rows[0]!);
@@ -99,7 +101,7 @@ export function createPostgresVpsRepository(pool: DatabasePool): VpsRepository {
            SET name = $2, host = $3, port = $4, username = $5, provider = $6, region = $7,
                tags = $8, status = $9, notes = $10, display_name = $15,
                kind = $12, managed_by = $13,
-               docker_metrics_enabled = $14, updated_at = $11
+               docker_metrics_enabled = $14, docker_management_enabled = $16, updated_at = $11
            WHERE id = $1
            RETURNING *`,
           [
@@ -118,6 +120,7 @@ export function createPostgresVpsRepository(pool: DatabasePool): VpsRepository {
             next.managedBy ?? null,
             next.dockerMetricsEnabled ?? false,
             next.displayName ?? null,
+            next.dockerManagementEnabled ?? false,
           ],
         );
         return result.rows[0] ? rowToVps(result.rows[0]) : undefined;
@@ -146,8 +149,8 @@ export function createPostgresVpsRepository(pool: DatabasePool): VpsRepository {
     async ensureLocalHost(input: EnsureLocalHostInput) {
       const now = new Date();
       const result = await pool.query<VpsRow>(
-        `INSERT INTO vps (id, name, host, port, username, provider, region, tags, status, notes, display_name, kind, managed_by, docker_metrics_enabled, created_at, updated_at)
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $15)
+        `INSERT INTO vps (id, name, host, port, username, provider, region, tags, status, notes, display_name, kind, managed_by, docker_metrics_enabled, docker_management_enabled, created_at, updated_at)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $16, $15, $15)
          ON CONFLICT (id) DO UPDATE SET
            name = EXCLUDED.name,
            host = EXCLUDED.host,
@@ -161,6 +164,7 @@ export function createPostgresVpsRepository(pool: DatabasePool): VpsRepository {
            kind = EXCLUDED.kind,
            managed_by = EXCLUDED.managed_by,
            docker_metrics_enabled = COALESCE(vps.docker_metrics_enabled, EXCLUDED.docker_metrics_enabled),
+           docker_management_enabled = COALESCE(vps.docker_management_enabled, EXCLUDED.docker_management_enabled),
            updated_at = EXCLUDED.updated_at
          RETURNING *`,
         [
@@ -179,6 +183,7 @@ export function createPostgresVpsRepository(pool: DatabasePool): VpsRepository {
           input.managedBy ?? "system",
           false,
           now,
+          false,
         ],
       );
       return rowToVps(result.rows[0]!);
@@ -211,6 +216,7 @@ function rowToVps(row: VpsRow): VpsRecord {
     kind: (row.kind as VpsRecord["kind"]) ?? undefined,
     managedBy: (row.managed_by as VpsRecord["managedBy"]) ?? undefined,
      dockerMetricsEnabled: row.docker_metrics_enabled ?? false,
+     dockerManagementEnabled: row.docker_management_enabled ?? false,
      city: row.city ?? undefined,
      country: row.country ?? undefined,
      locationDetectedAt: optionalIsoString(row.location_detected_at),

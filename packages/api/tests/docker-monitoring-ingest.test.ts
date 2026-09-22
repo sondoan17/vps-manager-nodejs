@@ -191,6 +191,33 @@ describe("Docker JSON I3 ingest", () => {
     expect(await restarted.getIngestBatch("v", "i", "b20")).toBeUndefined();
   });
 
+  it("advances watermarks for empty event windows and preserves them on replay", async () => {
+    const empty = batch("5", { events: [] });
+    const committed = await repo.ingestUnit(empty);
+    expect(committed.ingestStatus).toBe("committed");
+    expect(committed.committedWatermark?.timeNano).toBe("5");
+    expect((await repo.getWatermark("v", "i"))?.timeNano).toBe("5");
+    const replay = await repo.ingestUnit(empty);
+    expect(replay.ingestStatus).toBe("already_committed");
+    expect(replay.committedWatermark?.timeNano).toBe("5");
+    await expect(
+      repo.ingestUnit({
+        ...batch("6", { events: [] }),
+        eventProtocol: {
+          ...batch("6").eventProtocol!,
+          fromWatermark: {
+            vpsId: "v",
+            agentInstanceId: "i",
+            timeNano: "0",
+            boundaryDigests: [],
+            updatedAt: t(0),
+          },
+        },
+      }),
+    ).rejects.toMatchObject({ code: "watermark_conflict" });
+    expect((await repo.getWatermark("v", "i"))?.timeNano).toBe("5");
+  });
+
   it("persists history below the JSON cap and returns the typed success status", async () => {
     // Objective: a payload below the cap must persist samples/events and advance its watermark.
     const a = batch("1");

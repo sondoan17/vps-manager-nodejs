@@ -38,5 +38,6 @@ export function withVpsDefaults(record: VpsRecord): VpsRecord {
     kind: normalized.kind ?? "remote",
     managedBy: normalized.managedBy ?? "user",
     dockerMetricsEnabled: normalized.dockerMetricsEnabled ?? false,
+    dockerManagementEnabled: normalized.dockerManagementEnabled ?? false,
   };
 }

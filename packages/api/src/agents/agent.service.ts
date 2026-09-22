@@ -32,6 +32,7 @@ export type IngestMetricResult = {
     snapshotId: string;
     agentInstanceId: string;
     batchId?: string;
+    committedWatermark?: DockerIngestResult["committedWatermark"];
     revision: number;
     capabilities: {
       history: true;
@@ -335,6 +336,9 @@ export class AgentService {
           snapshotId: result.snapshotId,
           agentInstanceId: result.agentInstanceId,
           ...(result.batchId ? { batchId: result.batchId } : {}),
+          ...(result.committedWatermark
+            ? { committedWatermark: result.committedWatermark }
+            : {}),
           revision: result.revision,
           capabilities: {
             history: true,

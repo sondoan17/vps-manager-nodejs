@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/vps-manager/agent/internal/config"
+	"github.com/vps-manager/agent/internal/commands"
 	"github.com/vps-manager/agent/internal/geo"
 	"github.com/vps-manager/agent/internal/metrics"
 	"github.com/vps-manager/agent/internal/push"
@@ -121,6 +122,31 @@ func main() {
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
+
+	// Commands run independently from metrics so a slow/failing command can
+	// never delay collection or create a second metrics owner.
+	if st, e := state.LoadStore(runtimeKeysFile, deliveryPath); e == nil {
+		resolver, re := commands.NewDockerTargetResolver("", time.Duration(cfg.RequestTimeoutSeconds)*time.Second, st.ContainerKey)
+		control, ce := commands.DefaultDockerControl("", time.Duration(cfg.RequestTimeoutSeconds)*time.Second)
+		receipts, se := commands.NewFileReceiptStore(filepath.Join(base, "command-receipt.json"))
+		client := commands.NewClient(cfg)
+		if re != nil || ce != nil || se != nil {
+			log.Printf("command worker unavailable: resolver=%v controller=%v receipt=%v", re, ce, se)
+		} else if worker, we := commands.NewWorker(st.InstanceID(), cfg.VpsId, client, control, receipts, resolver); we != nil {
+			log.Printf("command worker unavailable: %v", we)
+		} else {
+			go func() {
+				ticker := time.NewTicker(time.Duration(cfg.IntervalSeconds) * time.Second)
+				defer ticker.Stop()
+				for {
+					cycleCtx, cycleCancel := context.WithTimeout(ctx, time.Duration(cfg.RequestTimeoutSeconds)*time.Second)
+					if err := worker.ProcessOne(cycleCtx); err != nil && ctx.Err() == nil { log.Printf("command cycle failed: %v", err) }
+					cycleCancel()
+					select { case <-ctx.Done(): return; case <-ticker.C: }
+				}
+			}()
+		}
+	}
 
 	// Handle SIGINT/SIGTERM for graceful shutdown
 	sigCh := make(chan os.Signal, 1)

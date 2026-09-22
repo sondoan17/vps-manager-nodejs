@@ -993,7 +993,7 @@ export function createPostgresDockerMonitoringRepository(
           seq <= BigInt(latest.source_sequence)
         )
           throw new DockerIngestConflict("active_instance_conflict");
-        if (unit.events?.length && unit.eventProtocol) {
+        if (unit.eventProtocol) {
           const watermark = (
             await client.query<WatermarkRow>(
               "SELECT * FROM docker_event_watermarks WHERE vps_id=$1 AND agent_instance_id=$2 FOR UPDATE",
@@ -1017,7 +1017,7 @@ export function createPostgresDockerMonitoringRepository(
             [unit.vpsId, unit.agentInstanceId],
           )
         ).rows[0];
-        if (unit.events?.length && unit.eventProtocol) {
+        if (unit.eventProtocol) {
           if (
             priorWatermark &&
             compareDockerWatermarks(
@@ -1293,7 +1293,7 @@ export function createPostgresDockerMonitoringRepository(
               sample.coverage == null ? null : JSON.stringify(sample.coverage),
             ],
           );
-        if (unit.events?.length && unit.eventProtocol)
+        if (unit.eventProtocol)
           await client.query(
             "INSERT INTO docker_event_watermarks (vps_id,agent_instance_id,time_nano,boundary_digests,committed_batch_id,updated_at) VALUES ($1,$2,$3,$4,$5,$6) ON CONFLICT (vps_id,agent_instance_id) DO UPDATE SET time_nano=EXCLUDED.time_nano,boundary_digests=EXCLUDED.boundary_digests,committed_batch_id=EXCLUDED.committed_batch_id,updated_at=EXCLUDED.updated_at",
             [
@@ -1346,7 +1346,7 @@ export function createPostgresDockerMonitoringRepository(
           agentInstanceId: unit.agentInstanceId,
           ...(unit.batchId ? { batchId: unit.batchId } : {}),
           receivedAt: unit.receivedAt,
-          ...(unit.events?.length && unit.eventProtocol
+          ...(unit.eventProtocol
             ? { committedWatermark: unit.eventProtocol.proposedWatermark }
             : {}),
           revision: Number(revision),

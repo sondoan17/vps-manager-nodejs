@@ -49,7 +49,7 @@ export function DockerEventTimeline({
     <section aria-label="Docker events" className="rounded-none border border-white/10 bg-black/10 p-4">
       <h3 className="text-xs font-medium text-white/75">Operational Docker events</h3>
       <p className="mt-1 text-[11px] text-white/40">
-        Operational Docker events (container lifecycle), not the audit log. showing {events.length} retained details of authoritative total {retained}
+        Operational Docker events (container lifecycle), not the audit log. showing {events.length} loaded events
       </p>
       {events.length === 0 ? (
         <div className="mt-2">

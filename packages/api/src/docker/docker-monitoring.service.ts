@@ -222,6 +222,12 @@ export class DockerMonitoringService {
       timeNano: sourceSequence,
       boundaryDigests: [],
     };
+    const hasEventProtocol =
+      input.batchId !== undefined ||
+      input.events !== undefined ||
+      input.eventWindow !== undefined ||
+      input.fromWatermark !== undefined ||
+      input.proposedWatermark !== undefined;
     const unit: DockerIngestUnit = {
       vpsId,
       agentInstanceId: input.agentInstanceId,
@@ -259,24 +265,28 @@ export class DockerMonitoringService {
             receivedAt,
           }
         : undefined,
-      eventProtocol: {
-        fromWatermark: {
-          ...from,
-          vpsId,
-          agentInstanceId: input.agentInstanceId,
-          updatedAt: receivedAt,
-        },
-        proposedWatermark: {
-          ...to,
-          vpsId,
-          agentInstanceId: input.agentInstanceId,
-          updatedAt: receivedAt,
-        },
-        eventWindow: {
-          from: input.eventWindow?.since ?? from.timeNano,
-          to: input.eventWindow?.until ?? to.timeNano,
-        },
-      },
+      ...(hasEventProtocol
+        ? {
+            eventProtocol: {
+              fromWatermark: {
+                ...from,
+                vpsId,
+                agentInstanceId: input.agentInstanceId,
+                updatedAt: receivedAt,
+              },
+              proposedWatermark: {
+                ...to,
+                vpsId,
+                agentInstanceId: input.agentInstanceId,
+                updatedAt: receivedAt,
+              },
+              eventWindow: {
+                from: input.eventWindow?.since ?? from.timeNano,
+                to: input.eventWindow?.until ?? to.timeNano,
+              },
+            },
+          }
+        : {}),
       ...(input.monitoring === undefined
         ? {}
         : { monitoring: { ...input.monitoring } }),
