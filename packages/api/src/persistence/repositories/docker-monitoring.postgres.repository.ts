@@ -970,9 +970,15 @@ export function createPostgresDockerMonitoringRepository(
             [unit.vpsId],
           )
         ).rows[0];
-        const seq = BigInt(unit.sourceSequence);
+        const isLegacy = unit.agentInstanceId === "legacy";
+        const sourceSequence = isLegacy
+          ? String((latest ? BigInt(latest.source_sequence) : 0n) + 1n)
+          : unit.sourceSequence;
+        const seq = BigInt(sourceSequence);
+        if (latest && isLegacy && latest.active_instance_id !== "legacy")
+          throw new DockerIngestConflict("active_instance_conflict");
         if (
-          latest &&
+          latest && !isLegacy &&
           latest.active_instance_id === unit.agentInstanceId &&
           seq < BigInt(latest.source_sequence)
         ) {
@@ -1333,7 +1339,7 @@ export function createPostgresDockerMonitoringRepository(
             unit.vpsId,
             unit.agentInstanceId,
             unit.snapshotId,
-            unit.sourceSequence,
+            sourceSequence,
             received,
             revision,
             unit.compatibility,
@@ -1358,7 +1364,7 @@ export function createPostgresDockerMonitoringRepository(
             unit.snapshotId,
             unit.agentInstanceId,
             unit.requestDigest,
-            unit.sourceSequence,
+            sourceSequence,
             received,
             result,
             revision,

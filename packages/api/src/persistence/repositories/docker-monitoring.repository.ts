@@ -914,11 +914,21 @@ export function createJsonDockerMonitoringRepository(
           return store;
         }
         const prior = store.latestByVps[unit.vpsId];
+        const sourceSequence =
+          unit.agentInstanceId === "legacy"
+            ? String((prior ? BigInt(prior.sourceSequence) : 0n) + 1n)
+            : unit.sourceSequence;
         if (
           prior &&
+          unit.agentInstanceId === "legacy" &&
+          prior.activeInstanceId !== "legacy"
+        )
+          throw new DockerIngestConflict("active_instance_conflict");
+        if (
+          prior && unit.agentInstanceId !== "legacy" &&
           prior.activeInstanceId !== unit.agentInstanceId &&
           compareDockerSourceSequence(
-            unit.sourceSequence,
+            sourceSequence,
             prior.sourceSequence,
           ) <= 0
         )
@@ -926,8 +936,9 @@ export function createJsonDockerMonitoringRepository(
         if (
           prior &&
           prior.activeInstanceId === unit.agentInstanceId &&
+          unit.agentInstanceId !== "legacy" &&
           compareDockerSourceSequence(
-            unit.sourceSequence,
+            sourceSequence,
             prior.sourceSequence,
           ) < 0
         ) {
@@ -936,7 +947,7 @@ export function createJsonDockerMonitoringRepository(
             snapshotId: unit.snapshotId,
             agentInstanceId: unit.agentInstanceId,
             requestDigest: unit.requestDigest,
-            sourceSequence: unit.sourceSequence,
+            sourceSequence,
             result: {
               status: "replay_ignored",
               snapshotId: unit.snapshotId,
@@ -960,7 +971,7 @@ export function createJsonDockerMonitoringRepository(
           prior &&
           prior.activeInstanceId !== unit.agentInstanceId &&
           compareDockerSourceSequence(
-            unit.sourceSequence,
+            sourceSequence,
             prior.sourceSequence,
           ) <= 0
         )
@@ -1262,7 +1273,7 @@ export function createJsonDockerMonitoringRepository(
         store.latestByVps[unit.vpsId] = {
           activeInstanceId: unit.agentInstanceId,
           snapshotId: unit.snapshotId,
-          sourceSequence: unit.sourceSequence,
+          sourceSequence,
           receivedAt: unit.receivedAt,
           updatedAt: unit.receivedAt,
           revision: store.revision,
@@ -1278,7 +1289,7 @@ export function createJsonDockerMonitoringRepository(
           snapshotId: unit.snapshotId,
           agentInstanceId: unit.agentInstanceId,
           requestDigest: unit.requestDigest,
-          sourceSequence: unit.sourceSequence,
+          sourceSequence,
           result: committed,
           receivedAt: unit.receivedAt,
           revision: store.revision,

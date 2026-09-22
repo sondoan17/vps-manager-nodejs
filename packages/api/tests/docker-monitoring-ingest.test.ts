@@ -85,6 +85,46 @@ describe("Docker JSON I3 ingest", () => {
     await rm(dir, { recursive: true, force: true });
   });
 
+  it("allocates durable legacy sequences, preserves replay idempotency, and rejects legacy after v2", async () => {
+    const legacy = (n: string) => unit(n, {
+      agentInstanceId: "legacy",
+      snapshotId: `legacy-${n}`,
+      sourceSequence: "1",
+      hostSample: {
+        ...unit(n).hostSample,
+        agentInstanceId: "legacy",
+        snapshotId: `legacy-${n}`,
+      },
+    });
+    const first = legacy("1");
+    const second = legacy("2");
+    expect((await repo.ingestUnit(first)).ingestStatus).toBe("committed");
+    expect((await repo.ingestUnit(second)).ingestStatus).toBe("committed");
+    expect((await repo.ingestUnit(first)).ingestStatus).toBe("already_committed");
+    const persisted = JSON.parse(await readFile(join(dir, "store.json"), "utf8")) as {
+      latestByVps: Record<string, { sourceSequence: string }>;
+      snapshots: Array<{ snapshotId: string; sourceSequence: string }>;
+    };
+    expect(persisted.latestByVps.v.sourceSequence).toBe("2");
+    expect(persisted.snapshots.filter((s) => s.snapshotId.startsWith("legacy-")).map((s) => s.sourceSequence)).toEqual(["1", "2"]);
+
+    await repo.ingestUnit(unit("10", { agentInstanceId: "v2" }));
+    await expect(repo.ingestUnit(legacy("3"))).rejects.toMatchObject({ code: "active_instance_conflict" });
+  });
+
+  it("serializes concurrent legacy allocations without duplicate sequences", async () => {
+    const legacy = (n: string) => unit(n, {
+      agentInstanceId: "legacy",
+      snapshotId: `legacy-${n}`,
+      sourceSequence: "1",
+      hostSample: { ...unit(n).hostSample, agentInstanceId: "legacy", snapshotId: `legacy-${n}` },
+    });
+    const results = await Promise.all([repo.ingestUnit(legacy("1")), repo.ingestUnit(legacy("2"))]);
+    expect(results.map((r) => r.ingestStatus).sort()).toEqual(["committed", "committed"]);
+    const persisted = JSON.parse(await readFile(join(dir, "store.json"), "utf8")) as { snapshots: Array<{ snapshotId: string; sourceSequence: string }> };
+    expect(persisted.snapshots.map((s) => s.sourceSequence).sort()).toEqual(["1", "2"]);
+  });
+
   it("commits eventless units, exact replays, and rejects snapshot digest changes without mutation", async () => {
     const a = unit("1");
     expect((await repo.ingestUnit(a)).ingestStatus).toBe("committed");
