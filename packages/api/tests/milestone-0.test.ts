@@ -154,6 +154,7 @@ describe("database migrations", () => {
       "016_docker_alert_resolution.sql",
       "017_docker_v1_unified_backfill.sql",
       "018_docker_management.sql",
+      "019_docker_legacy_container_identity.sql",
     ]);
     expect(migrations[0]?.sql).toContain("CREATE TABLE IF NOT EXISTS vps");
     expect(migrations[1]?.sql).toContain("metric_samples_vps_effective_idx");
@@ -235,6 +236,7 @@ describe("database migrations", () => {
       "016_docker_alert_resolution.sql",
       "017_docker_v1_unified_backfill.sql",
       "018_docker_management.sql",
+      "019_docker_legacy_container_identity.sql",
     ]);
     expect(
       selectMigrations(migrations, true).map((migration) => migration.id),
@@ -257,6 +259,7 @@ describe("database migrations", () => {
       "016_docker_alert_resolution.sql",
       "017_docker_v1_unified_backfill.sql",
       "018_docker_management.sql",
+      "019_docker_legacy_container_identity.sql",
     ]);
   });
 });
