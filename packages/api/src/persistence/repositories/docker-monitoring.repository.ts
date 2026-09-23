@@ -26,6 +26,7 @@ import type {
   DockerEventWatermark,
   DockerHostSample,
   DockerContainerSample,
+  DockerCurrentContainer,
   DockerIngestBatch,
   DockerListScope,
   DockerMetricRollup,
@@ -144,6 +145,14 @@ export type DockerMonitoringRepository = {
   listContainerSamples(
     query: DockerContainerSamplesQuery,
   ): Promise<DockerPage<DockerContainerSample>>;
+  /**
+   * Canonical container identities of the latest committed snapshot for this
+   * VPS, derived from committed samples only (never ingest-state tables or
+   * the legacy agent_docker_metrics projection). Empty when no snapshot.
+   */
+  listCurrentContainers(
+    vpsId: string,
+  ): Promise<DockerCurrentContainer[]>;
   listEvents(
     query: DockerEventsQuery,
   ): Promise<DockerPage<DockerOperationalEvent>>;
@@ -575,6 +584,46 @@ export function createJsonDockerMonitoringRepository(
           last,
         }),
       });
+    },
+
+    async listCurrentContainers(vpsId) {
+      const store = await readStore();
+      // Latest committed snapshot identity comes from the committed samples
+      // themselves: newest-first (effectiveAt DESC, id DESC), the same
+      // recency order every other sample read uses. Ingest-state tables and
+      // the legacy projection may be stale for legacy snapshots.
+      let latest: DockerHostSample | undefined;
+      for (const s of store.samples) {
+        if (s.vpsId !== vpsId) continue;
+        if (
+          latest === undefined ||
+          compareDesc(s.effectiveAt, s.id, latest.effectiveAt, latest.id) < 0
+        )
+          latest = s;
+      }
+      if (latest === undefined) return [];
+      const { agentInstanceId, snapshotId } = latest;
+      return store.samples
+        .filter(
+          (s): s is DockerContainerSample =>
+            s.vpsId === vpsId &&
+            isContainerSample(s) &&
+            s.agentInstanceId === agentInstanceId &&
+            s.snapshotId === snapshotId,
+        )
+        .sort((a, b) =>
+          a.containerKey === b.containerKey
+            ? 0
+            : a.containerKey < b.containerKey
+              ? -1
+              : 1,
+        )
+        .map((s) => ({
+          agentInstanceId: s.agentInstanceId,
+          containerKey: s.containerKey,
+          ...(s.name !== undefined ? { name: s.name } : {}),
+          ...(s.state !== undefined ? { state: s.state } : {}),
+        }));
     },
 
     async listEvents(query) {
@@ -1537,6 +1586,11 @@ export async function seedDockerMonitoringForTests(
     if (seed.latestStorage) {
       for (const [vpsId, latest] of Object.entries(seed.latestStorage)) {
         if (latest !== undefined) store.latestStorage[vpsId] = latest;
+      }
+    }
+    if (seed.latestByVps) {
+      for (const [vpsId, latest] of Object.entries(seed.latestByVps)) {
+        if (latest !== undefined) store.latestByVps[vpsId] = latest;
       }
     }
     return enforceCaps(store);

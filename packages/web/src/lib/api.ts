@@ -500,6 +500,8 @@ export function listVpsDockerContainerHistory(id: string, params: DockerContaine
   const { agentInstanceId, containerKey, ...query } = params;
   return requestEnvelope<DockerPage<DockerHostSample>>(`${vpsPath(id)}/docker/instances/${encodeURIComponent(agentInstanceId)}/containers/${encodeURIComponent(containerKey)}/history${dockerQueryString(query)}`);
 }
+export type DockerCurrentContainer = { agentInstanceId: string; containerKey: string; name?: string; state?: string };
+export function listVpsDockerCurrentContainers(id: string) { return request<DockerCurrentContainer[]>(`${vpsPath(id)}/docker/containers/current`); }
 export function listVpsDockerRollups(id: string, params: DockerHistoryQuery = {}) { return requestEnvelope<DockerPage<DockerMetricRollup>>(`${vpsPath(id)}/docker/rollups${dockerQueryString(params)}`); }
 export function listVpsDockerEvents(id: string, params: DockerEventsQuery = {}) { return requestEnvelope<DockerPage<DockerOperationalEvent>>(`${vpsPath(id)}/docker/events${dockerQueryString(params)}`); }
 export function getVpsDockerStorage(id: string) { return request<DockerStorageLatest | null>(`${vpsPath(id)}/docker/storage`); }

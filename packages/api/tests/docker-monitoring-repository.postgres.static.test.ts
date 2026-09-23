@@ -78,3 +78,57 @@ describe("docker monitoring postgres alert resolution (static fake pool)", () =>
     expect(values).toEqual(["vps-a", "docker_unavailable:v1:vps-a", new Date("2026-09-20T01:00:00.000Z")]);
   });
 });
+
+describe("docker monitoring postgres listCurrentContainers (static fake pool)", () => {
+  it("resolves the newest snapshot identity first, then its container rows in containerKey order", async () => {
+    const query = vi.fn()
+      .mockResolvedValueOnce({ rowCount: 1, rows: [{ agent_instance_id: "inst1", snapshot_id: "snap_new" }] })
+      .mockResolvedValueOnce({ rowCount: 2, rows: [
+        { agent_instance_id: "inst1", container_key: "ck_a", name: "alpha", state: "running" },
+        { agent_instance_id: "inst1", container_key: "ck_b", name: "beta", state: "exited" },
+      ] });
+    const repo = createPostgresDockerMonitoringRepository({ query } as never);
+
+    // Objective: current containers come from committed sample rows of the
+    // newest snapshot only — samples SQL, never ingest-state/projection tables.
+    const data = await repo.listCurrentContainers("vps-a");
+    const [identitySql, identityValues] = query.mock.calls[0]!;
+    expect(identitySql).toContain("SELECT agent_instance_id, snapshot_id FROM docker_metric_samples");
+    expect(identitySql).toContain("WHERE vps_id = $1");
+    expect(identitySql).toContain("ORDER BY effective_at DESC, id DESC LIMIT 1");
+    expect(identityValues).toEqual(["vps-a"]);
+
+    const [rowsSql, rowsValues] = query.mock.calls[1]!;
+    expect(rowsSql).toContain("FROM docker_metric_samples");
+    expect(rowsSql).toContain("container_key IS NOT NULL");
+    expect(rowsSql).toContain("ORDER BY container_key ASC, id ASC");
+    expect(rowsValues).toEqual(["vps-a", "inst1", "snap_new"]);
+
+    expect(data).toEqual([
+      { agentInstanceId: "inst1", containerKey: "ck_a", name: "alpha", state: "running" },
+      { agentInstanceId: "inst1", containerKey: "ck_b", name: "beta", state: "exited" },
+    ]);
+  });
+
+  it("omits name/state keys entirely when the stored columns are null", async () => {
+    const query = vi.fn()
+      .mockResolvedValueOnce({ rowCount: 1, rows: [{ agent_instance_id: "inst1", snapshot_id: "snap_new" }] })
+      .mockResolvedValueOnce({ rowCount: 1, rows: [
+        { agent_instance_id: "inst1", container_key: "ck_a", name: null, state: null },
+      ] });
+    const repo = createPostgresDockerMonitoringRepository({ query } as never);
+
+    const data = await repo.listCurrentContainers("vps-a");
+    expect(data).toEqual([{ agentInstanceId: "inst1", containerKey: "ck_a" }]);
+    expect(Object.keys(data[0]!).sort()).toEqual(["agentInstanceId", "containerKey"]);
+  });
+
+  it("returns [] with exactly one query when the VPS has no samples", async () => {
+    const query = vi.fn().mockResolvedValueOnce({ rowCount: 0, rows: [] });
+    const repo = createPostgresDockerMonitoringRepository({ query } as never);
+
+    expect(await repo.listCurrentContainers("vps-a")).toEqual([]);
+    expect(query).toHaveBeenCalledTimes(1);
+    expect(query.mock.calls[0]![1]).toEqual(["vps-a"]);
+  });
+});

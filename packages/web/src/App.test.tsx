@@ -1949,6 +1949,139 @@ describe("React dashboard", () => {
 
   });
 
+  describe("Docker container history targets", () => {
+    // Production regression: the stored snapshot still carries the old
+    // container key (f51a…) while the live current-targets endpoint reports
+    // the canonical one (dc6d…). Only the current key may become selectable.
+    const STALE_SNAPSHOT_KEY = "f51a000000000000000000000000000000000000000000000000000000000001";
+    const CURRENT_KEY = "dc6d000000000000000000000000000000000000000000000000000000000002";
+    const CURRENT_INSTANCE = "inst-current";
+
+    type MockResponse = { ok: boolean; status: number; json: () => Promise<unknown> };
+    const ok = (data: unknown): MockResponse => ({ ok: true, status: 200, json: async () => data });
+
+    const dockerServer = {
+      id: "vps-1",
+      name: "web-01",
+      host: "10.0.0.1",
+      port: 22,
+      username: "root",
+      status: "healthy",
+      dockerMetricsEnabled: true,
+      dockerManagementEnabled: false,
+      createdAt: "2026-01-01T00:00:00.000Z",
+      updatedAt: "2026-01-01T00:00:00.000Z",
+    };
+
+    const dashboardWithStaleSnapshot = {
+      mode: "local",
+      summary: { totalServers: 1, healthyServers: 1, warningServers: 0, unreachableServers: 0, runningJobs: 0 },
+      servers: [],
+      metrics: [],
+      dockerMetrics: [
+        {
+          vpsId: "vps-1",
+          collectedAt: "2026-01-01T00:00:00.000Z",
+          receivedAt: "2026-01-01T00:00:01.000Z",
+          agentInstanceId: "inst-stale",
+          agentVersion: "1.2.3",
+          schemaVersion: 1,
+          available: true,
+          containerTotal: 1,
+          containerRunning: 1,
+          cpuPercent: 12.5,
+          memoryUsageBytes: 268435456,
+          networkRxBytes: 1024,
+          networkTxBytes: 2048,
+          blockReadBytes: 4096,
+          blockWriteBytes: 8192,
+          pids: 9,
+          containers: [
+            {
+              id: STALE_SNAPSHOT_KEY,
+              name: "legacy-api",
+              image: "app:1",
+              state: "running",
+              status: "Up 2 minutes",
+              cpuPercent: 10,
+              memoryUsageBytes: 134217728,
+              networkRxBytes: 100,
+              networkTxBytes: 200,
+              blockReadBytes: 300,
+              blockWriteBytes: 400,
+              pids: 4,
+            },
+          ],
+        },
+      ],
+      jobs: [],
+      auditEvents: [],
+      terminal: { label: "Terminal", networkAccess: "disabled", commands: [], sessions: [] },
+      settings: { appMode: "local", webTerminalEnabled: false, realSshEnabled: false, authRequiredInLocalMode: true },
+    };
+
+    function routeDockerPageFetch(currentContainers: MockResponse | Promise<MockResponse>) {
+      fetchMock.mockImplementation(async (url: unknown) => {
+        const path = String(url);
+        if (path === "/api/auth/me") return ok({ data: { mode: "local", authenticated: false, authRequired: false } });
+        if (path === "/api/dashboard") return ok({ data: dashboardWithStaleSnapshot });
+        if (path === "/api/vps") return ok({ data: [dockerServer] });
+        if (path === "/api/vps/vps-1/docker/containers/current") return await currentContainers;
+        if (path === "/api/vps/vps-1/docker/storage") return ok({ data: null });
+        if (path.startsWith("/api/vps/vps-1/docker/")) return ok({ data: [], page: { limit: 0, hasMore: false } });
+        return ok({ data: [] });
+      });
+    }
+
+    it("offers only current-target keys and fetches history with the canonical key and instance", async () => {
+      let resolveCurrent!: (value: MockResponse) => void;
+      const currentPending = new Promise<MockResponse>((resolve) => { resolveCurrent = resolve; });
+      routeDockerPageFetch(currentPending);
+
+      renderApp(["/vps/vps-1/docker"]);
+
+      const region = await screen.findByRole("region", { name: "Container history" });
+      expect(await within(region).findByText("Loading containers…")).toBeInTheDocument();
+
+      resolveCurrent(ok({ data: [{ agentInstanceId: CURRENT_INSTANCE, containerKey: CURRENT_KEY }] }));
+
+      // Contract names are absent here, so the shortened canonical key is shown.
+      const targetButton = await within(region).findByRole("button", { name: CURRENT_KEY.slice(0, 12) });
+      expect(within(region).queryByText("legacy-api")).not.toBeInTheDocument();
+
+      await userEvent.click(targetButton);
+
+      const historyPath = `/api/vps/vps-1/docker/instances/${CURRENT_INSTANCE}/containers/${CURRENT_KEY}/history?limit=50`;
+      await waitFor(() => {
+        expect(fetchMock).toHaveBeenCalledWith(historyPath, expect.any(Object));
+      });
+      expect(fetchMock.mock.calls.some(([requestUrl]) => String(requestUrl).includes(STALE_SNAPSHOT_KEY))).toBe(false);
+    });
+
+    it("shows the current-targets error without a stale snapshot fallback", async () => {
+      routeDockerPageFetch({ ok: false, status: 500, json: async () => ({ error: { message: "Current containers unavailable" } }) });
+
+      renderApp(["/vps/vps-1/docker"]);
+
+      const region = await screen.findByRole("region", { name: "Container history" });
+      expect(await within(region).findByText("Current containers unavailable")).toBeInTheDocument();
+      expect(within(region).queryByRole("button")).not.toBeInTheDocument();
+      expect(within(region).queryByText("legacy-api")).not.toBeInTheDocument();
+      expect(within(region).getByText("Select a container to load its retained history.")).toBeInTheDocument();
+    });
+
+    it("shows an explicit empty state when no current containers are reported", async () => {
+      routeDockerPageFetch(ok({ data: [] }));
+
+      renderApp(["/vps/vps-1/docker"]);
+
+      const region = await screen.findByRole("region", { name: "Container history" });
+      expect(await within(region).findByText("No containers reported for this server.")).toBeInTheDocument();
+      expect(within(region).queryByRole("button")).not.toBeInTheDocument();
+      expect(within(region).queryByText("legacy-api")).not.toBeInTheDocument();
+    });
+  });
+
   describe("Edit server regressions", () => {
     const editableServer = {
       id: "vps-edit-1",

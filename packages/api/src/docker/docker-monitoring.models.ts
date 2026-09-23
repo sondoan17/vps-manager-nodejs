@@ -43,6 +43,13 @@ export type DockerContainerSample = DockerHostSample & {
   name?: string;
   state?: string;
 };
+/** Canonical container identity rows of the latest committed snapshot. */
+export type DockerCurrentContainer = {
+  agentInstanceId: string;
+  containerKey: string;
+  name?: string;
+  state?: string;
+};
 export type DockerMetricSample = DockerHostSample | DockerContainerSample;
 export type DockerMetricRollup = {
   id: string;

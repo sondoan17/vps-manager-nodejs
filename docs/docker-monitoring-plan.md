@@ -300,6 +300,7 @@ Proposed guarded endpoints:
 
 ```text
 GET  /api/vps/:id/docker/history?scope=host&from=&to=&limit=&cursor=
+GET  /api/vps/:id/docker/containers/current
 GET  /api/vps/:id/docker/instances/:agentInstanceId/containers/:containerKey/history?from=&to=&limit=&cursor=
 GET  /api/vps/:id/docker/events?action=&agentInstanceId=&containerKey=&from=&to=&limit=&cursor=
 GET  /api/vps/:id/docker/storage
@@ -307,7 +308,9 @@ GET  /api/vps/:id/docker/alerts?state=&kind=&agentInstanceId=&containerKey=&limi
 POST /api/vps/:id/docker/alerts/:alertId/acknowledge
 ```
 
-All list responses use `{ data, page: { limit, nextCursor, hasMore } }`. REST pagination cursors are opaque, versioned, signed or strictly validated base64url payloads and bind `vpsId`, scope, `agentInstanceId` (nullable only for host scope), `containerKey` (nullable only for host scope), filters, ordering, and last key; malformed or cross-scope cursors return 400. IDs are opaque and never raw Docker IDs.
+Paginated list responses use `{ data, page: { limit, nextCursor, hasMore } }`. REST pagination cursors are opaque, versioned, signed or strictly validated base64url payloads and bind `vpsId`, scope, `agentInstanceId` (nullable only for host scope), `containerKey` (nullable only for host scope), filters, ordering, and last key; malformed or cross-scope cursors return 400. IDs are opaque and never raw Docker IDs.
+
+`/containers/current` returns `{ data: [{ agentInstanceId, containerKey, name?, state? }] }` from container samples in the latest committed snapshot, or an empty array when none exist. It does not read the legacy latest-snapshot projection: that projection can retain container IDs from before a redeploy. A container recreated under the same name has a new key; select history using the returned instance and key. Names missing from older samples are optional and the UI displays a shortened key.
 
 #### Migration and indexes
 

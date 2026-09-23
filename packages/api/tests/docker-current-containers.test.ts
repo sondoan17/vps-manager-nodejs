@@ -1,0 +1,433 @@
+import { mkdtemp, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import type { Express } from "express";
+import request from "supertest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { createApp } from "../src/app.js";
+import type { AppConfig } from "../src/config/app-config.js";
+import { DockerMonitoringService } from "../src/docker/docker-monitoring.service.js";
+import type { DockerIngestUnit } from "../src/docker/docker-monitoring.models.js";
+import type { AgentDockerMetricsInput } from "../src/agents/agent.models.js";
+import { createVpsStore } from "../src/persistence/store/vpsStore.js";
+import {
+  createJsonDockerMonitoringRepository,
+  seedDockerMonitoringForTests,
+} from "../src/persistence/repositories/docker-monitoring.repository.js";
+import { createSessionCookie } from "./test-helpers.js";
+
+// ── Current containers (latest committed snapshot) + name persistence ─────
+// The endpoint derives rows from container samples of the newest snapshot
+// only: stale authoritative ingest state (latestByVps) and the legacy
+// agent_docker_metrics projection must never influence the response.
+
+const SESSION_SECRET = "docker-monitoring-api-test-secret-32chars";
+
+const baseConfig: AppConfig = {
+  mode: "local",
+  enableWebTerminal: false,
+  allowPrivateNetworkTargets: false,
+  dataDir: "data",
+  privateDir: "private",
+  rateLimitWindowMs: 60_000,
+  rateLimitMax: 120,
+  agentInstallIntervalSeconds: 1,
+  allowInsecureAgentHttp: false,
+  storageDriver: "json",
+  dbSsl: false,
+  dbPoolMax: 10,
+  dashboardSessionTtlSeconds: 86_400,
+  dashboardCookieSecure: false,
+  dashboardCookieSameSite: "lax",
+  dashboardSessionSecret: SESSION_SECRET,
+  trustProxyHops: 0,
+  jobHistoryLimit: 1000,
+  auditHistoryLimit: 5000,
+  metricWindowLimit: 120,
+  dockerRetentionDays: 7,
+  dockerMaintenanceSamplesPerVps: 5000,
+  dockerMaintenanceEventsPerVps: 10000,
+  dockerMaintenanceIntervalSeconds: 21600,
+  dockerJsonMaxBytes: 32 * 1024 * 1024,
+  dockerJsonMaintenanceMaxRewriteBytes: 8 * 1024 * 1024,
+  sshHostKeyPins: {},
+  sshHostKeyPolicy: "strict",
+};
+
+const T_OLD = "2026-09-10T00:00:00.000Z";
+const T_NEW = "2026-09-12T00:00:00.000Z";
+
+let tempDir: string;
+let server: Express;
+let sessionCookie: string;
+let vpsA = "";
+let vpsB = "";
+let vpsEmpty = "";
+
+function sample(
+  id: string,
+  vpsId: string,
+  effectiveAt: string,
+  extra: Record<string, unknown> = {},
+) {
+  return {
+    id,
+    vpsId,
+    agentInstanceId: "inst1",
+    snapshotId: `snap_${id}`,
+    collectedAt: effectiveAt,
+    receivedAt: effectiveAt,
+    effectiveAt,
+    metrics: { cpu: 1 },
+    ...extra,
+  };
+}
+
+beforeEach(async () => {
+  tempDir = await mkdtemp(join(tmpdir(), "vps-manager-current-containers-"));
+  const dataDir = join(tempDir, "data");
+
+  const store = createVpsStore(join(dataDir, "vps.json"));
+  const createdA = await store.create({
+    name: "current-a",
+    host: "203.0.113.20",
+    port: 22,
+    username: "root",
+  });
+  const createdB = await store.create({
+    name: "current-b",
+    host: "203.0.113.21",
+    port: 22,
+    username: "root",
+  });
+  const createdEmpty = await store.create({
+    name: "current-empty",
+    host: "203.0.113.22",
+    port: 22,
+    username: "root",
+  });
+  vpsA = createdA.id;
+  vpsB = createdB.id;
+  vpsEmpty = createdEmpty.id;
+
+  await seedDockerMonitoringForTests(
+    join(dataDir, "docker-monitoring.json"),
+    {
+      samples: [
+        // VPS A, stale snapshot: a container that was recreated since.
+        sample("ha_old", vpsA, T_OLD, { snapshotId: "snap_a_old" }),
+        sample("ck_old", vpsA, T_OLD, {
+          snapshotId: "snap_a_old",
+          containerKey: "ck_old",
+          name: "legacy-old",
+          state: "exited",
+        }),
+        // VPS A, latest committed snapshot: recreated key, one row without name.
+        sample("ha_new", vpsA, T_NEW, { snapshotId: "snap_a_new" }),
+        sample("ck_web", vpsA, T_NEW, {
+          snapshotId: "snap_a_new",
+          containerKey: "ck_web",
+          name: "web",
+          state: "running",
+        }),
+        sample("ck_plain", vpsA, T_NEW, {
+          snapshotId: "snap_a_new",
+          containerKey: "ck_plain",
+        }),
+        // VPS B, isolated.
+        sample("hb_new", vpsB, T_NEW, {
+          agentInstanceId: "instB",
+          snapshotId: "snap_b_new",
+        }),
+        sample("ck_b", vpsB, T_NEW, {
+          agentInstanceId: "instB",
+          snapshotId: "snap_b_new",
+          containerKey: "ck_b",
+          name: "service-b",
+          state: "running",
+        }),
+      ],
+      latestByVps: {
+        // Authoritative ingest state deliberately points at the STALE
+        // snapshot: it must not change what the endpoint returns.
+        [vpsA]: {
+          activeInstanceId: "inst1",
+          snapshotId: "snap_a_old",
+          sourceSequence: "5",
+          receivedAt: T_OLD,
+          updatedAt: T_OLD,
+          revision: 7,
+          compatibility: { latest: true },
+        },
+      },
+    },
+  );
+
+  sessionCookie = await createSessionCookie(tempDir, SESSION_SECRET);
+  server = createApp({
+    config: {
+      ...baseConfig,
+      dataDir,
+      privateDir: join(tempDir, "private"),
+    },
+  });
+});
+
+afterEach(async () => {
+  await rm(tempDir, { recursive: true, force: true });
+});
+
+function authed(req: request.Test) {
+  return req.set("Cookie", sessionCookie);
+}
+
+describe("GET /api/vps/:id/docker/containers/current", () => {
+  it("returns only the latest snapshot's containers, ordered by containerKey", async () => {
+    const res = await authed(
+      request(server).get(`/api/vps/${vpsA}/docker/containers/current`),
+    ).expect(200);
+
+    // Exact response contract, exact key sets: rows without a stored name
+    // must omit the key entirely (never name: null), and the stale
+    // latestByVps entry (snap_a_old) must not surface ck_old.
+    expect(res.body).toEqual({
+      data: [
+        { agentInstanceId: "inst1", containerKey: "ck_plain" },
+        {
+          agentInstanceId: "inst1",
+          containerKey: "ck_web",
+          name: "web",
+          state: "running",
+        },
+      ],
+    });
+    expect(Object.keys(res.body.data[0]).sort()).toEqual([
+      "agentInstanceId",
+      "containerKey",
+    ]);
+    expect(res.body.data.map((c: { containerKey: string }) => c.containerKey)).toEqual([
+      "ck_plain",
+      "ck_web",
+    ]);
+    expect(
+      res.body.data.some(
+        (c: { containerKey: string }) => c.containerKey === "ck_old",
+      ),
+    ).toBe(false);
+  });
+
+  it("keeps history rows readable for the recreated key of the latest snapshot", async () => {
+    const res = await authed(
+      request(server).get(
+        `/api/vps/${vpsA}/docker/instances/inst1/containers/ck_web/history`,
+      ),
+    ).expect(200);
+    expect(res.body.data).toHaveLength(1);
+    expect(res.body.data[0]).toMatchObject({
+      containerKey: "ck_web",
+      snapshotId: "snap_a_new",
+      name: "web",
+      state: "running",
+    });
+  });
+
+  it("does not leak containers across VPS", async () => {
+    const res = await authed(
+      request(server).get(`/api/vps/${vpsB}/docker/containers/current`),
+    ).expect(200);
+    expect(res.body).toEqual({
+      data: [
+        {
+          agentInstanceId: "instB",
+          containerKey: "ck_b",
+          name: "service-b",
+          state: "running",
+        },
+      ],
+    });
+  });
+
+  it("returns {data: []} when the VPS has no samples", async () => {
+    const res = await authed(
+      request(server).get(`/api/vps/${vpsEmpty}/docker/containers/current`),
+    ).expect(200);
+    expect(res.body).toEqual({ data: [] });
+  });
+
+  it("returns 404 for an unknown VPS", async () => {
+    await authed(
+      request(server).get(
+        "/api/vps/vps_missing_does_not_exist/docker/containers/current",
+      ),
+    ).expect(404, { error: { message: "VPS not found" } });
+  });
+
+  it("rejects unauthenticated reads with 401", async () => {
+    await request(server)
+      .get(`/api/vps/${vpsA}/docker/containers/current`)
+      .expect(401);
+  });
+});
+
+// ── Ingest persists `name` while request digests stay byte-identical ──────
+
+function ingestFixture(nameOverride?: string): AgentDockerMetricsInput {
+  return {
+    collectedAt: "2026-09-15T12:00:00.000Z",
+    schemaVersion: 2,
+    agentInstanceId: "inst_golden",
+    snapshotId: "snap_golden",
+    sourceSequence: "1",
+    available: true,
+    containerTotal: 2,
+    containerRunning: 2,
+    cpuPercent: 3.5,
+    memoryUsageBytes: 1024,
+    networkRxBytes: 10,
+    networkTxBytes: 20,
+    blockReadBytes: 0,
+    blockWriteBytes: 0,
+    pids: 42,
+    containers: [
+      {
+        containerKey: "ck_alpha",
+        name: nameOverride ?? "web",
+        image: "nginx:1.25",
+        state: "running",
+        health: "healthy",
+        cpuPercent: 1.5,
+        memoryUsageBytes: 512,
+        memoryLimitBytes: 2048,
+        networkRxBytes: 1,
+        networkTxBytes: 2,
+        blockReadBytes: 3,
+        blockWriteBytes: 4,
+        pids: 5,
+      },
+      {
+        containerKey: "ck_beta",
+        name: "cache",
+        image: "redis:7",
+        state: "running",
+        cpuPercent: 0.5,
+        memoryUsageBytes: 128,
+        networkRxBytes: 6,
+        networkTxBytes: 7,
+        blockReadBytes: 8,
+        blockWriteBytes: 9,
+        pids: 10,
+      },
+    ],
+  } as unknown as AgentDockerMetricsInput;
+}
+
+// Captured from this exact fixture against the digest projection BEFORE name
+// persistence was added (DOCKER_INGEST_DIGEST_VERSION = 1). Batch digests
+// recorded by earlier builds must keep matching, or replay dedupe breaks
+// across the deploy boundary.
+const GOLDEN_REQUEST_DIGEST =
+  "113165755ce69e514a530990ab5eddc1b8684d7e365d7e366cde35650715228c";
+
+const RECEIVED_AT = "2026-09-15T12:00:01.000Z";
+
+function capturingService() {
+  const units: DockerIngestUnit[] = [];
+  const repository = {
+    ingestUnit: vi.fn(async (unit: DockerIngestUnit) => {
+      units.push(unit);
+      return {
+        vpsId: unit.vpsId,
+        ingestStatus: "committed" as const,
+        snapshotId: unit.snapshotId,
+        agentInstanceId: unit.agentInstanceId,
+        receivedAt: unit.receivedAt,
+        revision: 1,
+      };
+    }),
+  };
+  const service = new DockerMonitoringService(
+    repository as never,
+    { get: vi.fn(async () => ({ id: "vps-golden" })) } as never,
+  );
+  return { service, units };
+}
+
+describe("docker ingest container name persistence", () => {
+  it("maps the incoming container name onto persisted samples", async () => {
+    const { service, units } = capturingService();
+    await service.ingest("vps-golden", ingestFixture(), RECEIVED_AT);
+
+    const alpha = units[0]!.containerSamples.find(
+      (s) => s.containerKey === "ck_alpha",
+    );
+    expect(alpha).toMatchObject({
+      containerKey: "ck_alpha",
+      name: "web",
+      state: "running",
+    });
+    expect(alpha).toHaveProperty("name", "web");
+  });
+
+  it("produces the pre-name golden digest and ignores name-only differences", async () => {
+    const { service, units } = capturingService();
+    await service.ingest("vps-golden", ingestFixture("web"), RECEIVED_AT);
+    await service.ingest(
+      "vps-golden",
+      ingestFixture("renamed_web"),
+      RECEIVED_AT,
+    );
+
+    // Byte-identical to digests computed before name persistence existed.
+    expect(units[0]!.requestDigest).toBe(GOLDEN_REQUEST_DIGEST);
+    // `name` is presentation metadata, never request identity.
+    expect(units[1]!.requestDigest).toBe(units[0]!.requestDigest);
+    expect(units[1]!.requestDigest).toBe(GOLDEN_REQUEST_DIGEST);
+  });
+
+  it("round-trips persisted names through listCurrentContainers and dedupes replays", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "vps-manager-current-ingest-"));
+    try {
+      const repo = createJsonDockerMonitoringRepository(
+        join(dir, "docker-monitoring.json"),
+      );
+      const service = new DockerMonitoringService(
+        repo as never,
+        { get: vi.fn(async () => ({ id: "vps-golden" })) } as never,
+      );
+
+      const first = await service.ingest(
+        "vps-golden",
+        ingestFixture(),
+        RECEIVED_AT,
+      );
+      expect(first.ingestStatus).toBe("committed");
+
+      // Ingested names flow through the store into the current read.
+      expect(await service.currentContainers("vps-golden")).toEqual([
+        {
+          agentInstanceId: "inst_golden",
+          containerKey: "ck_alpha",
+          name: "web",
+          state: "running",
+        },
+        {
+          agentInstanceId: "inst_golden",
+          containerKey: "ck_beta",
+          name: "cache",
+          state: "running",
+        },
+      ]);
+
+      // An identical retry replays (digest unchanged by name persistence).
+      const replay = await service.ingest(
+        "vps-golden",
+        ingestFixture(),
+        RECEIVED_AT,
+      );
+      expect(replay.ingestStatus).toBe("already_committed");
+      expect(await service.currentContainers("vps-golden")).toHaveLength(2);
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
+  });
+});

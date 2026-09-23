@@ -178,6 +178,7 @@ export class DockerMonitoringService {
       receivedAt,
       effectiveAt: input.collectedAt,
       containerKey: c.containerKey,
+      name: c.name,
       state: c.state,
       metrics: {
         cpuPercent: c.cpuPercent,
@@ -241,7 +242,10 @@ export class DockerMonitoringService {
         collectedAt: input.collectedAt,
         sourceSequence,
         hostMetrics,
-        containers: containerSamples,
+        // Request digest excludes the persisted `name` field: digest inputs stay
+        // byte-identical to the pre-name mapping so replay dedupe is stable
+        // across this change (DOCKER_INGEST_DIGEST_VERSION remains 1).
+        containers: containerSamples.map(({ name: _name, ...sample }) => sample),
         events,
         storage: input.storage,
         ...(input.monitoring === undefined
@@ -353,6 +357,10 @@ export class DockerMonitoringService {
     } catch (error) {
       this.toBadRequest(error);
     }
+  }
+  async currentContainers(vpsId: string) {
+    await this.verify(vpsId);
+    return this.repository.listCurrentContainers(vpsId);
   }
   async events(input: Omit<DockerEventsQuery, "vpsId"> & { vpsId: string }) {
     await this.verify(input.vpsId);

@@ -26,6 +26,7 @@ export class DockerMonitoringController {
   constructor(@Inject(DockerMonitoringService) private readonly service: DockerMonitoringService) {}
   @Get("history") host(@Param("id") id: string, @Query() q: Record<string, unknown>) { return this.service.hostHistory(parseQuery(dockerHostHistoryQuerySchema, q, id) as never); }
   @Get("instances/:agentInstanceId/containers/:containerKey/history") container(@Param("id") id: string, @Param("agentInstanceId") agentInstanceId: string, @Param("containerKey") containerKey: string, @Query() q: Record<string, unknown>) { return this.service.containerHistory(parseQuery(dockerContainerHistoryQuerySchema, { ...q, agentInstanceId, containerKey }, id) as never); }
+  @Get("containers/current") async current(@Param("id") id: string) { const data = await this.service.currentContainers(id); return { data }; }
   @Get("events") events(@Param("id") id: string, @Query() q: Record<string, unknown>) { return this.service.events(parseQuery(dockerEventsQuerySchema, q, id) as never); }
   @Get("storage") async storage(@Param("id") id: string) { const data = await this.service.storage(id); return { data: data ?? null }; }
   @Get("rollups") rollups(@Param("id") id: string, @Query() q: Record<string, unknown>) { return this.service.rollups(parseQuery(dockerRollupsQuerySchema, q, id) as never); }

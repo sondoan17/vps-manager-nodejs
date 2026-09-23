@@ -12,6 +12,7 @@ import {
 import {
   getVpsDockerStorage,
   listVpsDockerContainerHistory,
+  listVpsDockerCurrentContainers,
   listVpsDockerAlerts,
   listVpsDockerEvents,
   listVpsDockerHistory,
@@ -24,6 +25,7 @@ import {
   type DashboardMetric,
   type DashboardOverview,
   type DockerAlert,
+  type DockerCurrentContainer,
   type DockerOperationalEvent,
   type DockerHostSample,
   type DockerMetricRollup,
@@ -68,6 +70,8 @@ function mergeById<T extends { id: string }>(global: T[], bootstrap: T[]): T[] {
   for (const item of global) map.set(item.id, item);
   return Array.from(map.values());
 }
+
+const EMPTY_CURRENT_TARGETS: DockerCurrentContainer[] = [];
 
 // ── Sub-page config ─────────────────────────────────────────────────
 
@@ -311,10 +315,20 @@ export function VpsWorkspaceDockerPage() {
   const [resourcePages, setResourcePages] = useState<Record<string, { cursor?: string; hasMore: boolean }>>({});
   const [loadingMore, setLoadingMore] = useState<string | null>(null);
   const [refreshTick, setRefreshTick] = useState(0);
+  // Selectable container targets come from GET /docker/containers/current —
+  // never from the stored snapshot projection, whose container keys can be
+  // stale. `scopeId` tags the list so a previous VPS's targets (and any
+  // selection made against them) cannot leak into this server's history.
+  const [currentContainers, setCurrentContainers] = useState<{ scopeId: string; targets: DockerCurrentContainer[] } | null>(null);
+  const [currentContainersLoading, setCurrentContainersLoading] = useState(false);
+  const [currentContainersError, setCurrentContainersError] = useState<string | null>(null);
   const [selectedContainer, setSelectedContainer] = useState<string | null>(null);
   const [containerHistory, setContainerHistory] = useState<DockerHostSample[]>([]);
   const [containerHistoryError, setContainerHistoryError] = useState<string | null>(null);
   const [containerHistoryLoading, setContainerHistoryLoading] = useState(false);
+
+  const currentTargets = currentContainers?.scopeId === vps.id ? currentContainers.targets : EMPTY_CURRENT_TARGETS;
+  const selectedTarget = currentTargets.find((item) => item.containerKey === selectedContainer) ?? null;
 
   const loadMore = async (resource: "history" | "rollups" | "events" | "alerts") => {
     const cursor = resourcePages[resource]?.cursor;
@@ -397,18 +411,55 @@ export function VpsWorkspaceDockerPage() {
     };
   }, [vps.id, monitoringEnabled, refreshTick]);
 
+  // Live container targets for this server. Refetched on VPS change and on
+  // every monitoring refresh tick.
   useEffect(() => {
-    const container = snapshot?.containers.find((item) => item.id === selectedContainer);
-    const agentInstanceId = snapshot?.agentInstanceId;
-    if (!monitoringEnabled || !container || !agentInstanceId) { setContainerHistory([]); setContainerHistoryError(null); return; }
+    const scopeId = vps.id;
+    if (!monitoringEnabled) {
+      setCurrentContainers(null);
+      setCurrentContainersLoading(false);
+      setCurrentContainersError(null);
+      return;
+    }
     let cancelled = false;
+    setCurrentContainersLoading(true);
+    setCurrentContainersError(null);
+    listVpsDockerCurrentContainers(scopeId)
+      .then((targets) => { if (!cancelled) setCurrentContainers({ scopeId, targets }); })
+      .catch((err) => {
+        if (cancelled) return;
+        // Drop stale targets on failure so an outdated key can never be selected.
+        setCurrentContainers({ scopeId, targets: [] });
+        setCurrentContainersError(err instanceof Error ? err.message : "Current containers unavailable");
+      })
+      .finally(() => { if (!cancelled) setCurrentContainersLoading(false); });
+    return () => { cancelled = true; };
+  }, [vps.id, monitoringEnabled, refreshTick]);
+
+  // A selection must always resolve to a live current target: keys removed
+  // from the list (refresh, error, or VPS switch) are cleared, not kept.
+  useEffect(() => {
+    if (selectedContainer && !currentContainersLoading && !currentTargets.some((item) => item.containerKey === selectedContainer)) {
+      setSelectedContainer(null);
+    }
+  }, [currentTargets, currentContainersLoading, selectedContainer]);
+
+  useEffect(() => {
+    if (!monitoringEnabled || !selectedTarget) {
+      setContainerHistory([]);
+      setContainerHistoryError(null);
+      setContainerHistoryLoading(false);
+      return;
+    }
+    let cancelled = false;
+    setContainerHistory([]);
     setContainerHistoryLoading(true); setContainerHistoryError(null);
-    listVpsDockerContainerHistory(vps.id, { agentInstanceId, containerKey: container.id, limit: 50 })
+    listVpsDockerContainerHistory(vps.id, { agentInstanceId: selectedTarget.agentInstanceId, containerKey: selectedTarget.containerKey, limit: 50 })
       .then((result) => { if (!cancelled) setContainerHistory(result.data); })
       .catch((err) => { if (!cancelled) setContainerHistoryError(err instanceof Error ? err.message : "Container history unavailable"); })
       .finally(() => { if (!cancelled) setContainerHistoryLoading(false); });
     return () => { cancelled = true; };
-  }, [vps.id, monitoringEnabled, selectedContainer, snapshot?.receivedAt]);
+  }, [vps.id, monitoringEnabled, selectedTarget, refreshTick]);
 
   useEffect(() => {
     const unsubscribe = subscribeMonitoring({
@@ -456,11 +507,19 @@ export function VpsWorkspaceDockerPage() {
         {monitoringEnabled ? (
           <>
             <DockerHistoryChart samples={history} rollups={rollups} retained={historyTotal} loading={loading} error={resourceErrors.history} />{resourcePages.history?.hasMore ? <button type="button" onClick={() => loadMore("history")} disabled={loadingMore === "history"} className="text-xs text-sky-200 underline">{loadingMore === "history" ? "Loading…" : "Load more history"}</button> : null}{resourcePages.rollups?.hasMore ? <button type="button" onClick={() => loadMore("rollups")} disabled={loadingMore === "rollups"} className="ml-3 text-xs text-sky-200 underline">{loadingMore === "rollups" ? "Loading…" : "Load more rollups"}</button> : null}
-            {snapshot ? <section aria-label="Container history" className="rounded-none border border-white/10 bg-black/10 p-4">
+            <section aria-label="Container history" className="rounded-none border border-white/10 bg-black/10 p-4">
               <h3 className="text-xs font-medium text-white/75">Container history</h3>
-              <div className="mt-2 flex flex-wrap gap-2">{snapshot.containers.map((container) => <button key={container.id} type="button" className={`border px-2 py-1 text-[11px] ${selectedContainer === container.id ? "border-sky-300 text-sky-200" : "border-white/10 text-white/60"}`} onClick={() => setSelectedContainer(selectedContainer === container.id ? null : container.id)}>{container.name}</button>)}</div>
-              {selectedContainer ? <DockerHistoryChart samples={containerHistory} retained={containerHistory.length} loading={containerHistoryLoading} error={containerHistoryError} /> : <p className="mt-2 text-[11px] text-white/40">Select a container to load its retained history.</p>}
-            </section> : null}
+              {currentTargets.length > 0 ? (
+                <div className="mt-2 flex flex-wrap gap-2">{currentTargets.map((target) => <button key={target.containerKey} type="button" title={target.containerKey} className={`border px-2 py-1 text-[11px] ${selectedContainer === target.containerKey ? "border-sky-300 text-sky-200" : "border-white/10 text-white/60"}`} onClick={() => setSelectedContainer(selectedContainer === target.containerKey ? null : target.containerKey)}>{target.name ?? target.containerKey.slice(0, 12)}</button>)}</div>
+              ) : currentContainersError ? (
+                <p className="mt-2 text-[11px] text-red-300">{currentContainersError}</p>
+              ) : currentContainersLoading ? (
+                <p className="mt-2 text-[11px] text-white/40">Loading containers…</p>
+              ) : (
+                <p className="mt-2 text-[11px] text-white/40">No containers reported for this server.</p>
+              )}
+              {selectedTarget ? <DockerHistoryChart samples={containerHistory} retained={containerHistory.length} loading={containerHistoryLoading} error={containerHistoryError} /> : <p className="mt-2 text-[11px] text-white/40">Select a container to load its retained history.</p>}
+            </section>
             <DockerEventTimeline events={events} retained={eventsTotal} loading={loading} error={resourceErrors.events} />{resourcePages.events?.hasMore ? <button type="button" onClick={() => loadMore("events")} disabled={loadingMore === "events"} className="text-xs text-sky-200 underline">{loadingMore === "events" ? "Loading…" : "Load more events"}</button> : null}
             <DockerAlertsPanel alerts={alerts} retained={alertsTotal} loading={loading} error={resourceErrors.alerts} vpsId={vps.id} onAcknowledged={(updated) => setAlerts((current) => current.map((alert) => alert.id === updated.id ? updated : alert))} />{resourcePages.alerts?.hasMore ? <button type="button" onClick={() => loadMore("alerts")} disabled={loadingMore === "alerts"} className="text-xs text-sky-200 underline">{loadingMore === "alerts" ? "Loading…" : "Load more alerts"}</button> : null}
             <DockerStorageOverview storage={storage} loading={loading} error={resourceErrors.storage} />

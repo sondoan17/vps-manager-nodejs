@@ -25,6 +25,7 @@ import type {
   DockerAlert,
   DockerAlertResolutionReason,
   DockerContainerSample,
+  DockerCurrentContainer,
   DockerCursorPayload,
   DockerEventWatermark,
   DockerHostSample,
@@ -561,6 +562,44 @@ export function createPostgresDockerMonitoringRepository(
               : undefined,
         },
       };
+    },
+
+    async listCurrentContainers(
+      vpsId: string,
+    ): Promise<DockerCurrentContainer[]> {
+      // Latest committed snapshot identity comes from the committed samples
+      // themselves: newest-first (effective_at DESC, id DESC), the same
+      // recency order every other sample read uses (docker_samples_scope_idx).
+      // Ingest-state tables and the legacy agent_docker_metrics projection
+      // may be stale for legacy snapshots, so they are never read here.
+      const identity = await pool.query<{
+        agent_instance_id: string;
+        snapshot_id: string;
+      }>(
+        `SELECT agent_instance_id, snapshot_id FROM docker_metric_samples ` +
+          `WHERE vps_id = $1 ORDER BY effective_at DESC, id DESC LIMIT 1`,
+        [vpsId],
+      );
+      const latest = identity.rows[0];
+      if (latest === undefined) return [];
+      const result = await pool.query<{
+        agent_instance_id: string;
+        container_key: string;
+        name: string | null;
+        state: string | null;
+      }>(
+        `SELECT agent_instance_id, container_key, name, state ` +
+          `FROM docker_metric_samples WHERE vps_id = $1 ` +
+          `AND agent_instance_id = $2 AND snapshot_id = $3 ` +
+          `AND container_key IS NOT NULL ORDER BY container_key ASC, id ASC`,
+        [vpsId, latest.agent_instance_id, latest.snapshot_id],
+      );
+      return result.rows.map((row) => ({
+        agentInstanceId: row.agent_instance_id,
+        containerKey: row.container_key,
+        ...(row.name != null ? { name: row.name } : {}),
+        ...(row.state != null ? { state: row.state } : {}),
+      }));
     },
 
     async listEvents(
