@@ -400,7 +400,9 @@ function rowToDockerMetrics(row: AgentDockerMetricsRow): AgentDockerMetrics {
     pids: row.pids,
     containers: containers.map((container) => ({
       ...container,
-      containerKey: "legacy",
+      // Legacy v1 payloads are normalized to v2 at ingest; the persisted
+      // containerKey is the Docker id used by docker_metric_samples.
+      containerKey: container.containerKey || "legacy-container",
     })),
   };
 }

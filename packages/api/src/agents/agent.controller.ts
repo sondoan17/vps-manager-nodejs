@@ -1,9 +1,14 @@
-import { Body, Controller, Inject, Post, Req, Param, UnauthorizedException } from "@nestjs/common";
+import { Body, Controller, HttpCode, Inject, Post, Req, Param, UnauthorizedException } from "@nestjs/common";
 import type { Request } from "express";
 import type { AgentMetricPayload } from "./agent.models.js";
 import { AgentService, type IngestMetricResult } from "./agent.service.js";
 import { DockerManagementService } from "../docker/docker-management.service.js";
-import { dockerManagementClaimSchema, dockerManagementResultSchema } from "../docker/docker-management.schemas.js";
+import {
+  agentCommandClaimRequestSchema,
+  agentCommandReportSchema,
+  dockerManagementClaimSchema,
+  dockerManagementResultSchema,
+} from "../docker/docker-management.schemas.js";
 
 /**
  * Extended response for successful metric ingest.
@@ -59,6 +64,51 @@ export class AgentController {
          config,
          ...(docker ? { docker } : {}),
        },
+    };
+  }
+
+  /**
+   * POST /api/agent/commands/claim
+   *
+   * The agent's durable command pull: body {agentInstanceId}, answered with
+   * {"data":{"command":{...}|null}}. Null covers an empty queue and every
+   * denied state (management disabled or system-managed host), so policy
+   * state never leaks; 401 stays reserved for credential problems.
+   */
+  @Post("commands/claim")
+  @HttpCode(200)
+  async claimCommand(@Req() req: Request, @Body() body: unknown) {
+    const credential = await this.agentService.verifyBearerToken(
+      req.header("authorization"),
+    );
+    const input = agentCommandClaimRequestSchema.parse(body);
+    return {
+      data: {
+        command: await this.management.claimForAgent(
+          credential.vpsId,
+          input.agentInstanceId,
+        ),
+      },
+    };
+  }
+
+  /**
+   * POST /api/agent/commands/result
+   *
+   * Terminal receipt echo:
+   * {"data":{"ok":true,"commandId":"...","agentInstanceId":"..."}} — ids must
+   * match the report exactly; the agent only commits its durable receipt on
+   * this echo.
+   */
+  @Post("commands/result")
+  @HttpCode(200)
+  async reportCommandResult(@Req() req: Request, @Body() body: unknown) {
+    const credential = await this.agentService.verifyBearerToken(
+      req.header("authorization"),
+    );
+    const report = agentCommandReportSchema.parse(body);
+    return {
+      data: await this.management.resultForAgent(credential.vpsId, report),
     };
   }
 

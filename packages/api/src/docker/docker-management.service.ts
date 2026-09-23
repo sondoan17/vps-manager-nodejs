@@ -1,10 +1,11 @@
-import { Injectable, ForbiddenException, NotFoundException, Inject } from "@nestjs/common";
+import { Injectable, ForbiddenException, InternalServerErrorException, NotFoundException, UnauthorizedException, Inject } from "@nestjs/common";
 import { VPS_REPOSITORY, DOCKER_MANAGEMENT_REPOSITORY } from "../tokens.js";
 import { createHash } from "node:crypto";
 import type { VpsRepository } from "../persistence/repositories/vps.repository.js";
 import type { DockerManagementRepository } from "../persistence/repositories/docker-management.repository.js";
 import type { DockerManagementAction, DockerManagementOperation, DockerManagementResult, DockerManagementTarget } from "./docker-management.models.js";
 import { DockerManagementConflict } from "./docker-management.models.js";
+import { agentCommandSchema, type AgentCommand, type AgentCommandReport } from "./docker-management.schemas.js";
 
 type AllowedDockerManagementAction = Extract<DockerManagementAction, "start" | "stop" | "restart">;
 const ACTIONS: Record<AllowedDockerManagementAction, true> = { start: true, stop: true, restart: true };
@@ -58,6 +59,76 @@ export class DockerManagementService {
     const updated = await this.repository.setResult(id, result.ok ? "succeeded" : "failed", result);
     if (!updated) throw new NotFoundException("Operation not found");
     return updated;
+  }
+
+  /**
+   * Queue claim for the authenticated agent (its credential is bound to
+   * vpsId). Returns null — not an error — when the queue is empty or
+   * management is not allowed (disabled, missing, or a system-managed host),
+   * mirroring create() policy: an empty queue and a denied queue are
+   * indistinguishable to the agent, so policy state never leaks.
+   */
+  async claimForAgent(vpsId: string, agentInstanceId: string): Promise<AgentCommand | null> {
+    const record = await this.vps.get(vpsId);
+    if (!record || record.managedBy === "system" || record.dockerManagementEnabled !== true) return null;
+    const op = await this.repository.claimNextQueued(vpsId, agentInstanceId);
+    if (!op) return null;
+    if (!op.leaseExpiresAt) throw new InternalServerErrorException("Claimed operation is missing its lease");
+    const deadlineMs = Date.parse(op.leaseExpiresAt);
+    const nowMs = Date.now();
+    // deadlineNano is the lease deadline in epoch nanoseconds — beyond Number
+    // precision, so scale the millisecond epoch through BigInt. The timeout is
+    // the remaining lease clamped to the agent's 1..120s execution bound.
+    const parsed = agentCommandSchema.safeParse({
+      commandId: op.id,
+      agentInstanceId,
+      vpsId,
+      action: op.action,
+      containerKey: op.target.containerKey,
+      deadlineNano: (BigInt(deadlineMs) * 1_000_000n).toString(),
+      timeoutSeconds: Math.max(1, Math.min(120, Math.ceil((deadlineMs - nowMs) / 1000))),
+    });
+    if (!parsed.success) throw new InternalServerErrorException("Queued operation is not executable by the agent");
+    return parsed.data;
+  }
+
+  /**
+   * Terminal result receipt from the claiming agent. Binds on the
+   * credential's vpsId (404 for foreign ids) and the claim-holding instance
+   * (401 otherwise). An identical replay of an already-recorded result
+   * echoes success without rewriting, so the agent's durable receipt can
+   * commit; a divergent second result is a conflict. Deliberately not gated
+   * on dockerManagementEnabled: blocking it would strand the receipt forever.
+   */
+  async resultForAgent(vpsId: string, report: AgentCommandReport) {
+    const op = await this.repository.get(report.commandId);
+    if (!op || op.vpsId !== vpsId) throw new NotFoundException("Operation not found");
+    if (
+      (op.target.agentInstanceId && op.target.agentInstanceId !== report.agentInstanceId) ||
+      (op.claimedBy !== undefined && op.claimedBy !== report.agentInstanceId)
+    ) {
+      throw new UnauthorizedException({ error: { message: "Agent identity mismatch" } });
+    }
+    const result: DockerManagementResult = {
+      ok: report.status === "succeeded",
+      ...(report.exitCode !== undefined ? { exitCode: report.exitCode } : {}),
+      ...(report.errorCode !== undefined ? { message: report.errorCode } : {}),
+    };
+    const echo = { ok: true as const, commandId: op.id, agentInstanceId: report.agentInstanceId };
+    if (op.status === "succeeded" || op.status === "failed") {
+      const stored = op.result;
+      const identical =
+        stored !== undefined &&
+        stored.ok === result.ok &&
+        stored.exitCode === result.exitCode &&
+        stored.message === result.message;
+      if (identical) return echo;
+      throw new DockerManagementConflict("not_claimable", op.id);
+    }
+    if (op.status !== "claimed") throw new DockerManagementConflict("not_claimable", op.id);
+    const updated = await this.repository.setResult(op.id, result.ok ? "succeeded" : "failed", result);
+    if (!updated) throw new NotFoundException("Operation not found");
+    return echo;
   }
 
   appendLog(vpsId: string, id: string, line: string) {

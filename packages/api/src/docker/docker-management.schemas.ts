@@ -60,6 +60,84 @@ export type DockerManagementResultInput = z.infer<
   typeof dockerManagementResultSchema
 >;
 
+// ── Agent command queue contract (packages/agent/internal/commands) ─────
+// The Go agent validates fail-closed in both directions; these schemas
+// mirror its bounds exactly so neither side ever accepts a shape the other
+// would reject.
+
+/** Error codes the agent may attach to failed/uncertain receipts. */
+export const AGENT_COMMAND_ERROR_CODES = [
+  "container_not_found",
+  "action_failed",
+  "deadline_exceeded",
+  "target_mismatch",
+  "identity_mismatch",
+  "unsupported_action",
+  "daemon_unreachable",
+  "timeout",
+  "uncertain_outcome",
+] as const;
+
+/** POST /api/agent/commands/claim request body. */
+export const agentCommandClaimRequestSchema = z
+  .object({
+    agentInstanceId: opaqueId(32),
+  })
+  .strict();
+
+/** POST /api/agent/commands/result request body. */
+export const agentCommandReportSchema = z
+  .object({
+    commandId: opaqueId(64),
+    agentInstanceId: opaqueId(32),
+    status: z.enum(["succeeded", "failed", "uncertain"]),
+    executed: z.boolean(),
+    exitCode: z.number().int().min(0).max(255).optional(),
+    errorCode: z.enum(AGENT_COMMAND_ERROR_CODES).optional(),
+    outputPreview: z
+      .string()
+      .superRefine((value, ctx) => {
+        if (Buffer.byteLength(value, "utf8") > 8 * 1024) {
+          ctx.addIssue({
+            code: z.ZodIssueCode.custom,
+            message: "outputPreview exceeds 8KiB",
+          });
+        }
+      })
+      .optional(),
+  })
+  .strict()
+  .superRefine((value, ctx) => {
+    if (value.status === "uncertain" && !value.executed) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: "uncertain results must set executed",
+      });
+    }
+  });
+
+/**
+ * Outbound claim payload; bounds mirror commands.ValidateCommand so a queued
+ * operation that cannot be represented safely is never handed to the agent.
+ */
+export const agentCommandSchema = z
+  .object({
+    commandId: opaqueId(64),
+    agentInstanceId: opaqueId(32),
+    vpsId: opaqueId(64),
+    action: z.enum(["start", "stop", "restart"]),
+    containerKey: opaqueId(32),
+    deadlineNano: z.string().regex(/^(0|[1-9][0-9]{0,31})$/),
+    timeoutSeconds: z.number().int().min(1).max(120),
+  })
+  .strict();
+
+export type AgentCommandClaimRequest = z.infer<
+  typeof agentCommandClaimRequestSchema
+>;
+export type AgentCommandReport = z.infer<typeof agentCommandReportSchema>;
+export type AgentCommand = z.infer<typeof agentCommandSchema>;
+
 /** Canonical JSON for deterministic request digests (sorted object keys). */
 export function canonicalManagementJson(value: unknown): string {
   if (Array.isArray(value))
