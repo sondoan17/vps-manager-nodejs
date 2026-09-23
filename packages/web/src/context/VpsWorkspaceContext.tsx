@@ -453,14 +453,14 @@ export function VpsWorkspaceDockerPage() {
           vpsId={vps.id}
           enabled={managementEnabled}
         />
-        {monitoringEnabled && snapshot ? (
+        {monitoringEnabled ? (
           <>
             <DockerHistoryChart samples={history} rollups={rollups} retained={historyTotal} loading={loading} error={resourceErrors.history} />{resourcePages.history?.hasMore ? <button type="button" onClick={() => loadMore("history")} disabled={loadingMore === "history"} className="text-xs text-sky-200 underline">{loadingMore === "history" ? "Loading…" : "Load more history"}</button> : null}{resourcePages.rollups?.hasMore ? <button type="button" onClick={() => loadMore("rollups")} disabled={loadingMore === "rollups"} className="ml-3 text-xs text-sky-200 underline">{loadingMore === "rollups" ? "Loading…" : "Load more rollups"}</button> : null}
-            <section aria-label="Container history" className="rounded-none border border-white/10 bg-black/10 p-4">
+            {snapshot ? <section aria-label="Container history" className="rounded-none border border-white/10 bg-black/10 p-4">
               <h3 className="text-xs font-medium text-white/75">Container history</h3>
               <div className="mt-2 flex flex-wrap gap-2">{snapshot.containers.map((container) => <button key={container.id} type="button" className={`border px-2 py-1 text-[11px] ${selectedContainer === container.id ? "border-sky-300 text-sky-200" : "border-white/10 text-white/60"}`} onClick={() => setSelectedContainer(selectedContainer === container.id ? null : container.id)}>{container.name}</button>)}</div>
               {selectedContainer ? <DockerHistoryChart samples={containerHistory} retained={containerHistory.length} loading={containerHistoryLoading} error={containerHistoryError} /> : <p className="mt-2 text-[11px] text-white/40">Select a container to load its retained history.</p>}
-            </section>
+            </section> : null}
             <DockerEventTimeline events={events} retained={eventsTotal} loading={loading} error={resourceErrors.events} />{resourcePages.events?.hasMore ? <button type="button" onClick={() => loadMore("events")} disabled={loadingMore === "events"} className="text-xs text-sky-200 underline">{loadingMore === "events" ? "Loading…" : "Load more events"}</button> : null}
             <DockerAlertsPanel alerts={alerts} retained={alertsTotal} loading={loading} error={resourceErrors.alerts} vpsId={vps.id} onAcknowledged={(updated) => setAlerts((current) => current.map((alert) => alert.id === updated.id ? updated : alert))} />{resourcePages.alerts?.hasMore ? <button type="button" onClick={() => loadMore("alerts")} disabled={loadingMore === "alerts"} className="text-xs text-sky-200 underline">{loadingMore === "alerts" ? "Loading…" : "Load more alerts"}</button> : null}
             <DockerStorageOverview storage={storage} loading={loading} error={resourceErrors.storage} />
