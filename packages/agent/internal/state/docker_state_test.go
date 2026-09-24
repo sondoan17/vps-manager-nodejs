@@ -30,24 +30,24 @@ func mustStore(t *testing.T, path string) *Store {
 	return s
 }
 
-func v2PayloadFor(batch, snap string) (string, string) {
+func pendingPayloadFor(batch, snap string) (string, string) {
 	payload := `{"batchId":` + strconv.Quote(batch) + `,"snapshotId":` + strconv.Quote(snap) + `}`
 	sum := sha256.Sum256([]byte(payload))
 	return payload, hex.EncodeToString(sum[:])
 }
 
 func makePending(s *Store, batch, snap string, proposed Watermark) PendingBatch {
-	payload, digest := v2PayloadFor(batch, snap)
+	payload, digest := pendingPayloadFor(batch, snap)
 	return PendingBatch{
-		BatchID:           batch,
-		SnapshotID:        snap,
-		AgentInstanceID:   s.InstanceID(),
-		FromWatermark:     s.GetWatermark(),
-		ProposedWatermark: proposed,
-		EventsDigest:      "edigest-" + batch,
-		EventWindowUntil:  proposed.TimeNano,
-		V2PayloadJSON:     payload,
-		V2PayloadDigest:   digest,
+		BatchID:              batch,
+		SnapshotID:           snap,
+		AgentInstanceID:      s.InstanceID(),
+		FromWatermark:        s.GetWatermark(),
+		ProposedWatermark:    proposed,
+		EventsDigest:         "edigest-" + batch,
+		EventWindowUntil:     proposed.TimeNano,
+		PendingPayloadJSON:   payload,
+		PendingPayloadDigest: digest,
 	}
 }
 
@@ -523,7 +523,7 @@ func TestGetCopiesAreIndependent(t *testing.T) {
 	}
 }
 
-func TestV2PayloadRoundtrip(t *testing.T) {
+func TestPendingPayloadRoundtrip(t *testing.T) {
 	p := testPath(t)
 	s := mustStore(t, p)
 	prop := Watermark{TimeNano: 100, BoundaryDigests: []string{}}
@@ -532,7 +532,7 @@ func TestV2PayloadRoundtrip(t *testing.T) {
 		t.Fatalf("persist: %v", err)
 	}
 	got := s.GetPending()
-	if got == nil || got.V2PayloadJSON != batch.V2PayloadJSON || got.V2PayloadDigest != batch.V2PayloadDigest {
+	if got == nil || got.PendingPayloadJSON != batch.PendingPayloadJSON || got.PendingPayloadDigest != batch.PendingPayloadDigest {
 		t.Fatalf("pending payload mismatch: %+v", got)
 	}
 	r, err := LoadOrCreate(p)
@@ -540,67 +540,67 @@ func TestV2PayloadRoundtrip(t *testing.T) {
 		t.Fatalf("reload: %v", err)
 	}
 	rg := r.GetPending()
-	if rg == nil || rg.V2PayloadJSON != batch.V2PayloadJSON || rg.V2PayloadDigest != batch.V2PayloadDigest {
+	if rg == nil || rg.PendingPayloadJSON != batch.PendingPayloadJSON || rg.PendingPayloadDigest != batch.PendingPayloadDigest {
 		t.Fatalf("reloaded payload mismatch: %+v", rg)
 	}
 }
 
-func TestV2PayloadNestedEventsStorageJSON(t *testing.T) {
+func TestPendingPayloadNestedEventsStorageJSON(t *testing.T) {
 	p := testPath(t)
 	s := mustStore(t, p)
 	prop := Watermark{TimeNano: 100, BoundaryDigests: []string{}}
 	batch := makePending(s, "b1", "snap1", prop)
 	nested := `{"batchId":"b1","events":[{"digest":"abc","action":"start"}],"storage":{"writable":{"usedBytes":10}}}`
 	sum := sha256.Sum256([]byte(nested))
-	batch.V2PayloadJSON = nested
-	batch.V2PayloadDigest = hex.EncodeToString(sum[:])
+	batch.PendingPayloadJSON = nested
+	batch.PendingPayloadDigest = hex.EncodeToString(sum[:])
 	if err := s.PersistPending(batch); err != nil {
 		t.Fatalf("nested payload must persist: %v", err)
 	}
-	if got := s.GetPending(); got.V2PayloadJSON != nested {
+	if got := s.GetPending(); got.PendingPayloadJSON != nested {
 		t.Fatalf("nested payload mismatch")
 	}
 	r, err := LoadOrCreate(p)
 	if err != nil {
 		t.Fatalf("reload nested: %v", err)
 	}
-	if got := r.GetPending(); got.V2PayloadJSON != nested {
+	if got := r.GetPending(); got.PendingPayloadJSON != nested {
 		t.Fatalf("reloaded nested mismatch")
 	}
 }
 
-func TestV2PayloadRejects(t *testing.T) {
+func TestPendingPayloadRejects(t *testing.T) {
 	cases := map[string]func(batch PendingBatch) PendingBatch{
-		"empty": func(b PendingBatch) PendingBatch { b.V2PayloadJSON = ""; return b },
+		"empty": func(b PendingBatch) PendingBatch { b.PendingPayloadJSON = ""; return b },
 		"invalid": func(b PendingBatch) PendingBatch {
-			b.V2PayloadJSON = "{not json"
-			sum := sha256.Sum256([]byte(b.V2PayloadJSON))
-			b.V2PayloadDigest = hex.EncodeToString(sum[:])
+			b.PendingPayloadJSON = "{not json"
+			sum := sha256.Sum256([]byte(b.PendingPayloadJSON))
+			b.PendingPayloadDigest = hex.EncodeToString(sum[:])
 			return b
 		},
 		"arrayTopLevel": func(b PendingBatch) PendingBatch {
-			b.V2PayloadJSON = `[1,2,3]`
-			sum := sha256.Sum256([]byte(b.V2PayloadJSON))
-			b.V2PayloadDigest = hex.EncodeToString(sum[:])
+			b.PendingPayloadJSON = `[1,2,3]`
+			sum := sha256.Sum256([]byte(b.PendingPayloadJSON))
+			b.PendingPayloadDigest = hex.EncodeToString(sum[:])
 			return b
 		},
 		"trailingJSON": func(b PendingBatch) PendingBatch {
-			b.V2PayloadJSON = `{"a":1} {"b":2}`
-			sum := sha256.Sum256([]byte(b.V2PayloadJSON))
-			b.V2PayloadDigest = hex.EncodeToString(sum[:])
+			b.PendingPayloadJSON = `{"a":1} {"b":2}`
+			sum := sha256.Sum256([]byte(b.PendingPayloadJSON))
+			b.PendingPayloadDigest = hex.EncodeToString(sum[:])
 			return b
 		},
 		"trailingGarbage": func(b PendingBatch) PendingBatch {
-			b.V2PayloadJSON = `{"a":1} trailing`
-			sum := sha256.Sum256([]byte(b.V2PayloadJSON))
-			b.V2PayloadDigest = hex.EncodeToString(sum[:])
+			b.PendingPayloadJSON = `{"a":1} trailing`
+			sum := sha256.Sum256([]byte(b.PendingPayloadJSON))
+			b.PendingPayloadDigest = hex.EncodeToString(sum[:])
 			return b
 		},
 		"digestMismatch": func(b PendingBatch) PendingBatch {
-			b.V2PayloadDigest = strings.Repeat("0", 64)
+			b.PendingPayloadDigest = strings.Repeat("0", 64)
 			return b
 		},
-		"emptyDigest": func(b PendingBatch) PendingBatch { b.V2PayloadDigest = ""; return b },
+		"emptyDigest": func(b PendingBatch) PendingBatch { b.PendingPayloadDigest = ""; return b },
 	}
 	for name, mut := range cases {
 		t.Run(name, func(t *testing.T) {
@@ -616,18 +616,18 @@ func TestV2PayloadRejects(t *testing.T) {
 	}
 }
 
-func TestV2PayloadOversize(t *testing.T) {
+func TestPendingPayloadOversize(t *testing.T) {
 	s := mustStore(t, testPath(t))
 	batch := makePending(s, "b1", "s1", Watermark{TimeNano: 10, BoundaryDigests: []string{}})
 	// Build a canonical object just over 128KiB.
-	fill := strings.Repeat("x", MaxV2PayloadBytes)
+	fill := strings.Repeat("x", MaxPendingPayloadBytes)
 	payload := `{"pad":` + strconv.Quote(fill) + `}`
-	if len(payload) <= MaxV2PayloadBytes {
+	if len(payload) <= MaxPendingPayloadBytes {
 		t.Fatalf("test payload not oversize: %d", len(payload))
 	}
 	sum := sha256.Sum256([]byte(payload))
-	batch.V2PayloadJSON = payload
-	batch.V2PayloadDigest = hex.EncodeToString(sum[:])
+	batch.PendingPayloadJSON = payload
+	batch.PendingPayloadDigest = hex.EncodeToString(sum[:])
 	if err := s.PersistPending(batch); err == nil {
 		t.Fatalf("oversize payload must be rejected")
 	} else if !strings.Contains(err.Error(), "oversize") {
@@ -635,7 +635,7 @@ func TestV2PayloadOversize(t *testing.T) {
 	}
 }
 
-func TestV2PayloadTamperFailClosed(t *testing.T) {
+func TestPendingPayloadTamperFailClosed(t *testing.T) {
 	p := testPath(t)
 	s := mustStore(t, p)
 	batch := makePending(s, "b1", "s1", Watermark{TimeNano: 10, BoundaryDigests: []string{}})
@@ -671,7 +671,7 @@ func TestV2PayloadTamperFailClosed(t *testing.T) {
 	}
 }
 
-func TestV2PayloadIdempotentEqualAndConflict(t *testing.T) {
+func TestPendingPayloadIdempotentEqualAndConflict(t *testing.T) {
 	p := testPath(t)
 	s := mustStore(t, p)
 	prop := Watermark{TimeNano: 100, BoundaryDigests: []string{}}
@@ -689,12 +689,12 @@ func TestV2PayloadIdempotentEqualAndConflict(t *testing.T) {
 	other := batch
 	alt := `{"batchId":"b1","snapshotId":"s1","alt":true}`
 	sum := sha256.Sum256([]byte(alt))
-	other.V2PayloadJSON = alt
-	other.V2PayloadDigest = hex.EncodeToString(sum[:])
+	other.PendingPayloadJSON = alt
+	other.PendingPayloadDigest = hex.EncodeToString(sum[:])
 	if err := s.PersistPending(other); err == nil {
 		t.Fatalf("different payload must conflict")
 	}
-	if got := s.GetPending(); got.V2PayloadJSON != batch.V2PayloadJSON {
+	if got := s.GetPending(); got.PendingPayloadJSON != batch.PendingPayloadJSON {
 		t.Fatalf("pending must be unchanged after conflict")
 	}
 }

@@ -168,7 +168,7 @@ describe("React dashboard", () => {
       collectedAt: "2026-01-01", freshness: "fresh" as const,
     }];
     const docker = [{
-      vpsId: "healthy", collectedAt: "2026-01-01", receivedAt: "2026-01-01", schemaVersion: 1 as const, available: true,
+      vpsId: "healthy", collectedAt: "2026-01-01", receivedAt: "2026-01-01", agentInstanceId: "agent-healthy", snapshotId: "snapshot-healthy", sourceSequence: "1", schemaVersion: 2 as const, available: true,
       containerTotal: 4, containerRunning: 3, cpuPercent: 0, memoryUsageBytes: 0, networkRxBytes: 0, networkTxBytes: 0,
       blockReadBytes: 0, blockWriteBytes: 0, pids: 0, containers: [],
     }];
@@ -859,7 +859,10 @@ describe("React dashboard", () => {
               vpsId: "vps-1",
               collectedAt: new Date().toISOString(),
               receivedAt: new Date().toISOString(),
-              schemaVersion: 1,
+              agentInstanceId: "agent-1",
+              snapshotId: "snapshot-1",
+              sourceSequence: "1",
+              schemaVersion: 2,
               available: true,
               containerTotal: 2,
               containerRunning: 1,
@@ -872,7 +875,7 @@ describe("React dashboard", () => {
               pids: 9,
               containers: [
                 {
-                  id: "abc123",
+                  containerKey: "abc123",
                   name: "student_api_1",
                   image: "app:latest",
                   state: "running",
@@ -886,7 +889,7 @@ describe("React dashboard", () => {
                   pids: 4,
                 },
                 {
-                  id: "def456",
+                  containerKey: "def456",
                   name: "student_worker_1",
                   image: "worker:latest",
                   state: "exited",
@@ -933,7 +936,10 @@ describe("React dashboard", () => {
               vpsId: "vps-1",
               collectedAt: new Date().toISOString(),
               receivedAt: new Date().toISOString(),
-              schemaVersion: 1,
+              agentInstanceId: "agent-1",
+              snapshotId: "snapshot-1",
+              sourceSequence: "1",
+              schemaVersion: 2,
               available: true,
               containerTotal: 1,
               containerRunning: 1,
@@ -946,7 +952,7 @@ describe("React dashboard", () => {
               pids: 2,
               containers: [
                 {
-                  id: "replacement123",
+                  containerKey: "replacement123",
                   name: "student_replacement_1",
                   image: "replacement:latest",
                   state: "running",
@@ -1655,8 +1661,11 @@ describe("React dashboard", () => {
           vpsId: "vps-1",
           collectedAt: "2026-01-01T00:00:00.000Z",
           receivedAt: "2026-01-01T00:00:01.000Z",
+          agentInstanceId: "agent-1",
+          snapshotId: "snapshot-1",
+          sourceSequence: "1",
           agentVersion: "1.2.3",
-          schemaVersion: 1,
+          schemaVersion: 2,
           available: true,
           containerTotal: 2,
           containerRunning: 1,
@@ -1669,7 +1678,7 @@ describe("React dashboard", () => {
           pids: 9,
           containers: [
             {
-              id: "workspace-api",
+              containerKey: "workspace-api",
               name: "workspace-api",
               image: "app:latest",
               state: "running",
@@ -1984,8 +1993,10 @@ describe("React dashboard", () => {
           collectedAt: "2026-01-01T00:00:00.000Z",
           receivedAt: "2026-01-01T00:00:01.000Z",
           agentInstanceId: "inst-stale",
+          snapshotId: "snapshot-stale",
+          sourceSequence: "1",
           agentVersion: "1.2.3",
-          schemaVersion: 1,
+          schemaVersion: 2,
           available: true,
           containerTotal: 1,
           containerRunning: 1,
@@ -1998,7 +2009,7 @@ describe("React dashboard", () => {
           pids: 9,
           containers: [
             {
-              id: STALE_SNAPSHOT_KEY,
+              containerKey: STALE_SNAPSHOT_KEY,
               name: "legacy-api",
               image: "app:1",
               state: "running",

@@ -28,7 +28,8 @@ export type VpsRecord = {
 };
 
 export type DashboardDockerContainerMetric = {
-  id: string;
+  /** Opaque container identity (base64url, <=32 chars). */
+  containerKey: string;
   name: string;
   image: string;
   state: string;
@@ -37,23 +38,26 @@ export type DashboardDockerContainerMetric = {
   cpuPercent: number;
   memoryUsageBytes: number;
   memoryLimitBytes?: number;
-  networkRxBytes: number;
-  networkTxBytes: number;
-  blockReadBytes: number;
-  blockWriteBytes: number;
+  /** Not rendered; carried only when the store supplies them. */
+  networkRxBytes?: number;
+  networkTxBytes?: number;
+  blockReadBytes?: number;
+  blockWriteBytes?: number;
   pids: number;
 };
 
 export type DashboardDockerMetrics = {
   vpsId: string;
-  /** Explicit agent identity (v2); absent when the snapshot predates identity. */
-  agentInstanceId?: string;
-  /** Explicit snapshot identity (v2); absent when the snapshot predates identity. */
-  snapshotId?: string;
+  /** Required agent identity. */
+  agentInstanceId: string;
+  /** Required snapshot identity. */
+  snapshotId: string;
+  /** Required monotonic ingest sequence. */
+  sourceSequence: string;
   collectedAt: string;
   receivedAt: string;
   agentVersion?: string;
-  schemaVersion: 1;
+  schemaVersion: 2;
   available: boolean;
   freshness?: "fresh" | "stale";
   ageSeconds?: number;

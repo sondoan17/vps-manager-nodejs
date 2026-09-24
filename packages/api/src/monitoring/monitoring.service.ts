@@ -6,11 +6,11 @@ import { DashboardService } from "../dashboard/dashboard.service.js";
 import { demoServers, getDemoMetrics } from "../demo/demo-fixtures.js";
 import type { AuditEvent } from "../audit/audit.models.js";
 import type {
+  DashboardDockerMetrics,
   DashboardJob,
   DashboardMetricSample,
   DashboardOverview,
 } from "../dashboard/dashboard.models.js";
-import type { AgentDockerMetrics } from "../agents/agent.models.js";
 import type { MetricSample } from "../metrics/metrics.models.js";
 import type { VpsRecord } from "../vps/vps.models.js";
 import type { MetricRepository } from "../persistence/repositories/metric.repository.js";
@@ -44,12 +44,12 @@ type SnapshotPayload = {
   jobs: DashboardJob[];
   metrics: DashboardMetricSample[];
   auditEvents: AuditEvent[];
-  dockerMetrics: AgentDockerMetrics[];
+  dockerMetrics: DashboardDockerMetrics[];
 };
 type MetricsUpdatedPayload = {
   metrics: DashboardMetricSample[];
   systemInfo?: DashboardOverview["systemInfo"];
-  dockerMetrics?: AgentDockerMetrics[];
+  dockerMetrics?: DashboardDockerMetrics[];
 };
 type JobsUpdatedPayload = {
   jobs: DashboardJob[];

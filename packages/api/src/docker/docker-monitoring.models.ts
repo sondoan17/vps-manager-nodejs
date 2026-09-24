@@ -42,6 +42,8 @@ export type DockerContainerSample = DockerHostSample & {
   containerKey: string;
   name?: string;
   state?: string;
+  image?: string;
+  status?: string;
 };
 /** Canonical container identity rows of the latest committed snapshot. */
 export type DockerCurrentContainer = {
@@ -49,6 +51,9 @@ export type DockerCurrentContainer = {
   containerKey: string;
   name?: string;
   state?: string;
+  image?: string;
+  status?: string;
+  metrics: { cpuPercent: number; memoryUsageBytes: number; pids: number };
 };
 export type DockerMetricSample = DockerHostSample | DockerContainerSample;
 export type DockerMetricRollup = {
@@ -126,7 +131,6 @@ export type DockerInitialWatermark = { timeNano: "0"; boundaryDigests: [] };
 export type DockerIngestEvent = DockerOperationalEvent & {
   sourceSequence: DockerSourceSequence;
 };
-export type DockerCompatibilityPayload = { latest: boolean };
 export type DockerEventProtocol = {
   fromWatermark: DockerEventWatermark;
   proposedWatermark: DockerEventWatermark;
@@ -146,13 +150,16 @@ export type DockerIngestUnit = {
   requestDigestVersion: number;
   receivedAt: string;
   sourceSequence: DockerSourceSequence;
-  compatibility: DockerCompatibilityPayload;
   hostSample: DockerHostSample;
   containerSamples?: DockerContainerSample[];
   events?: DockerIngestEvent[];
   storageLatest?: DockerStorageLatest;
   eventProtocol?: DockerEventProtocol;
   monitoring?: DockerMonitoringMetadata;
+  available?: boolean;
+  errorCode?: string;
+  engineVersion?: string;
+  apiVersion?: string;
 };
 export type DockerIngestBatchResult = {
   status: "committed" | "already_committed" | "replay_ignored";
@@ -220,7 +227,10 @@ export type DockerAuthoritativeLatest = {
   receivedAt: string;
   updatedAt: string;
   revision: number;
-  compatibility: DockerCompatibilityPayload;
+  available?: boolean;
+  errorCode?: string;
+  engineVersion?: string;
+  apiVersion?: string;
 };
 export type DockerUnavailableRuleState = {
   vpsId: string;

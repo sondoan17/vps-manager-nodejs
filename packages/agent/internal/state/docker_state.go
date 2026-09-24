@@ -43,9 +43,9 @@ const (
 	MaxDigestLen = 128
 	// MaxOpaqueIDLen caps batch/snapshot IDs.
 	MaxOpaqueIDLen = 64
-	// MaxV2PayloadBytes caps the durable exact v2 branch canonical JSON.
+	// MaxPendingPayloadBytes caps the durable exact Docker branch canonical JSON.
 	// Strictly bounded Gate-3 remediation unit: 128KiB.
-	MaxV2PayloadBytes = 128 * 1024
+	MaxPendingPayloadBytes = 128 * 1024
 
 	// AgentInstanceDomain is the exact HMAC domain for agentInstanceId.
 	AgentInstanceDomain = "vps-manager/docker/agent-instance/v1"
@@ -70,9 +70,9 @@ type PendingBatch struct {
 	ProposedWatermark Watermark `json:"proposedWatermark"`
 	EventsDigest      string    `json:"eventsDigest"`
 	EventWindowUntil  int64     `json:"eventWindowUntil"`
-	// V2PayloadJSON is the exact canonical JSON DockerMetricsV2 branch.
-	V2PayloadJSON   string `json:"v2PayloadJSON"`
-	V2PayloadDigest string `json:"v2PayloadDigest"`
+	// PendingPayloadJSON is the exact canonical JSON DockerMetrics branch.
+	PendingPayloadJSON   string `json:"v2PayloadJSON"`
+	PendingPayloadDigest string `json:"v2PayloadDigest"`
 }
 
 type persistedState struct {
@@ -88,12 +88,12 @@ type Store struct {
 	mu   sync.Mutex
 	path string
 	key  [32]byte
-	// v2 separates immutable identity from mutable, MAC-protected delivery state.
+	// splitIdentity separates immutable identity from mutable, MAC-protected delivery state.
 	identityPath    string
 	deliveryKeyPath string
 	deliveryKey     [32]byte
 	containerKey    [32]byte
-	v2              bool
+	splitIdentity   bool
 	// cached derived instance id
 	instanceID string
 	watermark  Watermark
@@ -188,7 +188,7 @@ func (s *Store) InstanceID() string { return s.instanceID }
 
 // ContainerKey derives the stable per-installation key for a full Docker ID.
 func (s *Store) ContainerKey(fullContainerID string) string {
-	if s.v2 {
+	if s.splitIdentity {
 		return deriveContainerKey(s.containerKey[:], fullContainerID)
 	}
 	return deriveContainerKey(s.key[:], fullContainerID)
@@ -251,7 +251,7 @@ func (s *Store) PersistPending(p PendingBatch) error {
 	if !watermarkForward(s.watermark, p.ProposedWatermark) {
 		return fmt.Errorf("state: proposedWatermark must advance monotonically: conflict")
 	}
-	if s.v2 {
+	if s.splitIdentity {
 		next := DeliveryState{Version: IdentityVersion, Watermark: s.watermark, Pending: clonePending(&p), Sequence: s.sequence + 1}
 		if err := atomicReplaceDelivery(s.path, next, s.deliveryKey[:]); err != nil {
 			return err
@@ -294,7 +294,7 @@ func (s *Store) CommitAcknowledgement(batchID, snapshotID, agentInstanceID strin
 	// pending exists only if proposed also equals committed (i.e. pending was
 	// non-advancing, which PersistPending already rejects). Allow equal only
 	// when from==committed is impossible here since proposed is forward.
-	if s.v2 {
+	if s.splitIdentity {
 		next := DeliveryState{Version: IdentityVersion, Watermark: cloneWatermark(committed), Pending: nil, Sequence: s.sequence + 1}
 		if err := atomicReplaceDelivery(s.path, next, s.deliveryKey[:]); err != nil {
 			return err
@@ -421,35 +421,35 @@ func validateWatermark(w Watermark) error {
 	return nil
 }
 
-func validateV2Payload(payload, digest string) error {
+func validatePendingPayload(payload, digest string) error {
 	if payload == "" {
-		return fmt.Errorf("state: empty v2PayloadJSON")
+		return fmt.Errorf("state: empty pending payload")
 	}
-	if len(payload) > MaxV2PayloadBytes {
-		return fmt.Errorf("state: v2PayloadJSON oversize")
+	if len(payload) > MaxPendingPayloadBytes {
+		return fmt.Errorf("state: pending payload oversize")
 	}
 	if digest == "" || len(digest) > MaxDigestLen {
-		return fmt.Errorf("state: bad v2PayloadDigest")
+		return fmt.Errorf("state: bad pending payload digest")
 	}
 	dec := json.NewDecoder(bytes.NewReader([]byte(payload)))
 	var v any
 	if err := dec.Decode(&v); err != nil {
-		return fmt.Errorf("state: invalid v2PayloadJSON: %w", err)
+		return fmt.Errorf("state: invalid pending payload: %w", err)
 	}
 	if _, ok := v.(map[string]any); !ok {
-		return fmt.Errorf("state: v2PayloadJSON must be object")
+		return fmt.Errorf("state: pending payload must be object")
 	}
 	var extra any
 	if err := dec.Decode(&extra); err != io.EOF {
 		if err == nil {
-			return fmt.Errorf("state: trailing v2PayloadJSON")
+			return fmt.Errorf("state: trailing pending payload")
 		}
-		return fmt.Errorf("state: trailing v2PayloadJSON: %w", err)
+		return fmt.Errorf("state: trailing pending payload: %w", err)
 	}
 	sum := sha256.Sum256([]byte(payload))
 	want := hex.EncodeToString(sum[:])
 	if want != digest {
-		return fmt.Errorf("state: v2PayloadDigest mismatch: fail closed")
+		return fmt.Errorf("state: pending payload digest mismatch: fail closed")
 	}
 	return nil
 }
@@ -482,7 +482,7 @@ func validatePendingFields(instanceID string, p PendingBatch) error {
 	if p.EventWindowUntil < p.FromWatermark.TimeNano {
 		return fmt.Errorf("state: eventWindowUntil before fromWatermark")
 	}
-	if err := validateV2Payload(p.V2PayloadJSON, p.V2PayloadDigest); err != nil {
+	if err := validatePendingPayload(p.PendingPayloadJSON, p.PendingPayloadDigest); err != nil {
 		return err
 	}
 	return nil
@@ -536,7 +536,7 @@ func pendingEqual(a, b *PendingBatch) bool {
 	if a.EventsDigest != b.EventsDigest || a.EventWindowUntil != b.EventWindowUntil {
 		return false
 	}
-	return a.V2PayloadJSON == b.V2PayloadJSON && a.V2PayloadDigest == b.V2PayloadDigest
+	return a.PendingPayloadJSON == b.PendingPayloadJSON && a.PendingPayloadDigest == b.PendingPayloadDigest
 }
 
 func cloneWatermark(w Watermark) Watermark {

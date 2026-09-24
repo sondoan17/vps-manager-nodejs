@@ -1,7 +1,6 @@
 import { nanoid } from "nanoid";
 import type {
   AgentCredential,
-  AgentDockerMetrics,
   AgentState,
   AgentSystemInfo,
 } from "../../agents/agent.models.js";
@@ -36,10 +35,6 @@ export type AgentRepository = {
   /** Delete persisted system info for a VPS. Returns true if anything was removed. */
   deleteSystemInfo(vpsId: string): Promise<boolean>;
 
-  upsertDockerMetrics(metrics: AgentDockerMetrics): Promise<AgentDockerMetrics>;
-  getDockerMetrics(vpsId: string): Promise<AgentDockerMetrics | undefined>;
-  listDockerMetrics(): Promise<AgentDockerMetrics[]>;
-  deleteDockerMetrics(vpsId: string): Promise<boolean>;
 };
 
 // ── Storage shape ───────────────────────────────────────────────────────
@@ -49,7 +44,6 @@ type AgentFile = {
   credentials: AgentCredential[];
   states: Record<string, AgentState>;
   systemInfo?: Record<string, AgentSystemInfo>;
-  dockerMetrics?: Record<string, AgentDockerMetrics>;
 };
 
 // ── Factory ─────────────────────────────────────────────────────────────
@@ -191,64 +185,6 @@ export function createJsonAgentRepository(
           if (data.systemInfo[vpsId]) {
             // eslint-disable-next-line @typescript-eslint/no-dynamic-delete
             delete data.systemInfo[vpsId];
-            deleted = true;
-          }
-          return data;
-        },
-      );
-      return deleted;
-    },
-
-    async upsertDockerMetrics(metrics) {
-      let stored = metrics;
-      await readModifyWriteJsonFile<AgentFile>(
-        filePath,
-        { credentials: [], states: {} },
-        (data) => {
-          if (!data.dockerMetrics) data.dockerMetrics = {};
-          const current = data.dockerMetrics[metrics.vpsId];
-          if (
-            current &&
-            new Date(current.collectedAt).getTime() >
-              new Date(metrics.collectedAt).getTime()
-          ) {
-            stored = current;
-            return data;
-          }
-          data.dockerMetrics[metrics.vpsId] = metrics;
-          stored = metrics;
-          return data;
-        },
-      );
-      return stored;
-    },
-
-    async getDockerMetrics(vpsId) {
-      const data = await readJsonFile<AgentFile>(filePath, {
-        credentials: [],
-        states: {},
-      });
-      return data.dockerMetrics?.[vpsId];
-    },
-
-    async listDockerMetrics() {
-      const data = await readJsonFile<AgentFile>(filePath, {
-        credentials: [],
-        states: {},
-      });
-      return Object.values(data.dockerMetrics ?? {});
-    },
-
-    async deleteDockerMetrics(vpsId) {
-      let deleted = false;
-      await readModifyWriteJsonFile<AgentFile>(
-        filePath,
-        { credentials: [], states: {} },
-        (data) => {
-          if (!data.dockerMetrics) return data;
-          if (data.dockerMetrics[vpsId]) {
-            // eslint-disable-next-line @typescript-eslint/no-dynamic-delete
-            delete data.dockerMetrics[vpsId];
             deleted = true;
           }
           return data;

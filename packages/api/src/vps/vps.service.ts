@@ -147,10 +147,9 @@ export class VpsService {
         return vps;
       }
 
-      // Delete first: if cleanup fails, leave the toggle enabled so the
+      // Clean up first: if cleanup fails, leave the toggle enabled so the
       // persisted configuration remains consistent and the request is retryable.
       if (!newValue) {
-        await this.agentRepository.deleteDockerMetrics(id);
         await this.dockerMonitoring?.cleanupForVps(id, "monitoring_disabled");
       }
 
@@ -191,10 +190,9 @@ export class VpsService {
       const oldValue = vps.dockerMetricsEnabled ?? false;
       const newValue = parsedBody.dockerMetricsEnabled as boolean;
 
-      // Delete first. A failed cleanup leaves the original VPS record and all
+      // Clean up first. A failed cleanup leaves the original VPS record and all
       // combined update fields untouched, making the request safely retryable.
       if (oldValue && !newValue) {
-        await this.agentRepository.deleteDockerMetrics(id);
         await this.dockerMonitoring?.cleanupForVps(id, "monitoring_disabled");
       }
 

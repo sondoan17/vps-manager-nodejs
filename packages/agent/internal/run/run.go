@@ -29,7 +29,7 @@ type MetricsCollector interface {
 
 // MetricsPusher is the interface for pushing metrics to the backend.
 // Typed result carries the structured ingest acknowledgement; Docker is nil
-// for config-only/v1 and stripped/invalid-ack responses.
+// for config-only, stripped, and invalid-ack fail-closed responses.
 type MetricsPusher interface {
 	PushWithRetry(ctx context.Context, m *metrics.SystemMetrics) (*push.PushResult, error)
 	Push(ctx context.Context, m *metrics.SystemMetrics) (*push.PushResult, error)
@@ -55,7 +55,9 @@ type Runner struct {
 	runMu     sync.Mutex
 }
 
-// New creates a new Runner without Docker v2 state (v1/host-only behavior).
+// New creates a new Runner without durable Docker state: it pushes host
+// metrics only and strips any Docker branch (fail closed — there is no
+// durable identity to bind on the server).
 func New(cfg *config.Config, collector MetricsCollector, pusher MetricsPusher) *Runner {
 	return &Runner{
 		cfg:       cfg,
@@ -64,8 +66,8 @@ func New(cfg *config.Config, collector MetricsCollector, pusher MetricsPusher) *
 	}
 }
 
-// NewWithState creates a Runner with durable Docker v2 state.
-// A nil store preserves v1 behavior.
+// NewWithState creates a Runner with durable Docker state.
+// A nil st behaves like New.
 func NewWithState(cfg *config.Config, collector MetricsCollector, pusher MetricsPusher, st DockerState) *Runner {
 	return &Runner{
 		cfg:       cfg,
@@ -81,16 +83,16 @@ func (r *Runner) SetDockerState(st DockerState) {
 }
 
 // FinalizeDocker attaches durable identity and event-protocol metadata before PersistPending.
-func FinalizeDocker(st DockerState) func(*metrics.DockerMetricsV2) {
-	return func(v2 *metrics.DockerMetricsV2) {
-		if v2 == nil || st == nil {
+func FinalizeDocker(st DockerState) func(*metrics.DockerMetrics) {
+	return func(batch *metrics.DockerMetrics) {
+		if batch == nil || st == nil {
 			return
 		}
-		v2.AgentInstanceID = st.InstanceID()
-		v2.SourceSequence = strconv.FormatUint(st.Sequence(), 10)
-		v2.SnapshotID = opaqueID()
-		if v2.EventWindow != nil && v2.FromWatermark != nil && v2.ProposedWatermark != nil {
-			v2.BatchID = opaqueID()
+		batch.AgentInstanceID = st.InstanceID()
+		batch.SourceSequence = strconv.FormatUint(st.Sequence(), 10)
+		batch.SnapshotID = opaqueID()
+		if batch.EventWindow != nil && batch.FromWatermark != nil && batch.ProposedWatermark != nil {
+			batch.BatchID = opaqueID()
 		}
 	}
 }
@@ -101,6 +103,26 @@ func opaqueID() string {
 		return ""
 	}
 	return base64.RawURLEncoding.EncodeToString(b[:])
+}
+
+// DockerEventInput supplies the durable fixed-window inputs for one
+// collection cycle. While a pending batch exists the provider suppresses
+// event input entirely so no later window can be created before the ack;
+// otherwise the window runs from the committed watermark to now minus one
+// second, carrying the persisted boundary digests.
+func DockerEventInput(st DockerState) metrics.DockerEventInputProvider {
+	return func() (metrics.DockerEventInput, bool) {
+		if st == nil || st.GetPending() != nil {
+			return metrics.DockerEventInput{}, false
+		}
+		w := st.GetWatermark()
+		return metrics.DockerEventInput{
+			SinceNano:       strconv.FormatInt(w.TimeNano, 10),
+			UntilNano:       strconv.FormatInt(time.Now().Add(-time.Second).UnixNano(), 10),
+			AgentInstanceID: st.InstanceID(),
+			FromDigests:     w.BoundaryDigests,
+		}, true
+	}
 }
 
 func (r *Runner) RunOnce(ctx context.Context) error {
@@ -177,71 +199,77 @@ func (r *Runner) collectAndPush(ctx context.Context) error {
 }
 
 // pushWithState implements I2 pending/ack semantics around PushWithRetry.
-// V1/config-only path (no complete v2 batch, or no state wired) pushes
-// directly with no state interaction. V2 path persists the exact marshalled
-// Docker branch before push, replays the exact durable payload after
-// restart, validates the typed ack, and commits only on matching committed
-// watermark.
+// Pending replay takes precedence over the freshly collected snapshot: while
+// a durable pending exists the event provider (DockerEventInput) suppresses
+// fresh event windows, so the fresh collection is batch-less by construction
+// and the durable payload must still be replayed until acknowledged. A
+// runner without durable state never emits a Docker branch (fail closed:
+// there is no identity to bind); host metrics always push. A complete fresh
+// batch persists the exact marshalled branch before push, replays the exact
+// durable payload after restart, validates the typed ack, and commits only
+// on the matching committed watermark.
 func (r *Runner) pushWithState(ctx context.Context, m *metrics.SystemMetrics) error {
-	v2 := m.Docker
-	if !isCompleteV2Batch(v2) {
-		// Preserve v1 behavior: no state interaction.
-		if _, err := r.pusher.PushWithRetry(ctx, m); err != nil {
-			return err
+	if r.docker != nil {
+		if existing := r.docker.GetPending(); existing != nil {
+			// A pending batch already exists: never collect/create a later
+			// event window. Reconstruct the exact durable Docker branch,
+			// validate it, attach it to the newly collected host metrics,
+			// and push the reconstructed exact branch.
+			// Never log event bodies; log only counts/ids.
+			recon, err := reconstructPending(existing, r.docker.InstanceID())
+			if err != nil {
+				log.Printf("docker: pending batchId=%q corrupt (%v), fail closed, pending preserved", existing.BatchID, err)
+				return fmt.Errorf("docker: pending batch %q corrupt: %w", existing.BatchID, err)
+			}
+			retry := *m
+			retry.Docker = recon
+			log.Printf("docker: pending batchId=%q exists, retrying exact pending payload", existing.BatchID)
+			res, err := r.pusher.PushWithRetry(ctx, &retry)
+			if err != nil {
+				// 409, transport failures, fatal errors: leave pending.
+				return err
+			}
+			return r.handleAck(res, existing)
 		}
-		return nil
-	}
-	if r.docker == nil {
-		// No state wired: preserve v1 push behavior.
-		if _, err := r.pusher.PushWithRetry(ctx, m); err != nil {
-			return err
-		}
-		return nil
+	} else if m != nil && m.Docker != nil {
+		// Fail closed: missing durable state means no agentInstanceId/
+		// snapshotId lifecycle to bind on the server. Never transmit the
+		// branch; host metrics keep flowing.
+		log.Printf("docker: durable state unavailable, stripping docker branch (host metrics only)")
+		m = stripDocker(m)
 	}
 
-	if existing := r.docker.GetPending(); existing != nil {
-		// A pending batch already exists: never collect/create a later
-		// event window. Reconstruct the exact durable Docker branch,
-		// validate it, attach it to the newly collected host metrics,
-		// and push the reconstructed exact branch.
-		// Never log event bodies; log only counts/ids.
-		recon, err := reconstructPendingV2(existing, r.docker.InstanceID())
-		if err != nil {
-			log.Printf("docker v2: pending batchId=%q corrupt (%v), fail closed, pending preserved", existing.BatchID, err)
-			return fmt.Errorf("docker v2: pending batch %q corrupt: %w", existing.BatchID, err)
-		}
-		retry := *m
-		retry.Docker = recon
-		log.Printf("docker v2: pending batchId=%q exists, retrying exact pending payload", existing.BatchID)
-		res, err := r.pusher.PushWithRetry(ctx, &retry)
-		if err != nil {
-			// 409, transport failures, fatal errors: leave pending.
+	batch := m.Docker
+	if !isCompleteBatch(batch) {
+		// Minimal snapshot (identity attached by the finalize hook) or a
+		// stripped branch: push with no state interaction.
+		if _, err := r.pusher.PushWithRetry(ctx, m); err != nil {
 			return err
 		}
-		return r.handleAck(res, existing)
+		return nil
 	}
 
 	// No existing pending: bind the batch to the current durable sequence
 	// before marshaling; this value is then preserved in pending JSON.
-	v2.SourceSequence = strconv.FormatUint(r.docker.Sequence(), 10)
+	batch.SourceSequence = strconv.FormatUint(r.docker.Sequence(), 10)
 	// marshal the exact branch with stable JSON, compute its digest, and
 	// durably persist payload plus metadata before push.
-	cand, err := derivePendingWithPayload(v2, r.docker.InstanceID())
+	cand, err := derivePendingWithPayload(batch, r.docker.InstanceID())
 	if err != nil {
-		log.Printf("docker v2: collected batch invalid, pushing host-only")
+		log.Printf("docker: collected batch invalid, pushing host-only")
 		stripped := stripDocker(m)
 		if _, pushErr := r.pusher.PushWithRetry(ctx, stripped); pushErr != nil {
 			return pushErr
 		}
-		return fmt.Errorf("docker v2: collected batch invalid: %w", err)
+		return fmt.Errorf("docker: collected batch invalid: %w", err)
 	}
 	if err := r.docker.PersistPending(cand); err != nil {
 		// A durable write failure is not safe to downgrade to a host-only
 		// push: doing so would acknowledge a snapshot whose Docker payload
 		// was never durably recorded. Retry the same collection only after
 		// the state store is healthy; the existing pending state is untouched.
-		log.Printf("docker v2: persist batchId=%q failed, refusing host-only downgrade", cand.BatchID)
-		return fmt.Errorf("docker v2: persist pending: %w", err)
+		log.Printf("docker: persist batchId=%q failed, refusing host-only downgrade", cand.BatchID)
+		return fmt.Errorf("docker: persist pending: %w", err)
 	}
 	res, err := r.pusher.PushWithRetry(ctx, m)
 	if err != nil {
@@ -260,12 +288,12 @@ func (r *Runner) pushWithState(ctx context.Context, m *metrics.SystemMetrics) er
 // proposed watermark exactly or pending is preserved.
 func (r *Runner) handleAck(res *push.PushResult, pending *state.PendingBatch) error {
 	if res == nil || res.Docker == nil {
-		// V2 batch got a config-only/v1 response (old server, stripped
-		// retry, or invalid ack failed closed to nil): host succeeded but
-		// the batch is unacknowledged. Preserve pending for retry and
-		// surface a non-fatal v2 error. Never log event bodies.
-		log.Printf("docker v2: missing ack, host success, pending batchId=%q preserved", pending.BatchID)
-		return fmt.Errorf("docker v2: missing acknowledgement for batch %q", pending.BatchID)
+		// The batch got a config-only response (old server, stripped retry,
+		// or invalid ack failed closed to nil): host succeeded but the
+		// batch is unacknowledged. Preserve pending for retry and
+		// surface a non-fatal batch error. Never log event bodies.
+		log.Printf("docker: missing ack, host success, pending batchId=%q preserved", pending.BatchID)
+		return fmt.Errorf("docker: missing acknowledgement for batch %q", pending.BatchID)
 	}
 	ack := res.Docker
 	switch ack.IngestStatus {
@@ -273,62 +301,62 @@ func (r *Runner) handleAck(res *push.PushResult, pending *state.PendingBatch) er
 		// All successful ingest outcomes carry the server's durable watermark.
 		// replay_ignored is a successful idempotent outcome, not a failure.
 	default:
-		log.Printf("docker v2: ingestStatus=%q not committable, pending batchId=%q preserved", ack.IngestStatus, pending.BatchID)
-		return fmt.Errorf("docker v2: ingest status %q not committable", ack.IngestStatus)
+		log.Printf("docker: ingestStatus=%q not committable, pending batchId=%q preserved", ack.IngestStatus, pending.BatchID)
+		return fmt.Errorf("docker: ingest status %q not committable", ack.IngestStatus)
 	}
 	if r.cfg != nil && r.cfg.VpsId != "" && res.VpsId != "" && res.VpsId != r.cfg.VpsId {
-		log.Printf("docker v2: vps mismatch, pending batchId=%q preserved", pending.BatchID)
-		return fmt.Errorf("docker v2: vps mismatch")
+		log.Printf("docker: vps mismatch, pending batchId=%q preserved", pending.BatchID)
+		return fmt.Errorf("docker: vps mismatch")
 	}
 	if r.cfg != nil && r.cfg.VpsId != "" && res.VpsId == "" {
-		// Empty server VPS with a v2 ack cannot be matched safely.
-		log.Printf("docker v2: empty vps in ack, pending batchId=%q preserved", pending.BatchID)
-		return fmt.Errorf("docker v2: vps mismatch")
+		// Empty server VPS with a batch ack cannot be matched safely.
+		log.Printf("docker: empty vps in ack, pending batchId=%q preserved", pending.BatchID)
+		return fmt.Errorf("docker: vps mismatch")
 	}
 	if ack.BatchId != pending.BatchID || ack.SnapshotId != pending.SnapshotID || ack.AgentInstanceId != pending.AgentInstanceID {
-		log.Printf("docker v2: ack id mismatch, pending batchId=%q preserved", pending.BatchID)
-		return fmt.Errorf("docker v2: acknowledgement id mismatch")
+		log.Printf("docker: ack id mismatch, pending batchId=%q preserved", pending.BatchID)
+		return fmt.Errorf("docker: acknowledgement id mismatch")
 	}
 	if ack.AgentInstanceId != r.docker.InstanceID() {
-		log.Printf("docker v2: ack instance mismatch, pending batchId=%q preserved", pending.BatchID)
-		return fmt.Errorf("docker v2: acknowledgement instance mismatch")
+		log.Printf("docker: ack instance mismatch, pending batchId=%q preserved", pending.BatchID)
+		return fmt.Errorf("docker: acknowledgement instance mismatch")
 	}
 	committed, err := ackWatermarkToState(ack)
 	if err != nil {
-		log.Printf("docker v2: ack watermark invalid, pending batchId=%q preserved", pending.BatchID)
-		return fmt.Errorf("docker v2: acknowledgement watermark invalid: %w", err)
+		log.Printf("docker: ack watermark invalid, pending batchId=%q preserved", pending.BatchID)
+		return fmt.Errorf("docker: acknowledgement watermark invalid: %w", err)
 	}
 	// Committed/proposed relationship: the server must confirm exactly the
 	// batch this runner persisted. A stale, replayed, or foreign watermark
 	// never advances local state, even if the store would reject it later.
 	if !watermarkEqual(committed, pending.ProposedWatermark) {
-		log.Printf("docker v2: committed watermark mismatch, pending batchId=%q preserved", pending.BatchID)
-		return fmt.Errorf("docker v2: committed watermark mismatch")
+		log.Printf("docker: committed watermark mismatch, pending batchId=%q preserved", pending.BatchID)
+		return fmt.Errorf("docker: committed watermark mismatch")
 	}
 	if err := r.docker.CommitAcknowledgement(ack.BatchId, ack.SnapshotId, ack.AgentInstanceId, committed); err != nil {
-		log.Printf("docker v2: commit batchId=%q failed, pending preserved", pending.BatchID)
-		return fmt.Errorf("docker v2: commit: %w", err)
+		log.Printf("docker: commit batchId=%q failed, pending preserved", pending.BatchID)
+		return fmt.Errorf("docker: commit: %w", err)
 	}
-	log.Printf("docker v2: committed batchId=%q watermark=%d", pending.BatchID, committed.TimeNano)
+	log.Printf("docker: committed batchId=%q watermark=%d", pending.BatchID, committed.TimeNano)
 	return nil
 }
 
-// isCompleteV2Batch reports the all-or-none event protocol: batch carries
+// isCompleteBatch reports the all-or-none event protocol: batch carries
 // events only when batchId+events+eventWindow+from+proposed are all present.
-func isCompleteV2Batch(v2 *metrics.DockerMetricsV2) bool {
-	if v2 == nil {
+func isCompleteBatch(batch *metrics.DockerMetrics) bool {
+	if batch == nil {
 		return false
 	}
-	if v2.BatchID == "" {
+	if batch.BatchID == "" {
 		return false
 	}
-	if v2.Events == nil {
+	if batch.Events == nil {
 		return false
 	}
-	if v2.EventWindow == nil {
+	if batch.EventWindow == nil {
 		return false
 	}
-	if v2.FromWatermark == nil || v2.ProposedWatermark == nil {
+	if batch.FromWatermark == nil || batch.ProposedWatermark == nil {
 		return false
 	}
 	return true
@@ -347,147 +375,161 @@ func stripDocker(m *metrics.SystemMetrics) *metrics.SystemMetrics {
 // complete batch. The exact Docker branch is marshalled with stable JSON
 // (encoding/json over the fixed struct shape), its SHA-256 digest computed,
 // and both payload and metadata persisted in PendingBatch before push.
-func derivePendingWithPayload(v2 *metrics.DockerMetricsV2, instanceID string) (state.PendingBatch, error) {
+func derivePendingWithPayload(batch *metrics.DockerMetrics, instanceID string) (state.PendingBatch, error) {
 	var zero state.PendingBatch
-	if v2 == nil || v2.SourceSequence == "" || v2.SourceSequence == "0" {
+	if batch == nil || batch.SourceSequence == "" || batch.SourceSequence == "0" {
 		return zero, fmt.Errorf("sourceSequence must be positive")
 	}
-	if v2 == nil {
-		return zero, fmt.Errorf("nil v2 batch")
+	if batch == nil {
+		return zero, fmt.Errorf("nil batch")
 	}
-	if v2.AgentInstanceID == "" || v2.AgentInstanceID != instanceID {
+	if batch.SchemaVersion != metrics.DockerMetricsSchemaVersion {
+		return zero, fmt.Errorf("schemaVersion %d, want %d", batch.SchemaVersion, metrics.DockerMetricsSchemaVersion)
+	}
+	if batch.AgentInstanceID == "" || batch.AgentInstanceID != instanceID {
 		return zero, fmt.Errorf("agentInstanceId mismatch")
 	}
-	from, err := watermarkToState(v2.FromWatermark)
+	from, err := watermarkToState(batch.FromWatermark)
 	if err != nil {
 		return zero, fmt.Errorf("fromWatermark: %w", err)
 	}
-	proposed, err := watermarkToState(v2.ProposedWatermark)
+	proposed, err := watermarkToState(batch.ProposedWatermark)
 	if err != nil {
 		return zero, fmt.Errorf("proposedWatermark: %w", err)
 	}
-	if v2.EventWindow == nil {
+	if batch.EventWindow == nil {
 		return zero, fmt.Errorf("nil eventWindow")
 	}
-	until, err := parseNano(v2.EventWindow.Until)
+	until, err := parseNano(batch.EventWindow.Until)
 	if err != nil {
 		return zero, fmt.Errorf("eventWindow.until: %w", err)
 	}
-	digest, err := eventsDigest(v2.Events)
+	if batch.Events == nil {
+		return zero, fmt.Errorf("nil events")
+	}
+	digest, err := eventsDigest(*batch.Events)
 	if err != nil {
 		return zero, fmt.Errorf("events digest: %w", err)
 	}
-	payload, err := json.Marshal(v2)
+	payload, err := json.Marshal(batch)
 	if err != nil {
-		return zero, fmt.Errorf("v2 marshal: %w", err)
+		return zero, fmt.Errorf("batch marshal: %w", err)
 	}
-	if len(payload) == 0 || len(payload) > state.MaxV2PayloadBytes {
-		return zero, fmt.Errorf("v2PayloadJSON oversize")
+	if len(payload) == 0 || len(payload) > state.MaxPendingPayloadBytes {
+		return zero, fmt.Errorf("pending payload oversize")
 	}
 	sum := sha256.Sum256(payload)
 	return state.PendingBatch{
-		BatchID:           v2.BatchID,
-		SnapshotID:        v2.SnapshotID,
-		SourceSequence:    v2.SourceSequence,
-		AgentInstanceID:   v2.AgentInstanceID,
-		FromWatermark:     from,
-		ProposedWatermark: proposed,
-		EventsDigest:      digest,
-		EventWindowUntil:  until,
-		V2PayloadJSON:     string(payload),
-		V2PayloadDigest:   hex.EncodeToString(sum[:]),
+		BatchID:              batch.BatchID,
+		SnapshotID:           batch.SnapshotID,
+		SourceSequence:       batch.SourceSequence,
+		AgentInstanceID:      batch.AgentInstanceID,
+		FromWatermark:        from,
+		ProposedWatermark:    proposed,
+		EventsDigest:         digest,
+		EventWindowUntil:     until,
+		PendingPayloadJSON:   string(payload),
+		PendingPayloadDigest: hex.EncodeToString(sum[:]),
 	}, nil
 }
 
-// reconstructPendingV2 rebuilds the exact DockerMetricsV2 branch from durable
+// reconstructPending rebuilds the exact DockerMetrics branch from durable
 // pending state. It fail-closes on any corruption: empty payload, digest
 // mismatch, malformed JSON, non-canonical bytes, incomplete batch, instance
 // mismatch, or metadata/payload divergence. On success the returned branch
 // re-marshals to the exact stored bytes.
-func reconstructPendingV2(p *state.PendingBatch, instanceID string) (*metrics.DockerMetricsV2, error) {
+func reconstructPending(p *state.PendingBatch, instanceID string) (*metrics.DockerMetrics, error) {
 	if p == nil {
 		return nil, fmt.Errorf("nil pending")
 	}
 	if p.AgentInstanceID == "" || p.AgentInstanceID != instanceID {
 		return nil, fmt.Errorf("agentInstanceId mismatch")
 	}
-	if p.V2PayloadJSON == "" {
-		return nil, fmt.Errorf("empty v2PayloadJSON")
+	if p.PendingPayloadJSON == "" {
+		return nil, fmt.Errorf("empty pending payload")
 	}
-	if len(p.V2PayloadJSON) > state.MaxV2PayloadBytes {
-		return nil, fmt.Errorf("v2PayloadJSON oversize")
+	if len(p.PendingPayloadJSON) > state.MaxPendingPayloadBytes {
+		return nil, fmt.Errorf("pending payload oversize")
 	}
-	if p.V2PayloadDigest == "" {
-		return nil, fmt.Errorf("empty v2PayloadDigest")
+	if p.PendingPayloadDigest == "" {
+		return nil, fmt.Errorf("empty pending payload digest")
 	}
-	sum := sha256.Sum256([]byte(p.V2PayloadJSON))
-	if hex.EncodeToString(sum[:]) != p.V2PayloadDigest {
-		return nil, fmt.Errorf("v2PayloadDigest mismatch")
+	sum := sha256.Sum256([]byte(p.PendingPayloadJSON))
+	if hex.EncodeToString(sum[:]) != p.PendingPayloadDigest {
+		return nil, fmt.Errorf("pending payload digest mismatch")
 	}
-	var v2 metrics.DockerMetricsV2
-	dec := json.NewDecoder(bytes.NewReader([]byte(p.V2PayloadJSON)))
+	var batch metrics.DockerMetrics
+	dec := json.NewDecoder(bytes.NewReader([]byte(p.PendingPayloadJSON)))
 	dec.DisallowUnknownFields()
-	if err := dec.Decode(&v2); err != nil {
-		return nil, fmt.Errorf("invalid v2PayloadJSON: %w", err)
+	if err := dec.Decode(&batch); err != nil {
+		return nil, fmt.Errorf("invalid pending payload: %w", err)
 	}
 	var extra any
 	if err := dec.Decode(&extra); err != io.EOF {
 		if err == nil {
-			return nil, fmt.Errorf("trailing v2PayloadJSON")
+			return nil, fmt.Errorf("trailing pending payload")
 		}
-		return nil, fmt.Errorf("trailing v2PayloadJSON: %w", err)
+		return nil, fmt.Errorf("trailing pending payload: %w", err)
 	}
-	if !isCompleteV2Batch(&v2) {
-		return nil, fmt.Errorf("incomplete v2 batch")
+	if batch.SchemaVersion != metrics.DockerMetricsSchemaVersion {
+		// Pre-discriminator (schemaVersion-less) pending payloads are old
+		// format: fail closed, never auto-migrate.
+		return nil, fmt.Errorf("schemaVersion %d, want %d", batch.SchemaVersion, metrics.DockerMetricsSchemaVersion)
 	}
-	if v2.AgentInstanceID != instanceID {
+	if !isCompleteBatch(&batch) {
+		return nil, fmt.Errorf("incomplete batch")
+	}
+	if batch.AgentInstanceID != instanceID {
 		return nil, fmt.Errorf("agentInstanceId mismatch")
 	}
-	canon, err := json.Marshal(&v2)
+	canon, err := json.Marshal(&batch)
 	if err != nil {
-		return nil, fmt.Errorf("v2 remarshal: %w", err)
+		return nil, fmt.Errorf("batch remarshal: %w", err)
 	}
-	if string(canon) != p.V2PayloadJSON {
-		return nil, fmt.Errorf("v2PayloadJSON not canonical")
+	if string(canon) != p.PendingPayloadJSON {
+		return nil, fmt.Errorf("pending payload not canonical")
 	}
-	from, err := watermarkToState(v2.FromWatermark)
+	from, err := watermarkToState(batch.FromWatermark)
 	if err != nil {
 		return nil, fmt.Errorf("fromWatermark: %w", err)
 	}
 	if !watermarkEqual(from, p.FromWatermark) {
 		return nil, fmt.Errorf("fromWatermark mismatch")
 	}
-	proposed, err := watermarkToState(v2.ProposedWatermark)
+	proposed, err := watermarkToState(batch.ProposedWatermark)
 	if err != nil {
 		return nil, fmt.Errorf("proposedWatermark: %w", err)
 	}
 	if !watermarkEqual(proposed, p.ProposedWatermark) {
 		return nil, fmt.Errorf("proposedWatermark mismatch")
 	}
-	if v2.EventWindow == nil {
+	if batch.EventWindow == nil {
 		return nil, fmt.Errorf("nil eventWindow")
 	}
-	until, err := parseNano(v2.EventWindow.Until)
+	until, err := parseNano(batch.EventWindow.Until)
 	if err != nil {
 		return nil, fmt.Errorf("eventWindow.until: %w", err)
 	}
 	if until != p.EventWindowUntil {
 		return nil, fmt.Errorf("eventWindowUntil mismatch")
 	}
-	digest, err := eventsDigest(v2.Events)
+	if batch.Events == nil {
+		return nil, fmt.Errorf("nil events")
+	}
+	digest, err := eventsDigest(*batch.Events)
 	if err != nil {
 		return nil, fmt.Errorf("events digest: %w", err)
 	}
 	if digest != p.EventsDigest {
 		return nil, fmt.Errorf("eventsDigest mismatch")
 	}
-	if v2.BatchID != p.BatchID || v2.SnapshotID != p.SnapshotID {
+	if batch.BatchID != p.BatchID || batch.SnapshotID != p.SnapshotID {
 		return nil, fmt.Errorf("batch id mismatch")
 	}
-	return &v2, nil
+	return &batch, nil
 }
 
-func watermarkToState(w *metrics.DockerEventWatermarkV2) (state.Watermark, error) {
+func watermarkToState(w *metrics.DockerEventWatermark) (state.Watermark, error) {
 	var zero state.Watermark
 	if w == nil {
 		return zero, fmt.Errorf("nil watermark")
@@ -529,7 +571,7 @@ func parseNano(s string) (int64, error) {
 
 // eventsDigest is the bounded retry-equality representation: SHA-256 hex
 // over the canonical JSON encoding of the transmitted events.
-func eventsDigest(evs []metrics.DockerEventV2) (string, error) {
+func eventsDigest(evs []metrics.DockerEvent) (string, error) {
 	if evs == nil {
 		return "", fmt.Errorf("nil events")
 	}

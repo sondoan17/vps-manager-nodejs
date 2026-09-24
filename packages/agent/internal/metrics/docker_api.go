@@ -29,7 +29,7 @@ var dockerSampleCycle uint64
 // simplicity under the global collection deadline. Timing tests are regression
 // coverage only and are not representative of production daemon performance;
 // bounded concurrency was intentionally not added in this phase.
-func collectDockerFromAPI(ctx context.Context, client *http.Client, baseURL string) *DockerMetrics {
+func collectDockerFromAPI(ctx context.Context, client *http.Client, baseURL string) *DockerCollectionSnapshot {
 	// 0. Optional engine capability (/version) runs under its own small
 	// sub-deadline and must never consume the required collection budget.
 	// A stall, timeout, failure, or bad payload leaves these fields empty
@@ -56,7 +56,7 @@ func collectDockerFromAPI(ctx context.Context, client *http.Client, baseURL stri
 	}
 
 	// Keep the complete bounded list internally, then rotate the stats/public
-	// sample so large fleets are eventually covered without changing v1's cap.
+	// sample so large fleets are eventually covered without changing the bounded cap.
 	if len(containers) > MaxContainers {
 		start := int(atomic.AddUint64(&dockerSampleCycle, 1)-1) % len(containers)
 		rotated := append(append([]dockerContainerRaw(nil), containers[start:]...), containers[:start]...)
@@ -65,7 +65,7 @@ func collectDockerFromAPI(ctx context.Context, client *http.Client, baseURL stri
 
 	now := time.Now().UTC().Format(time.RFC3339)
 
-	result := &DockerMetrics{
+	result := &DockerCollectionSnapshot{
 		Available:      true,
 		CollectedAt:    now,
 		ContainerTotal: containerTotal,
@@ -376,7 +376,7 @@ func dockerRawToContainer(raw dockerContainerRaw) DockerContainerMetric {
 // Error classification
 // ---------------------------------------------------------------------------
 
-func classifyDockerError(err error) *DockerMetrics {
+func classifyDockerError(err error) *DockerCollectionSnapshot {
 	errStr := strings.ToLower(err.Error())
 
 	if strings.Contains(errStr, "no such file or directory") ||

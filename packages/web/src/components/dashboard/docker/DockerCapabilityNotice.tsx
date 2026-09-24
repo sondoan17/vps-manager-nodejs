@@ -44,7 +44,7 @@ export function DockerCapabilityNotice({
         <p className="mt-1 pl-4 text-[11px] text-white/40">
           Detail sections appear here automatically once the agent reports a
           snapshot. Bounded history, events, alerts, and the storage overview
-          require an agent that reports Docker schema v2.
+          require an agent that reports Docker schema details.
         </p>
       </div>
     );

@@ -18,6 +18,7 @@ import { networkInterfaces } from "node:os";
 import { Client, type SFTPWrapper } from "ssh2";
 import { loadAppConfig } from "../packages/api/src/config/app-config.js";
 import { createRepositories } from "../packages/api/src/persistence/repositories/create-repositories.js";
+import { buildDockerStateProvisionCommand } from "../packages/api/src/agents/agent-lifecycle-remote.js";
 
 const REMOTE_DIR = "/tmp/vps-manager-agent";
 const REMOTE_BINARY = `${REMOTE_DIR}/vps-agent`;
@@ -244,6 +245,14 @@ async function main() {
       0o600,
     );
     await chmod(sftp, REMOTE_CONFIG, 0o600);
+    // Provision Docker identity/runtime state before any agent run.
+    // exec() rejects on non-zero exit, so a provisioning failure aborts here
+    // and the -once validation never runs.
+    await exec(
+      client,
+      buildDockerStateProvisionCommand(REMOTE_BINARY, REMOTE_DIR),
+      30_000,
+    );
     const result = await exec(
       client,
       `${REMOTE_BINARY} -config ${REMOTE_CONFIG} -once`,

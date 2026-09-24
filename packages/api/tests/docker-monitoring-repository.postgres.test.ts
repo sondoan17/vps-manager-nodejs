@@ -386,7 +386,6 @@ describe("docker monitoring repository (PostgreSQL, I1)", () => {
         requestDigestVersion: 1,
         receivedAt,
         sourceSequence: "1",
-        compatibility: { latest: true },
         hostSample: sample("hs-1", "vps-a", receivedAt),
         ...overrides,
       });

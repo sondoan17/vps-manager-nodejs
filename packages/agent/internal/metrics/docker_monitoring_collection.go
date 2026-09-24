@@ -19,7 +19,8 @@ import (
 //
 // Scope: packages/agent/internal/metrics/** only. No state/push/run/main/API
 // edits. Helpers are callable and tested; top-level wiring stays minimal/dark.
-// One global 5s context (DefaultDockerTimeoutSeconds) and v1 behavior preserved.
+// One global 5s context (DefaultDockerTimeoutSeconds); legacy collection
+// behavior preserved.
 
 const (
 	dockerDecodeMaxEvents = 10000
@@ -97,9 +98,9 @@ func dockerCohortDigest(keys []string) string {
 }
 
 // dockerCoverage builds explicit coverage metadata.
-func dockerCoverage(sampled int, total int, keys []string) DockerCoverageV2 {
+func dockerCoverage(sampled int, total int, keys []string) DockerCoverage {
 	complete := sampled == total
-	c := DockerCoverageV2{
+	c := DockerCoverage{
 		DetailsSampled:       sampled,
 		DetailsTotalEligible: total,
 		Complete:             complete,
@@ -114,9 +115,9 @@ func dockerCoverage(sampled int, total int, keys []string) DockerCoverageV2 {
 
 // dockerSampledAggregate sums only successfully sampled containers.
 // Host totals remain authoritative elsewhere; this aggregate never claims them.
-func dockerSampledAggregate(containers []DockerContainerV2, total int) DockerSampledContainerAggregateV2 {
+func dockerSampledAggregate(containers []DockerContainer, total int) DockerSampledContainerAggregate {
 	keys := make([]string, 0, len(containers))
-	agg := DockerSampledContainerAggregateV2{}
+	agg := DockerSampledContainerAggregate{}
 	for _, c := range containers {
 		keys = append(keys, c.ContainerKey)
 		agg.CPUPercent += c.CPUPercent
@@ -182,7 +183,7 @@ func (c *countingReader) Read(p []byte) (int, error) {
 
 // dockerEventDigest is the safe identity over
 // (agentInstanceId, eventTimeNano, action, containerKey, contextVersion, context).
-func dockerEventDigest(instance, nano, action, key string, ctx DockerEventContextV2) string {
+func dockerEventDigest(instance, nano, action, key string, ctx DockerEventContext) string {
 	b, _ := json.Marshal(ctx)
 	parts := strings.Join([]string{instance, nano, action, key, strconv.Itoa(ctx.Version), string(b)}, "\x00")
 	h := sha256.Sum256([]byte(parts))
@@ -191,8 +192,8 @@ func dockerEventDigest(instance, nano, action, key string, ctx DockerEventContex
 
 // dockerSafeContext builds the minimal typed safe context for a daemon event.
 // Only allowlisted scalar fields are admitted; Attributes are never copied.
-func dockerSafeContext(raw DockerRawEvent) DockerEventContextV2 {
-	ctx := DockerEventContextV2{Version: DockerEventContextVersionV1}
+func dockerSafeContext(raw DockerRawEvent) DockerEventContext {
+	ctx := DockerEventContext{Version: DockerEventContextVersion}
 	if raw.Action == DockerActionHealthStatus {
 		if v, ok := raw.Actor.Attributes["health_status"]; ok {
 			switch v {
@@ -263,7 +264,7 @@ func dockerEventOccurredAt(nano string) string {
 type dockerSafeEvent struct {
 	nano string
 	key  string
-	ev   DockerEventV2
+	ev   DockerEvent
 	size int
 }
 
@@ -453,7 +454,7 @@ func isDockerWantedAction(a string) bool {
 // keyForID maps a full daemon actor ID to an opaque containerKey.
 // Transmit caps: 100 events / 64KiB encoded. Decode caps: 10k / 2MiB.
 // Boundary overrun: 1000 events / 512KiB, limit+1 sentinel.
-func collectDockerEventWindow(ctx context.Context, r io.Reader, sinceNano, untilNano, agentInstanceID string, fromDigests []string, keyForID func(string) string) ([]DockerEventV2, *DockerEventWindowV2, *DockerEventWatermarkV2, error) {
+func collectDockerEventWindow(ctx context.Context, r io.Reader, sinceNano, untilNano, agentInstanceID string, fromDigests []string, keyForID func(string) string) ([]DockerEvent, *DockerEventWindow, *DockerEventWatermark, error) {
 	if !isCanonicalNanoDecimal(sinceNano) || !isCanonicalNanoDecimal(untilNano) || cmpCanonicalNano(sinceNano, untilNano) >= 0 {
 		return nil, nil, nil, fmt.Errorf("invalid event window")
 	}
@@ -477,12 +478,12 @@ func collectDockerEventWindow(ctx context.Context, r io.Reader, sinceNano, until
 	var boundaryStart int64
 	boundaryOverrun := false
 	var acc int
-	gap := func(reason string) ([]DockerEventV2, *DockerEventWindowV2, *DockerEventWatermarkV2, error) {
+	gap := func(reason string) ([]DockerEvent, *DockerEventWindow, *DockerEventWatermark, error) {
 		tr, a := truncateDockerTransmit(out, true)
 		g := dockerGapEvent(sinceNano, untilNano, len(out)-len(tr), agentInstanceID, untilNano)
 		g.Context.Reason = reason
 		tr = appendDockerGapFitting(tr, a, g)
-		return tr, &DockerEventWindowV2{Since: sinceNano, Until: untilNano, Capped: true, Lossy: true, GapReason: reason}, &DockerEventWatermarkV2{TimeNano: untilNano}, nil
+		return tr, &DockerEventWindow{Since: sinceNano, Until: untilNano, Capped: true, Lossy: true, GapReason: reason}, &DockerEventWatermark{TimeNano: untilNano}, nil
 	}
 	for {
 		select {
@@ -571,7 +572,7 @@ func collectDockerEventWindow(ctx context.Context, r io.Reader, sinceNano, until
 		if nano == sinceNano && dup[d] {
 			continue
 		}
-		ev := DockerEventV2{EventID: d[:32], EventOccurredAt: dockerEventOccurredAt(nano), ContainerKey: key, Action: e.Action, Context: sc}
+		ev := DockerEvent{EventID: d[:32], EventOccurredAt: dockerEventOccurredAt(nano), ContainerKey: key, Action: e.Action, Context: sc}
 		if validateDockerEvent(ev) != nil {
 			continue
 		}
@@ -602,21 +603,21 @@ func collectDockerEventWindow(ctx context.Context, r io.Reader, sinceNano, until
 	return finalizeDockerComplete(out, sinceNano, untilNano)
 }
 
-func appendEventsBoundary(out []dockerSafeEvent, since, until, bt string, dig []string, instance string) ([]DockerEventV2, *DockerEventWindowV2, *DockerEventWatermarkV2, error) {
+func appendEventsBoundary(out []dockerSafeEvent, since, until, bt string, dig []string, instance string) ([]DockerEvent, *DockerEventWindow, *DockerEventWatermark, error) {
 	tr, a := truncateDockerTransmit(out, true)
 	g := dockerGapEvent(since, bt, len(out)-len(tr), instance, bt)
 	g.Context.Reason = DockerGapBoundaryOverflow
 	tr = appendDockerGapFitting(tr, a, g)
-	return tr, &DockerEventWindowV2{Since: since, Until: until, Capped: true, Lossy: true, GapReason: DockerGapBoundaryOverflow}, &DockerEventWatermarkV2{TimeNano: bt, BoundaryDigests: dig}, nil
+	return tr, &DockerEventWindow{Since: since, Until: until, Capped: true, Lossy: true, GapReason: DockerGapBoundaryOverflow}, &DockerEventWatermark{TimeNano: bt, BoundaryDigests: dig}, nil
 }
 
-func finalizeDockerComplete(safe []dockerSafeEvent, sinceNano, untilNano string) ([]DockerEventV2, *DockerEventWindowV2, *DockerEventWatermarkV2, error) {
-	evs := make([]DockerEventV2, 0, len(safe))
+func finalizeDockerComplete(safe []dockerSafeEvent, sinceNano, untilNano string) ([]DockerEvent, *DockerEventWindow, *DockerEventWatermark, error) {
+	evs := make([]DockerEvent, 0, len(safe))
 	for _, s := range safe {
 		evs = append(evs, s.ev)
 	}
-	win := &DockerEventWindowV2{Since: sinceNano, Until: untilNano}
-	prop := &DockerEventWatermarkV2{TimeNano: untilNano, BoundaryDigests: []string{}}
+	win := &DockerEventWindow{Since: sinceNano, Until: untilNano}
+	prop := &DockerEventWatermark{TimeNano: untilNano, BoundaryDigests: []string{}}
 	return evs, win, prop, nil
 }
 
@@ -637,7 +638,7 @@ func boundaryDigestsFor(safe []dockerSafeEvent, nano, instance string) []string 
 	return out
 }
 
-func finalizeDockerCapped(ctx context.Context, safe []dockerSafeEvent, capIdx int, sinceNano, untilNano, instance string) ([]DockerEventV2, *DockerEventWindowV2, *DockerEventWatermarkV2, error) {
+func finalizeDockerCapped(ctx context.Context, safe []dockerSafeEvent, capIdx int, sinceNano, untilNano, instance string) ([]DockerEvent, *DockerEventWindow, *DockerEventWatermark, error) {
 	capNano := safe[capIdx].nano
 	// Find the full boundary run containing capIdx.
 	lo := capIdx
@@ -652,7 +653,7 @@ func finalizeDockerCapped(ctx context.Context, safe []dockerSafeEvent, capIdx in
 	// prior boundary already fits. Advance to the last fully decoded boundary.
 	if lo == capIdx {
 		prevNano := safe[capIdx-1].nano
-		trans := make([]DockerEventV2, 0, capIdx)
+		trans := make([]DockerEvent, 0, capIdx)
 		for _, s := range safe[:capIdx] {
 			trans = append(trans, s.ev)
 		}
@@ -660,8 +661,8 @@ func finalizeDockerCapped(ctx context.Context, safe []dockerSafeEvent, capIdx in
 		if len(digests) > MaxDockerBoundaryDigests {
 			digests = digests[:MaxDockerBoundaryDigests]
 		}
-		win := &DockerEventWindowV2{Since: sinceNano, Until: untilNano, Capped: true}
-		prop := &DockerEventWatermarkV2{TimeNano: prevNano, BoundaryDigests: digests}
+		win := &DockerEventWindow{Since: sinceNano, Until: untilNano, Capped: true}
+		prop := &DockerEventWatermark{TimeNano: prevNano, BoundaryDigests: digests}
 		return trans, win, prop, nil
 	}
 	// Mid-boundary cap: bounded overrun through the current timestamp.
@@ -708,12 +709,12 @@ func finalizeDockerCapped(ctx context.Context, safe []dockerSafeEvent, capIdx in
 	gap := dockerGapEvent(sinceNano, capNano, skipped, instance, capNano)
 	gap.Context.Reason = DockerGapBoundaryOverflow
 	trans = appendDockerGapFitting(trans, acc, gap)
-	win := &DockerEventWindowV2{Since: sinceNano, Until: untilNano, Capped: true, Lossy: true, GapReason: DockerGapBoundaryOverflow}
-	prop := &DockerEventWatermarkV2{TimeNano: capNano, BoundaryDigests: digests}
+	win := &DockerEventWindow{Since: sinceNano, Until: untilNano, Capped: true, Lossy: true, GapReason: DockerGapBoundaryOverflow}
+	prop := &DockerEventWatermark{TimeNano: capNano, BoundaryDigests: digests}
 	return trans, win, prop, nil
 }
 
-func appendDockerGapFitting(trans []DockerEventV2, acc int, gap DockerEventV2) []DockerEventV2 {
+func appendDockerGapFitting(trans []DockerEvent, acc int, gap DockerEvent) []DockerEvent {
 	gb, _ := json.Marshal(gap)
 	need := len(gb) + 1
 	for len(trans) > 0 && (len(trans)+1 > MaxDockerEvents || acc+need > MaxDockerEventBranchBytes) {
@@ -723,17 +724,17 @@ func appendDockerGapFitting(trans []DockerEventV2, acc int, gap DockerEventV2) [
 	}
 	if len(trans)+1 > MaxDockerEvents || acc+need > MaxDockerEventBranchBytes {
 		// Gap alone must still validate; it is small by construction.
-		return []DockerEventV2{gap}
+		return []DockerEvent{gap}
 	}
 	return append(trans, gap)
 }
 
-func truncateDockerTransmit(safe []dockerSafeEvent, reserveGap bool) ([]DockerEventV2, int) {
+func truncateDockerTransmit(safe []dockerSafeEvent, reserveGap bool) ([]DockerEvent, int) {
 	limit := MaxDockerEvents
 	if reserveGap {
 		limit = MaxDockerEvents - 1
 	}
-	out := make([]DockerEventV2, 0, len(safe))
+	out := make([]DockerEvent, 0, len(safe))
 	acc := 0
 	for _, s := range safe {
 		if len(out)+1 > limit {
@@ -748,18 +749,18 @@ func truncateDockerTransmit(safe []dockerSafeEvent, reserveGap bool) ([]DockerEv
 	return out, acc
 }
 
-func abandonDockerThroughU(safe []dockerSafeEvent, capIdx int, sinceNano, untilNano, instance, reason string) ([]DockerEventV2, *DockerEventWindowV2, *DockerEventWatermarkV2, error) {
+func abandonDockerThroughU(safe []dockerSafeEvent, capIdx int, sinceNano, untilNano, instance, reason string) ([]DockerEvent, *DockerEventWindow, *DockerEventWatermark, error) {
 	trans, acc := truncateDockerTransmit(safe[:capIdx], true)
 	skipped := len(safe) - len(trans)
 	gap := dockerGapEvent(sinceNano, untilNano, skipped, instance, untilNano)
 	gap.Context.Reason = reason
 	trans = appendDockerGapFitting(trans, acc, gap)
-	win := &DockerEventWindowV2{Since: sinceNano, Until: untilNano, Capped: true, Lossy: true, GapReason: reason}
-	prop := &DockerEventWatermarkV2{TimeNano: untilNano, BoundaryDigests: []string{}}
+	win := &DockerEventWindow{Since: sinceNano, Until: untilNano, Capped: true, Lossy: true, GapReason: reason}
+	prop := &DockerEventWatermark{TimeNano: untilNano, BoundaryDigests: []string{}}
 	return trans, win, prop, nil
 }
 
-func dockerGapEvent(fromNano, throughNano string, skipped int, instance, occurredNano string) DockerEventV2 {
+func dockerGapEvent(fromNano, throughNano string, skipped int, instance, occurredNano string) DockerEvent {
 	occurred := dockerGapOccurredAt(occurredNano)
 	if skipped < 0 {
 		skipped = 0
@@ -768,8 +769,8 @@ func dockerGapEvent(fromNano, throughNano string, skipped int, instance, occurre
 		skipped = 10000
 	}
 	sc := skipped
-	gapCtx := DockerEventContextV2{
-		Version:            DockerEventContextVersionV1,
+	gapCtx := DockerEventContext{
+		Version:            DockerEventContextVersion,
 		Reason:             DockerGapBoundaryOverflow,
 		SkippedFromNano:    fromNano,
 		SkippedThroughNano: throughNano,
@@ -780,7 +781,7 @@ func dockerGapEvent(fromNano, throughNano string, skipped int, instance, occurre
 	if len(id) > 32 {
 		id = id[:32]
 	}
-	return DockerEventV2{
+	return DockerEvent{
 		EventID:         "gap-" + id,
 		EventOccurredAt: occurred,
 		Action:          DockerActionStreamGap,
@@ -805,7 +806,7 @@ func dockerGapOccurredAt(occurredNano string) string {
 // top-level LayersSize (never summed Sizes, which share layers). Missing
 // categories become supported=false. A malformed category marks only itself
 // unsupported.
-func decodeDockerSystemDF(r io.Reader) (*DockerStorageAggregateV2, error) {
+func decodeDockerSystemDF(r io.Reader) (*DockerStorageAggregate, error) {
 	b, err := io.ReadAll(io.LimitReader(r, int64(MaxDockerSystemDFBytes)+1))
 	if err != nil {
 		return nil, err
@@ -842,7 +843,7 @@ func decodeDockerSystemDF(r io.Reader) (*DockerStorageAggregateV2, error) {
 	if err := json.Unmarshal(b, &raw); err != nil {
 		return nil, err
 	}
-	agg := &DockerStorageAggregateV2{FormulaVersion: DockerStorageFormulaVersionV1}
+	agg := &DockerStorageAggregate{FormulaVersion: DockerStorageFormulaVersion}
 	// Images: LayersSize authoritative; per-image Sizes never summed.
 	_, imagesPresent := presence["Images"]
 	if ls, ok := presence["LayersSize"]; ok && ls != nil && string(ls) != "null" {

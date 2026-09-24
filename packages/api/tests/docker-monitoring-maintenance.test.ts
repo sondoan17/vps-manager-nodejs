@@ -269,7 +269,6 @@ describe("docker monitoring JSON maintenance (I3 slice)", () => {
       requestDigestVersion: 1,
       receivedAt,
       sourceSequence: "100",
-      compatibility: { latest: true },
       hostSample: sample("after", "vps-a", receivedAt),
     });
     expect(committed.ingestStatus).toBe("committed");

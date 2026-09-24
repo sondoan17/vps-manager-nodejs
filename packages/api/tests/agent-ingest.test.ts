@@ -10,6 +10,7 @@ import type { AppConfig } from "../src/config/app-config.js";
 import type { VpsRepository } from "../src/persistence/repositories/vps.repository.js";
 import { createJsonAgentRepository } from "../src/persistence/repositories/agent.repository.js";
 import { createJsonAuditRepository } from "../src/persistence/repositories/audit.repository.js";
+import { createJsonDockerMonitoringRepository } from "../src/persistence/repositories/docker-monitoring.repository.js";
 import { createJsonJobRepository } from "../src/persistence/repositories/job.repository.js";
 import { createJsonMetricRepository } from "../src/persistence/repositories/metric.repository.js";
 import { createKeyService } from "../src/ssh/keyService.js";
@@ -928,11 +929,10 @@ describe("Docker metrics ingestion", () => {
 
     expect(res.body.data.config).toEqual({ dockerMetricsEnabled: false });
 
-    const agentRepo = createJsonAgentRepository(
-      join(tempDir, "data", "agents.json"),
+    const dockerRepo = createJsonDockerMonitoringRepository(
+      join(tempDir, "data", "docker-monitoring.json"),
     );
-    const stored = await agentRepo.getDockerMetrics(vpsId);
-    expect(stored).toBeUndefined();
+    expect(await dockerRepo.getAuthoritativeLatest(vpsId)).toBeUndefined();
   });
 
   it("stores docker metrics when dockerMetricsEnabled is true", async () => {
@@ -951,6 +951,13 @@ describe("Docker metrics ingestion", () => {
       containerHistory: true,
       events: true,
       storage: true,
+    });
+    const dockerRepo = createJsonDockerMonitoringRepository(
+      join(tempDir, "data", "docker-monitoring.json"),
+    );
+    expect(await dockerRepo.getAuthoritativeLatest(vpsId)).toMatchObject({
+      activeInstanceId: "instance_abc123",
+      available: true,
     });
   });
 
@@ -994,7 +1001,7 @@ describe("Docker metrics ingestion", () => {
     await vpsRepo.update(vpsId, { dockerMetricsEnabled: true });
 
     const manyContainers = Array.from({ length: 21 }, (_, i) => ({
-      id: `c${i.toString().padStart(15, "0")}`,
+      containerKey: `ck_${i}`,
       name: `/container-${i}`,
       image: "nginx:1.25",
       status: "Up 1 hour",
@@ -1015,6 +1022,20 @@ describe("Docker metrics ingestion", () => {
       .send(
         validPayload({
           docker: validDockerPayload({ containers: manyContainers }),
+        }),
+      )
+      .expect(400);
+  });
+
+  it("rejects a v1 docker branch with 400 (v2-only wire)", async () => {
+    await vpsRepo.update(vpsId, { dockerMetricsEnabled: true });
+
+    await request(app())
+      .post("/api/agent/metrics")
+      .set("Authorization", `Bearer ${validToken}`)
+      .send(
+        validPayload({
+          docker: { ...validDockerPayload(), schemaVersion: 1, containers: [] },
         }),
       )
       .expect(400);
@@ -1121,6 +1142,14 @@ describe("Docker metrics ingestion", () => {
       events: true,
       storage: true,
     });
+    const dockerRepo = createJsonDockerMonitoringRepository(
+      join(tempDir, "data", "docker-monitoring.json"),
+    );
+    expect(await dockerRepo.getAuthoritativeLatest(vpsId)).toMatchObject({
+      activeInstanceId: "instance_abc123",
+      available: false,
+      errorCode: "socket_missing",
+    });
   });
 
   it("accepts and persists optional engine metadata when enabled", async () => {
@@ -1138,6 +1167,25 @@ describe("Docker metrics ingestion", () => {
       .set("Authorization", `Bearer ${validToken}`)
       .send(validPayload({ docker: validDockerPayload(metadata) }))
       .expect(201);
+
+    const dockerRepo = createJsonDockerMonitoringRepository(
+      join(tempDir, "data", "docker-monitoring.json"),
+    );
+    expect(await dockerRepo.getAuthoritativeLatest(vpsId)).toMatchObject({
+      engineVersion: "25.0.3",
+      apiVersion: "1.44",
+    });
+    expect(await dockerRepo.listCurrentContainers(vpsId)).toEqual([
+      {
+        agentInstanceId: "instance_abc123",
+        containerKey: "container_abc123",
+        name: "/web-nginx",
+        image: "nginx:1.25",
+        status: "Up 3 hours",
+        state: "running",
+        metrics: { cpuPercent: 12.3, memoryUsageBytes: 65_536_000, pids: 12 },
+      },
+    ]);
   });
 
   it("accepts engine metadata at the exact cap lengths", async () => {
@@ -1157,7 +1205,7 @@ describe("Docker metrics ingestion", () => {
       .expect(201);
   });
 
-  it("accepts legacy docker payload without engine metadata", async () => {
+  it("accepts a docker payload without engine metadata", async () => {
     await vpsRepo.update(vpsId, { dockerMetricsEnabled: true });
 
     await request(app())
@@ -1213,8 +1261,8 @@ describe("Docker metrics ingestion", () => {
   });
 });
 
-describe("Docker v2 ingest via AgentService", () => {
-  function validDockerV2Payload(overrides: Record<string, unknown> = {}) {
+describe("Docker ingest via AgentService", () => {
+  function validStructuredDockerPayload(overrides: Record<string, unknown> = {}) {
     return {
       collectedAt: new Date().toISOString(),
       schemaVersion: 2,
@@ -1250,7 +1298,7 @@ describe("Docker v2 ingest via AgentService", () => {
     };
   }
 
-  it("returns the accepted structured v2 acknowledgement without a legacy write", async () => {
+  it("returns the accepted structured acknowledgement without a legacy write", async () => {
     const vpsId = await createVps();
     await vpsRepo.update(vpsId, { dockerMetricsEnabled: true });
     const docker = {
@@ -1266,7 +1314,7 @@ describe("Docker v2 ingest via AgentService", () => {
 
     const result = await service.ingestMetric(
       credential,
-      validPayload({ docker: validDockerV2Payload() }),
+      validPayload({ docker: validStructuredDockerPayload() }),
     );
 
     expect(docker.ingest).toHaveBeenCalledTimes(1);
@@ -1302,14 +1350,14 @@ describe("Docker v2 ingest via AgentService", () => {
 
       const result = await service.ingestMetric(
         credential,
-        validPayload({ docker: validDockerV2Payload() }),
+        validPayload({ docker: validStructuredDockerPayload() }),
       );
 
       expect(result.docker?.ingestStatus).toBe(ingestStatus);
     },
   );
 
-  it("propagates a v2 conflict without a legacy write", async () => {
+  it("propagates a conflict without a legacy write", async () => {
     const vpsId = await createVps();
     await vpsRepo.update(vpsId, { dockerMetricsEnabled: true });
     const docker = {
@@ -1327,12 +1375,12 @@ describe("Docker v2 ingest via AgentService", () => {
     await expect(
       service.ingestMetric(
         credential,
-        validPayload({ docker: validDockerV2Payload() }),
+        validPayload({ docker: validStructuredDockerPayload() }),
       ),
     ).rejects.toBeInstanceOf(ConflictException);
   });
 
-  it("ignores a v2 payload when docker metrics are disabled", async () => {
+  it("ignores a docker payload when docker metrics are disabled", async () => {
     const vpsId = await createVps();
     const docker = { ingest: vi.fn() };
     const { agentRepo, service } = makeService(docker);
@@ -1340,7 +1388,7 @@ describe("Docker v2 ingest via AgentService", () => {
 
     const result = await service.ingestMetric(
       credential,
-      validPayload({ docker: validDockerV2Payload() }),
+      validPayload({ docker: validStructuredDockerPayload() }),
     );
 
     expect(result.config).toEqual({ dockerMetricsEnabled: false });

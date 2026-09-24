@@ -16,7 +16,7 @@ import (
 // ---------------------------------------------------------------------------
 
 func TestDockerMetricsSerialization(t *testing.T) {
-	m := &DockerMetricsV2{
+	m := &DockerMetrics{
 		Available:        true,
 		ErrorCode:        "",
 		ContainerTotal:   3,
@@ -29,7 +29,7 @@ func TestDockerMetricsSerialization(t *testing.T) {
 		BlockReadBytes:   1e4,
 		BlockWriteBytes:  5e3,
 		PIDs:             42,
-		Containers: []DockerContainerV2{
+		Containers: []DockerContainer{
 			{
 				ContainerKey:     "container-key",
 				Name:             "web",
@@ -54,7 +54,7 @@ func TestDockerMetricsSerialization(t *testing.T) {
 		t.Fatalf("marshal: %v", err)
 	}
 
-	var decoded DockerMetricsV2
+	var decoded DockerMetrics
 	if err := json.Unmarshal(data, &decoded); err != nil {
 		t.Fatalf("unmarshal: %v", err)
 	}
@@ -80,7 +80,7 @@ func TestDockerMetricsSerialization(t *testing.T) {
 }
 
 func TestDockerMetricsSerialization_Unavailable(t *testing.T) {
-	m := &DockerMetricsV2{
+	m := &DockerMetrics{
 		Available: false,
 		ErrorCode: DockerErrorSocketMissing,
 	}
@@ -90,7 +90,7 @@ func TestDockerMetricsSerialization_Unavailable(t *testing.T) {
 		t.Fatalf("marshal: %v", err)
 	}
 
-	var decoded DockerMetricsV2
+	var decoded DockerMetrics
 	if err := json.Unmarshal(data, &decoded); err != nil {
 		t.Fatalf("unmarshal: %v", err)
 	}
@@ -130,7 +130,7 @@ func TestDockerMetricsPresentWhenSet(t *testing.T) {
 	sm := &SystemMetrics{
 		CPU:    50.0,
 		Memory: 60.0,
-		Docker: &DockerMetricsV2{
+		Docker: &DockerMetrics{
 			Available: true,
 		},
 	}

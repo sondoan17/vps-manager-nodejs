@@ -139,7 +139,7 @@ func validateDockerContextReason(value string) error {
 }
 
 func validateDockerContextVersion(value int) error {
-	if value != DockerEventContextVersionV1 {
+	if value != DockerEventContextVersion {
 		return fmt.Errorf("unsupported event context version")
 	}
 	return nil
@@ -191,7 +191,7 @@ func validateDockerErrorCode(value string) error {
 	return fmt.Errorf("unapproved error code")
 }
 
-func validateDockerCoverage(c DockerCoverageV2) error {
+func validateDockerCoverage(c DockerCoverage) error {
 	if c.DetailsSampled < 0 || c.DetailsSampled > MaxContainers {
 		return fmt.Errorf("details sampled out of range")
 	}
@@ -206,7 +206,7 @@ func validateDockerCoverage(c DockerCoverageV2) error {
 	return nil
 }
 
-func validateDockerWatermark(w *DockerEventWatermarkV2) error {
+func validateDockerWatermark(w *DockerEventWatermark) error {
 	if w == nil {
 		return nil
 	}
@@ -224,7 +224,7 @@ func validateDockerWatermark(w *DockerEventWatermarkV2) error {
 	return nil
 }
 
-func validateDockerWindow(win *DockerEventWindowV2) error {
+func validateDockerWindow(win *DockerEventWindow) error {
 	if win == nil {
 		return nil
 	}
@@ -247,7 +247,7 @@ func validateDockerWindow(win *DockerEventWindowV2) error {
 	return validateDockerGapReason(win.GapReason)
 }
 
-func validateDockerEvent(e DockerEventV2) error {
+func validateDockerEvent(e DockerEvent) error {
 	if err := validateDockerEventID(e.EventID); err != nil {
 		return err
 	}
@@ -313,8 +313,13 @@ func validateDockerEvent(e DockerEventV2) error {
 // collection_deadline) must advance proposed exactly to until.
 // boundary_overflow stays partial-tolerant: lossy overflow with
 // proposed < until is accepted.
-func validateDockerBatch(m DockerMetricsV2) error {
+func validateDockerBatch(m DockerMetrics) error {
 	hasBatch := m.BatchID != ""
+	if m.Events != nil && *m.Events == nil {
+		// A present-but-nil slice marshals as `"events":null`, which the
+		// API array type rejects; fail closed agent-side.
+		return fmt.Errorf("events branch must be an array, not null")
+	}
 	hasEvents := m.Events != nil
 	hasWindow := m.EventWindow != nil
 	hasFrom := m.FromWatermark != nil
@@ -361,10 +366,10 @@ func validateDockerBatch(m DockerMetricsV2) error {
 	return nil
 }
 
-// validateDockerMetrics validates a full flat v2 wire payload against the
+// validateDockerMetrics validates a full flat Docker wire payload against the
 // canonical API contract: IDs/digests/enums, caps, window/watermark
 // relations, event scoping, and storage shape.
-func validateDockerMonitoringMetadata(m *DockerMonitoringMetadataV2) error {
+func validateDockerMonitoringMetadata(m *DockerMonitoringMetadata) error {
 	if m == nil {
 		return nil
 	}
@@ -380,7 +385,10 @@ func validateDockerMonitoringMetadata(m *DockerMonitoringMetadataV2) error {
 	return nil
 }
 
-func validateDockerMetrics(m DockerMetricsV2) error {
+func validateDockerMetrics(m DockerMetrics) error {
+	if m.SchemaVersion != DockerMetricsSchemaVersion {
+		return fmt.Errorf("schemaVersion %d, want %d", m.SchemaVersion, DockerMetricsSchemaVersion)
+	}
 	if err := validateDockerAgentInstanceID(m.AgentInstanceID); err != nil {
 		return err
 	}
@@ -411,12 +419,14 @@ func validateDockerMetrics(m DockerMetricsV2) error {
 			return err
 		}
 	}
-	if len(m.Events) > MaxDockerEvents {
-		return fmt.Errorf("event overflow")
-	}
-	for _, e := range m.Events {
-		if err := validateDockerEvent(e); err != nil {
-			return err
+	if m.Events != nil {
+		if len(*m.Events) > MaxDockerEvents {
+			return fmt.Errorf("event overflow")
+		}
+		for _, e := range *m.Events {
+			if err := validateDockerEvent(e); err != nil {
+				return err
+			}
 		}
 	}
 	if err := validateDockerWindow(m.EventWindow); err != nil {
@@ -431,7 +441,7 @@ func validateDockerMetrics(m DockerMetricsV2) error {
 	if err := validateDockerBatch(m); err != nil {
 		return err
 	}
-	if m.Storage != nil && m.Storage.FormulaVersion != DockerStorageFormulaVersionV1 {
+	if m.Storage != nil && m.Storage.FormulaVersion != DockerStorageFormulaVersion {
 		return fmt.Errorf("unsupported storage formula version")
 	}
 	if err := validateDockerMonitoringMetadata(m.Monitoring); err != nil {
@@ -443,7 +453,7 @@ func validateDockerMetrics(m DockerMetricsV2) error {
 // sanitizeDockerDisplay truncates display-only strings. Identity, digest,
 // action, and context-version fields are never truncated: they validate
 // fail-closed via the validators above.
-func sanitizeDockerDisplay(c DockerContainerV2) DockerContainerV2 {
+func sanitizeDockerDisplay(c DockerContainer) DockerContainer {
 	c.Name = cappedString(c.Name, MaxNameLen)
 	c.Image = cappedString(c.Image, MaxImageLen)
 	c.State = cappedString(c.State, MaxStateLen)

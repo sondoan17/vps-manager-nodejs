@@ -37,13 +37,14 @@ func testEventJSON(n int, nano int64) string {
 	return sb.String()
 }
 
-func validateBatchShape(t *testing.T, evs []DockerEventV2, win *DockerEventWindowV2, prop *DockerEventWatermarkV2, since string) {
+func validateBatchShape(t *testing.T, evs []DockerEvent, win *DockerEventWindow, prop *DockerEventWatermark, since string) {
 	t.Helper()
-	m := DockerMetricsV2{
+	m := DockerMetrics{
 		AgentInstanceID: strings.Repeat("a", 32),
 		SnapshotID:      strings.Repeat("b", 64), BatchID: strings.Repeat("c", 64),
-		Available: true, Events: evs, EventWindow: win,
-		FromWatermark:     &DockerEventWatermarkV2{TimeNano: since, BoundaryDigests: []string{}},
+		SchemaVersion: DockerMetricsSchemaVersion,
+		Available:     true, Events: &evs, EventWindow: win,
+		FromWatermark:     &DockerEventWatermark{TimeNano: since, BoundaryDigests: []string{}},
 		ProposedWatermark: prop,
 	}
 	if err := validateDockerBatch(m); err != nil {
@@ -63,9 +64,11 @@ func TestI2_EventProviderPendingSuppressesWindow(t *testing.T) {
 	c.SetDockerEventInputProvider(func() (DockerEventInput, bool) {
 		return DockerEventInput{}, false
 	})
-	// The provider's false result is the durable pending gate; no API call is
+	// The provider's false result is the durable pending gate (production
+	// wiring lives in run.DockerEventInput; this synthetic provider
+	// exercises the collector side of the same contract); no API call is
 	// needed and the output must remain free of an event window.
-	out := &DockerMetricsV2{}
+	out := &DockerMetrics{}
 	c.collectDockerAPI(context.Background(), out)
 	if out.EventWindow != nil || out.Events != nil {
 		t.Fatalf("pending provider must suppress event window: %+v", out)
@@ -109,7 +112,7 @@ func TestI2_RotationPartialCoverage(t *testing.T) {
 		t.Fatal("input mutated")
 	}
 	// Partial coverage: aggregates cover only sampled containers.
-	sampled := []DockerContainerV2{
+	sampled := []DockerContainer{
 		{ContainerKey: "k-1", CPUPercent: 10, MemoryUsageBytes: 100, NetworkRxBytes: 1, NetworkTxBytes: 2, BlockReadBytes: 3, BlockWriteBytes: 4, PIDs: 1},
 		{ContainerKey: "k-2", CPUPercent: 20, MemoryUsageBytes: 200, NetworkRxBytes: 10, NetworkTxBytes: 20, BlockReadBytes: 30, BlockWriteBytes: 40, PIDs: 2},
 	}
@@ -179,7 +182,7 @@ func TestI2_DigestDedupeAndWatermark(t *testing.T) {
 		for _, e := range raw {
 			key := testKeyForID(e.Actor.ID)
 			sctx := dockerSafeContext(e)
-			ev := DockerEventV2{EventID: dockerEventDigest(inst, firstNano, e.Action, key, sctx)[:32], EventOccurredAt: "2026-01-01T00:00:00Z", ContainerKey: key, Action: e.Action, Context: sctx}
+			ev := DockerEvent{EventID: dockerEventDigest(inst, firstNano, e.Action, key, sctx)[:32], EventOccurredAt: "2026-01-01T00:00:00Z", ContainerKey: key, Action: e.Action, Context: sctx}
 			b, _ := json.Marshal(ev)
 			s = append(s, dockerSafeEvent{nano: firstNano, key: key, ev: ev, size: len(b)})
 		}
@@ -233,7 +236,7 @@ func TestI2_MidBoundaryByteCap(t *testing.T) {
 	mk := func(n, size int) []dockerSafeEvent {
 		out := make([]dockerSafeEvent, 0, n)
 		for i := 0; i < n; i++ {
-			ev := DockerEventV2{EventID: fmt.Sprintf("e-%04d", i), EventOccurredAt: "2026-01-01T00:00:00Z", ContainerKey: strings.Repeat("k", 32), Action: "die", Context: DockerEventContextV2{Version: 1}}
+			ev := DockerEvent{EventID: fmt.Sprintf("e-%04d", i), EventOccurredAt: "2026-01-01T00:00:00Z", ContainerKey: strings.Repeat("k", 32), Action: "die", Context: DockerEventContext{Version: 1}}
 			out = append(out, dockerSafeEvent{nano: "5", ev: ev, size: size})
 		}
 		return out
@@ -339,7 +342,7 @@ func TestI2_SharedImageLayers(t *testing.T) {
 	if !agg.Images.Supported || agg.Images.TotalBytes != 1000 {
 		t.Fatalf("images total must be LayersSize, got %+v", agg.Images)
 	}
-	if agg.FormulaVersion != DockerStorageFormulaVersionV1 {
+	if agg.FormulaVersion != DockerStorageFormulaVersion {
 		t.Fatalf("formula version must be 1, got %d", agg.FormulaVersion)
 	}
 	if agg.Images.ReclaimableSupported {
@@ -423,18 +426,18 @@ func TestI2_ForbiddenFields(t *testing.T) {
 			t.Fatalf("storage must not contain %s: %s", banned, s)
 		}
 	}
-	// Full v2 payload with helpers must also stay within the forbidden set.
-	m := DockerMetricsV2{
+	// Full Docker payload with helpers must also stay within the forbidden set.
+	m := DockerMetrics{
 		AgentInstanceID: strings.Repeat("a", 32),
 		SnapshotID:      strings.Repeat("b", 64), Available: true,
-		Containers: []DockerContainerV2{{ContainerKey: strings.Repeat("k", 32), ID: "abc", Name: "web", Image: "img", State: "running"}},
+		Containers: []DockerContainer{{ContainerKey: strings.Repeat("k", 32), ID: "abc", Name: "web", Image: "img", State: "running"}},
 		Storage:    agg,
 	}
 	out, _ := json.Marshal(m)
 	os := string(out)
 	for _, banned := range []string{`"env"`, `"Env"`, `"labels"`, `"Labels"`, `"mounts"`, `"Mounts"`, `"command"`, `"Command"`, `"args"`, `"Args"`, `"entrypoint"`, `"Entrypoint"`, `"secret"`, `"Secret"`, `"config"`, `"Config"`, `"inspect"`, `"Inspect"`, `"volumeName"`, `"mountPoint"`, `"layerId"`, `"cacheRecord"`, `"objectName"`, `"hunter2"`} {
 		if strings.Contains(os, banned) {
-			t.Fatalf("v2 payload must not contain %s: %s", banned, os)
+			t.Fatalf("docker payload must not contain %s: %s", banned, os)
 		}
 	}
 }

@@ -1,12 +1,15 @@
-import { describe, expect, it, vi, afterEach } from "vitest";
+import { describe, expect, it, vi, afterEach, type Mock } from "vitest";
 import type { Response } from "express";
 import type { AppConfig } from "../src/config/app-config.js";
-import type { AgentDockerMetrics } from "../src/agents/agent.models.js";
+import type { DashboardDockerMetrics } from "../src/dashboard/dashboard.models.js";
 import type { VpsRecord } from "../src/vps/vps.models.js";
 import type { AgentRepository } from "../src/persistence/repositories/agent.repository.js";
 import type { VpsRepository } from "../src/persistence/repositories/vps.repository.js";
 import { VpsService } from "../src/vps/vps.service.js";
-import { DashboardService } from "../src/dashboard/dashboard.service.js";
+import {
+  DashboardService,
+  deriveDockerPresentation,
+} from "../src/dashboard/dashboard.service.js";
 import { MonitoringService } from "../src/monitoring/monitoring.service.js";
 
 afterEach(() => {
@@ -18,17 +21,26 @@ afterEach(() => {
 
 const localConfig = { mode: "local", enableWebTerminal: false } as AppConfig;
 
+/** Stored snapshot row: everything except read-time presentation fields. */
+type DockerSnapshotStored = Omit<
+  DashboardDockerMetrics,
+  "freshness" | "ageSeconds" | "lastUpdatedAt"
+>;
+
 function dockerSnapshot(
   vpsId: string,
   receivedAt: string,
-  overrides: Partial<AgentDockerMetrics> = {},
-): AgentDockerMetrics {
+  overrides: Partial<DockerSnapshotStored> = {},
+): DockerSnapshotStored {
   return {
     vpsId,
+    agentInstanceId: "inst-1",
+    snapshotId: "snap-1",
+    schemaVersion: 2,
     collectedAt: receivedAt,
     receivedAt,
-    schemaVersion: 1,
-    available: true,
+    effectiveAt: receivedAt,
+    sourceSequence: "1",
     containerTotal: 1,
     containerRunning: 1,
     cpuPercent: 5,
@@ -58,7 +70,15 @@ function remoteVps(enabled: boolean): VpsRecord {
   };
 }
 
-function arrangeRemoteVpsService(stored: VpsRecord, agent: Partial<AgentRepository>) {
+type DockerCleanupMock = { cleanupForVps: Mock };
+
+function arrangeRemoteVpsService(
+  stored: VpsRecord,
+  agent: Partial<AgentRepository>,
+  dockerMonitoring: DockerCleanupMock = {
+    cleanupForVps: vi.fn(async () => undefined),
+  },
+) {
   const state = { ...stored };
   const store = {
     get: vi.fn(async () => ({ ...state })),
@@ -70,7 +90,6 @@ function arrangeRemoteVpsService(stored: VpsRecord, agent: Partial<AgentReposito
   const audit = { record: vi.fn(async () => undefined) };
   const agentRepository = {
     getState: vi.fn(async () => undefined),
-    deleteDockerMetrics: vi.fn(async () => true),
     ...agent,
   } as unknown as AgentRepository;
   const hostKeyPin = { revokeTrust: vi.fn(async () => undefined) };
@@ -84,8 +103,19 @@ function arrangeRemoteVpsService(stored: VpsRecord, agent: Partial<AgentReposito
     {} as never,
     agentRepository,
     hostKeyPin as never,
+    undefined,
+    undefined,
+    dockerMonitoring as never,
   );
-  return { service, store, audit, agentRepository, hostKeyPin, state };
+  return {
+    service,
+    store,
+    audit,
+    agentRepository,
+    hostKeyPin,
+    state,
+    dockerMonitoring,
+  };
 }
 
 // ── (1) remote toggle ────────────────────────────────────────────────────
@@ -93,10 +123,8 @@ function arrangeRemoteVpsService(stored: VpsRecord, agent: Partial<AgentReposito
 describe("remote/user-managed VPS docker toggle", () => {
   it("accepts a dockerMetricsEnabled toggle on a remote VPS", async () => {
     // Arrange
-    const { service, store, audit, agentRepository } = arrangeRemoteVpsService(
-      remoteVps(false),
-      {},
-    );
+    const { service, store, audit, dockerMonitoring } =
+      arrangeRemoteVpsService(remoteVps(false), {});
 
     // Act
     const result = await service.update("vps-remote-1", {
@@ -109,7 +137,7 @@ describe("remote/user-managed VPS docker toggle", () => {
       "vps-remote-1",
       expect.objectContaining({ dockerMetricsEnabled: true }),
     );
-    expect(agentRepository.deleteDockerMetrics).not.toHaveBeenCalled();
+    expect(dockerMonitoring.cleanupForVps).not.toHaveBeenCalled();
     expect(audit.record).toHaveBeenCalledWith(
       expect.objectContaining({ action: "vps.docker_metrics.update" }),
     );
@@ -140,7 +168,10 @@ describe("remote/user-managed VPS docker toggle", () => {
 describe("docker disable cleanup contract", () => {
   it("clears the stored snapshot when a remote VPS is disabled", async () => {
     // Arrange
-    const { service, agentRepository } = arrangeRemoteVpsService(remoteVps(true), {});
+    const { service, dockerMonitoring } = arrangeRemoteVpsService(
+      remoteVps(true),
+      {},
+    );
 
     // Act
     const result = await service.update("vps-remote-1", {
@@ -149,29 +180,39 @@ describe("docker disable cleanup contract", () => {
 
     // Assert
     expect(result.dockerMetricsEnabled).toBe(false);
-    expect(agentRepository.deleteDockerMetrics).toHaveBeenCalledTimes(1);
-    expect(agentRepository.deleteDockerMetrics).toHaveBeenCalledWith("vps-remote-1");
+    expect(dockerMonitoring.cleanupForVps).toHaveBeenCalledTimes(1);
+    expect(dockerMonitoring.cleanupForVps).toHaveBeenCalledWith(
+      "vps-remote-1",
+      "monitoring_disabled",
+    );
   });
 
-  it("propagates a deleteDockerMetrics failure without a false success audit", async () => {
+  it("propagates a docker cleanup failure without a false success audit", async () => {
     // Arrange
     const failure = new Error("docker cleanup failed");
-    const { service, agentRepository, audit } = arrangeRemoteVpsService(remoteVps(true), {
-      deleteDockerMetrics: vi.fn(async () => {
-        throw failure;
-      }),
-    });
+    const { service, audit, dockerMonitoring } = arrangeRemoteVpsService(
+      remoteVps(true),
+      {},
+      {
+        cleanupForVps: vi.fn(async () => {
+          throw failure;
+        }),
+      },
+    );
 
     // Act
     const action = service.update("vps-remote-1", { dockerMetricsEnabled: false });
 
     // Assert
     await expect(action).rejects.toBe(failure);
-    expect(agentRepository.deleteDockerMetrics).toHaveBeenCalledWith("vps-remote-1");
+    expect(dockerMonitoring.cleanupForVps).toHaveBeenCalledWith(
+      "vps-remote-1",
+      "monitoring_disabled",
+    );
     expect(audit.record).not.toHaveBeenCalled();
   });
 
-  it("propagates a local/system delete failure without a false success audit", async () => {
+  it("propagates a local/system docker cleanup failure without a false success audit", async () => {
     // Arrange
     const failure = new Error("local docker cleanup failed");
     const stored: VpsRecord = {
@@ -180,30 +221,38 @@ describe("docker disable cleanup contract", () => {
       kind: "local",
       managedBy: "system",
     };
-    const { service, agentRepository, audit } = arrangeRemoteVpsService(stored, {
-      deleteDockerMetrics: vi.fn(async () => {
-        throw failure;
-      }),
-    });
+    const { service, audit, dockerMonitoring } = arrangeRemoteVpsService(
+      stored,
+      {},
+      {
+        cleanupForVps: vi.fn(async () => {
+          throw failure;
+        }),
+      },
+    );
 
     // Act
     const action = service.update("vps_local_host", { dockerMetricsEnabled: false });
 
     // Assert
     await expect(action).rejects.toBe(failure);
-    expect(agentRepository.deleteDockerMetrics).toHaveBeenCalledWith("vps_local_host");
+    expect(dockerMonitoring.cleanupForVps).toHaveBeenCalledWith(
+      "vps_local_host",
+      "monitoring_disabled",
+    );
     expect(audit.record).not.toHaveBeenCalled();
   });
 
   it("remote combined disable failure commits nothing and retry succeeds", async () => {
-    // Arrange: remote disable combined with endpoint + rename. Delete fails first.
+    // Arrange: remote disable combined with endpoint + rename. Cleanup fails first.
     const failure = new Error("docker cleanup failed");
-    const deleteDockerMetrics = vi.fn(async (): Promise<boolean> => {
+    const cleanupForVps = vi.fn(async (): Promise<void> => {
       throw failure;
     });
     const { service, store, audit, hostKeyPin, state } = arrangeRemoteVpsService(
       remoteVps(true),
-      { deleteDockerMetrics },
+      {},
+      { cleanupForVps },
     );
     const before = { ...state };
 
@@ -217,7 +266,10 @@ describe("docker disable cleanup contract", () => {
     // Assert: failure is loud, repository state is unchanged, and no partial
     // commit (endpoint/other fields), trust revocation, or success audit ran.
     await expect(action).rejects.toBe(failure);
-    expect(deleteDockerMetrics).toHaveBeenCalledWith("vps-remote-1");
+    expect(cleanupForVps).toHaveBeenCalledWith(
+      "vps-remote-1",
+      "monitoring_disabled",
+    );
     expect(store.update).not.toHaveBeenCalled();
     expect(hostKeyPin.revokeTrust).not.toHaveBeenCalled();
     expect(audit.record).not.toHaveBeenCalled();
@@ -227,7 +279,7 @@ describe("docker disable cleanup contract", () => {
     expect(state.name).toBe("remote-1");
 
     // Arrange retry: cleanup now succeeds.
-    deleteDockerMetrics.mockResolvedValue(true);
+    cleanupForVps.mockResolvedValue(undefined);
 
     // Act: retry the same combined update.
     const retried = await service.update("vps-remote-1", {
@@ -238,7 +290,7 @@ describe("docker disable cleanup contract", () => {
 
     // Assert: retry commits endpoint + toggle together, revokes trust once,
     // and records exactly one success audit.
-    expect(deleteDockerMetrics).toHaveBeenCalledTimes(2);
+    expect(cleanupForVps).toHaveBeenCalledTimes(2);
     expect(store.update).toHaveBeenCalledTimes(1);
     expect(retried.dockerMetricsEnabled).toBe(false);
     expect(retried.name).toBe("renamed");
@@ -256,7 +308,7 @@ describe("docker disable cleanup contract", () => {
   it("local disable failure leaves toggle enabled and retry succeeds", async () => {
     // Arrange: local/system disable whose snapshot cleanup fails first.
     const failure = new Error("local docker cleanup failed");
-    const deleteDockerMetrics = vi.fn(async (): Promise<boolean> => {
+    const cleanupForVps = vi.fn(async (): Promise<void> => {
       throw failure;
     });
     const stored: VpsRecord = {
@@ -265,9 +317,11 @@ describe("docker disable cleanup contract", () => {
       kind: "local",
       managedBy: "system",
     };
-    const { service, store, audit, state } = arrangeRemoteVpsService(stored, {
-      deleteDockerMetrics,
-    });
+    const { service, store, audit, state } = arrangeRemoteVpsService(
+      stored,
+      {},
+      { cleanupForVps },
+    );
     const before = { ...state };
 
     // Act
@@ -275,19 +329,23 @@ describe("docker disable cleanup contract", () => {
 
     // Assert: nothing persisted, still enabled, therefore retryable.
     await expect(action).rejects.toBe(failure);
+    expect(cleanupForVps).toHaveBeenCalledWith(
+      "vps_local_host",
+      "monitoring_disabled",
+    );
     expect(store.update).not.toHaveBeenCalled();
     expect(audit.record).not.toHaveBeenCalled();
     expect(state).toEqual(before);
     expect(state.dockerMetricsEnabled).toBe(true);
 
     // Arrange retry + Act
-    deleteDockerMetrics.mockResolvedValue(true);
+    cleanupForVps.mockResolvedValue(undefined);
     const retried = await service.update("vps_local_host", {
       dockerMetricsEnabled: false,
     });
 
     // Assert
-    expect(retried.dockerMetricsEnabled).toBe(false);
+    expect(cleanupForVps).toHaveBeenCalledTimes(2);
     expect(state.dockerMetricsEnabled).toBe(false);
     expect(store.update).toHaveBeenCalledTimes(1);
     expect(audit.record).toHaveBeenCalledTimes(1);
@@ -301,9 +359,79 @@ describe("docker disable cleanup contract", () => {
 
 function arrangeDashboard(
   servers: VpsRecord[],
-  storedDocker: AgentDockerMetrics[],
+  storedDocker: DockerSnapshotStored[],
 ) {
   const storedCopies = storedDocker.map((d) => ({ ...d }));
+  const dockerMonitoring = {
+    getAuthoritativeLatest: vi.fn(async (vpsId: string) => {
+      const row = storedCopies.find((d) => d.vpsId === vpsId);
+      if (!row) return undefined;
+      return {
+        activeInstanceId: row.agentInstanceId,
+        snapshotId: row.snapshotId,
+        sourceSequence: row.sourceSequence,
+        receivedAt: row.receivedAt,
+        updatedAt: row.receivedAt,
+        revision: 1,
+        ...(row.available === undefined ? {} : { available: row.available }),
+        ...(row.errorCode === undefined ? {} : { errorCode: row.errorCode }),
+        ...(row.engineVersion === undefined
+          ? {}
+          : { engineVersion: row.engineVersion }),
+        ...(row.apiVersion === undefined ? {} : { apiVersion: row.apiVersion }),
+      };
+    }),
+    listHostSamples: vi.fn(async ({ vpsId }: { vpsId: string }) => {
+      const row = storedCopies.find((d) => d.vpsId === vpsId);
+      return {
+        data: row
+          ? [
+              {
+                id: `sample-${row.vpsId}`,
+                vpsId: row.vpsId,
+                agentInstanceId: row.agentInstanceId,
+                snapshotId: row.snapshotId,
+                collectedAt: row.collectedAt,
+                receivedAt: row.receivedAt,
+                effectiveAt: row.effectiveAt,
+                metrics: {
+                  containerTotal: row.containerTotal,
+                  containerRunning: row.containerRunning,
+                  cpuPercent: row.cpuPercent,
+                  memoryUsageBytes: row.memoryUsageBytes,
+                  ...(row.memoryLimitBytes === undefined
+                    ? {}
+                    : { memoryLimitBytes: row.memoryLimitBytes }),
+                  networkRxBytes: row.networkRxBytes,
+                  networkTxBytes: row.networkTxBytes,
+                  blockReadBytes: row.blockReadBytes,
+                  blockWriteBytes: row.blockWriteBytes,
+                  pids: row.pids,
+                },
+              },
+            ]
+          : [],
+        page: { limit: 1, hasMore: false },
+      };
+    }),
+    listCurrentContainers: vi.fn(async (vpsId: string) => {
+      const row = storedCopies.find((d) => d.vpsId === vpsId);
+      if (!row) return [];
+      return row.containers.map((c) => ({
+        agentInstanceId: row.agentInstanceId,
+        containerKey: c.containerKey,
+        name: c.name,
+        state: c.state,
+        ...(c.image === undefined ? {} : { image: c.image }),
+        ...(c.status === undefined ? {} : { status: c.status }),
+        metrics: {
+          cpuPercent: c.cpuPercent,
+          memoryUsageBytes: c.memoryUsageBytes,
+          pids: c.pids,
+        },
+      }));
+    }),
+  };
   const dashboard = new DashboardService(
     localConfig,
     { list: vi.fn(async () => servers.map((s) => ({ ...s }))) } as never,
@@ -311,9 +439,9 @@ function arrangeDashboard(
     {
       listStates: vi.fn(async () => []),
       listSystemInfo: vi.fn(async () => []),
-      listDockerMetrics: vi.fn(async () => storedCopies),
     } as never,
     { list: vi.fn(async () => []) } as never,
+    dockerMonitoring as never,
   );
   return { dashboard, storedCopies };
 }
@@ -418,7 +546,7 @@ function metricSample(vpsId: string, receivedAt: string) {
   };
 }
 
-function overviewFixture(dockerMetrics: AgentDockerMetrics[]) {
+function overviewFixture(dockerMetrics: DockerSnapshotStored[]) {
   const now = new Date().toISOString();
   return {
     mode: "local",
@@ -444,7 +572,7 @@ function overviewFixture(dockerMetrics: AgentDockerMetrics[]) {
       authRequiredInLocalMode: true,
     },
     systemInfo: [],
-    dockerMetrics,
+    dockerMetrics: dockerMetrics.map(deriveDockerPresentation),
   };
 }
 
@@ -485,7 +613,7 @@ describe("monitoring SSE dockerMetrics contract", () => {
       const snapshots = parseSse(res.text()).filter((e) => e.envelope.type === "monitoring.snapshot");
       expect(snapshots).toHaveLength(1);
       expect(Array.isArray(snapshots[0]!.envelope.payload.dockerMetrics)).toBe(true);
-      expect(snapshots[0]!.envelope.payload.dockerMetrics.map((d: AgentDockerMetrics) => d.vpsId)).toEqual([
+      expect(snapshots[0]!.envelope.payload.dockerMetrics.map((d: DashboardDockerMetrics) => d.vpsId)).toEqual([
         "vps-a",
       ]);
       expect(Array.isArray(snapshots[0]!.envelope.payload.overview.dockerMetrics)).toBe(true);
@@ -538,7 +666,7 @@ describe("monitoring SSE dockerMetrics contract", () => {
       expect(updates.length).toBeGreaterThan(0);
       const last = updates[updates.length - 1]!.envelope.payload;
       expect(Array.isArray(last.dockerMetrics)).toBe(true);
-      expect(last.dockerMetrics.map((d: AgentDockerMetrics) => d.vpsId)).toEqual(["vps-a"]);
+      expect(last.dockerMetrics.map((d: DashboardDockerMetrics) => d.vpsId)).toEqual(["vps-a"]);
     } finally {
       timer.mockRestore();
     }
@@ -582,8 +710,8 @@ describe("monitoring SSE dockerMetrics contract", () => {
       const snapshots = parseSse(res.text()).filter((e) => e.envelope.type === "monitoring.snapshot");
       expect(snapshots).toHaveLength(1);
       const payload = snapshots[0]!.envelope.payload;
-      expect(payload.dockerMetrics.map((d: AgentDockerMetrics) => d.vpsId)).toEqual(["vps-a"]);
-      expect(payload.overview.dockerMetrics.map((d: AgentDockerMetrics) => d.vpsId)).toEqual([
+      expect(payload.dockerMetrics.map((d: DashboardDockerMetrics) => d.vpsId)).toEqual(["vps-a"]);
+      expect(payload.overview.dockerMetrics.map((d: DashboardDockerMetrics) => d.vpsId)).toEqual([
         "vps-a",
       ]);
       expect(payload.servers.map((s: VpsRecord) => s.id)).toEqual(["vps-a"]);
@@ -615,7 +743,7 @@ describe("monitoring SSE dockerMetrics contract", () => {
       expect(updates.length).toBeGreaterThan(0);
       const last = updates[updates.length - 1]!.envelope.payload;
       expect(last.metrics.map((m: { vpsId: string }) => m.vpsId)).toEqual(["vps-b"]);
-      expect(last.dockerMetrics.map((d: AgentDockerMetrics) => d.vpsId)).toEqual(["vps-b"]);
+      expect(last.dockerMetrics.map((d: DashboardDockerMetrics) => d.vpsId)).toEqual(["vps-b"]);
       expect(JSON.stringify(last)).not.toContain("vps-a");
     } finally {
       timer2.mockRestore();
@@ -702,7 +830,9 @@ describe("monitoring SSE dockerMetrics contract", () => {
       expect(before[before.length - 1]!.envelope.payload.dockerMetrics).toEqual([]);
 
       // Act: Docker snapshot changes; host metrics are still empty.
-      fixture.dockerMetrics = [dockerSnapshot("vps-a", dockerAt)];
+      fixture.dockerMetrics = [
+        deriveDockerPresentation(dockerSnapshot("vps-a", dockerAt)),
+      ];
       (dashboardService.overview as ReturnType<typeof vi.fn>).mockResolvedValue(fixture);
       await tick();
 
@@ -711,7 +841,7 @@ describe("monitoring SSE dockerMetrics contract", () => {
       expect(updates.length).toBeGreaterThan(1);
       const last = updates[updates.length - 1]!.envelope.payload;
       expect(last.metrics).toEqual([]);
-      expect(last.dockerMetrics.map((d: AgentDockerMetrics) => d.vpsId)).toEqual(["vps-a"]);
+      expect(last.dockerMetrics.map((d: DashboardDockerMetrics) => d.vpsId)).toEqual(["vps-a"]);
     } finally {
       timer.mockRestore();
     }

@@ -416,24 +416,6 @@ describe("POST /api/vps/:id/uninstall-agent — successful removal", () => {
       agentVersion: "1.2.0",
       os: { name: "ubuntu", version: "22.04" },
     });
-    await repo.upsertDockerMetrics({
-      vpsId,
-      collectedAt: new Date().toISOString(),
-      receivedAt: new Date().toISOString(),
-      agentVersion: "1.2.0",
-      schemaVersion: 1,
-      available: true,
-      containerTotal: 2,
-      containerRunning: 1,
-      cpuPercent: 5,
-      memoryUsageBytes: 100,
-      networkRxBytes: 10,
-      networkTxBytes: 20,
-      blockReadBytes: 5,
-      blockWriteBytes: 6,
-      pids: 10,
-      containers: [],
-    });
     await repo.createCredential({
       vpsId,
       secretHash: "sha256_test",
@@ -477,9 +459,8 @@ describe("POST /api/vps/:id/uninstall-agent — successful removal", () => {
     expect(state?.lastInstallJobId).toBe(jobId);
     expect(state?.lastError).toBeUndefined();
 
-    // Stale system info + docker metrics cleared.
+    // Stale system info cleared.
     expect(await repo.getSystemInfo(vpsId)).toBeUndefined();
-    expect(await repo.getDockerMetrics(vpsId)).toBeUndefined();
 
     // The response and persisted views do not disclose private credentials.
     const responseBody = JSON.stringify(post.body);

@@ -78,7 +78,7 @@ function sample(
     collectedAt: effectiveAt,
     receivedAt: effectiveAt,
     effectiveAt,
-    metrics: { cpu: 1 },
+    metrics: { cpuPercent: 1, memoryUsageBytes: 64, pids: 2 },
     ...extra,
   };
 }
@@ -157,7 +157,6 @@ beforeEach(async () => {
           receivedAt: T_OLD,
           updatedAt: T_OLD,
           revision: 7,
-          compatibility: { latest: true },
         },
       },
     },
@@ -192,18 +191,24 @@ describe("GET /api/vps/:id/docker/containers/current", () => {
     // latestByVps entry (snap_a_old) must not surface ck_old.
     expect(res.body).toEqual({
       data: [
-        { agentInstanceId: "inst1", containerKey: "ck_plain" },
+        {
+          agentInstanceId: "inst1",
+          containerKey: "ck_plain",
+          metrics: { cpuPercent: 1, memoryUsageBytes: 64, pids: 2 },
+        },
         {
           agentInstanceId: "inst1",
           containerKey: "ck_web",
           name: "web",
           state: "running",
+          metrics: { cpuPercent: 1, memoryUsageBytes: 64, pids: 2 },
         },
       ],
     });
     expect(Object.keys(res.body.data[0]).sort()).toEqual([
       "agentInstanceId",
       "containerKey",
+      "metrics",
     ]);
     expect(res.body.data.map((c: { containerKey: string }) => c.containerKey)).toEqual([
       "ck_plain",
@@ -242,6 +247,7 @@ describe("GET /api/vps/:id/docker/containers/current", () => {
           containerKey: "ck_b",
           name: "service-b",
           state: "running",
+          metrics: { cpuPercent: 1, memoryUsageBytes: 64, pids: 2 },
         },
       ],
     });
@@ -409,12 +415,16 @@ describe("docker ingest container name persistence", () => {
           containerKey: "ck_alpha",
           name: "web",
           state: "running",
+          image: "nginx:1.25",
+          metrics: { cpuPercent: 1.5, memoryUsageBytes: 512, pids: 5 },
         },
         {
           agentInstanceId: "inst_golden",
           containerKey: "ck_beta",
           name: "cache",
           state: "running",
+          image: "redis:7",
+          metrics: { cpuPercent: 0.5, memoryUsageBytes: 128, pids: 10 },
         },
       ]);
 

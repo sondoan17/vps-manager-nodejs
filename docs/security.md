@@ -50,6 +50,10 @@ sudo systemctl restart vps-manager-agent
 
 Troubleshooting: `getent group docker` confirms whether the group exists. If the opt-in install reports that it is missing, install/configure Docker first or omit the flag. Check the generated unit with `systemctl cat vps-manager-agent`; the default unit must not contain `SupplementaryGroups=docker`. Docker metrics can remain disabled in the dashboard without granting host Docker access.
 
+### Host agent Docker v2 state
+
+Every managed install and upgrade provisions the agent's Docker v2 state before the service may start: `docker-identity.json` is root-owned exact `0600` in the config directory, and `runtime-keys.json` is service-user-owned exact `0600` in the state directory. An existing installation identity is never rotated on upgrade; if runtime keys exist without their identity, or ownership cannot be validated, the installer fails closed without touching the service. The local installer runs as root; remote (API-driven) installs require the SSH login user to be root or to have passwordless `sudo`, because the identity file must be created and verified as root.
+
 ### Session cookie hardening
 
 `DASHBOARD_SESSION_SECRET` must be at least 32 characters in `APP_MODE=local`. `SameSite=None` requires `Secure=true`. An HTTPS dashboard origin in local mode forces `Secure=true`.

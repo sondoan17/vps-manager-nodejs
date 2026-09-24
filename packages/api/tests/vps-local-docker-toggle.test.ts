@@ -30,7 +30,6 @@ function arrangeService() {
   const audit = { record: vi.fn(async () => undefined) };
   const agentRepository = {
     getState: vi.fn(async () => undefined),
-    deleteDockerMetrics: vi.fn(async () => undefined),
   } as unknown as AgentRepository;
   const config = { mode: "local" } as AppConfig;
   const service = new VpsService(
@@ -74,7 +73,7 @@ describe("local/system VPS Docker metrics updates", () => {
     // Objective (negative): local/system VPS updates must reject extra fields,
     // while preserving the valid exact-toggle behavior covered above.
     // Arrange
-    const { service, update, audit, agentRepository } = arrangeService();
+    const { service, update, audit } = arrangeService();
 
     // Act
     const action = service.update(localVps.id, {
@@ -86,6 +85,5 @@ describe("local/system VPS Docker metrics updates", () => {
     await expect(action).rejects.toMatchObject({ name: "ZodError" });
     expect(update).not.toHaveBeenCalled();
     expect(audit.record).not.toHaveBeenCalled();
-    expect(agentRepository.deleteDockerMetrics).not.toHaveBeenCalled();
   });
 });

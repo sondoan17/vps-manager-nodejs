@@ -63,6 +63,34 @@ The installer creates configuration under `/opt/vps-manager`, starts the contain
 
 **Deployment security:** Do not expose the local-mode dashboard to the public Internet over plain HTTP. Use HTTPS and configure the origin and cookies accordingly. Enable `ENABLE_WEB_TERMINAL=true` only in `APP_MODE=local`, with the required settings documented in [.env.example](.env.example). The agent has no Docker access by default; `--enable-docker-metrics-access` grants membership in the `docker` group, which is effectively root-equivalent on the host. Read the [security model](docs/security.md) before enabling SSH, the terminal, or Docker access.
 
+## Run in local mode
+
+For a local-only instance using JSON storage, first complete the source installation above. Set these values in `.env` in the repository root (generate your own random secret; do not use the example literally):
+
+```dotenv
+APP_MODE=local
+DASHBOARD_SESSION_SECRET=replace_with_a_random_secret_of_at_least_32_characters
+```
+
+Keep `ENABLE_WEB_TERMINAL=false` initially. Then set the dashboard password via stdin (the CLI has no interactive prompt) and start the built application. In a Bash shell:
+
+```bash
+read -rs -p 'Dashboard password: ' DASHBOARD_PASSWORD; echo
+printf '%s\n' "$DASHBOARD_PASSWORD" | npm run set-dashboard-password -- --stdin
+unset DASHBOARD_PASSWORD
+npm start
+```
+
+Open <http://localhost:3000> and sign in with the password you set. Add a VPS from the dashboard before provisioning or verifying its SSH key. Real SSH requires an allowed target and a trusted host key; private-network targets are blocked unless explicitly allowed in local mode. See [SSH safety](docs/security.md) and the options in [.env.example](.env.example). Never expose this HTTP example to the public Internet. For Docker Compose local mode, set `APP_MODE=local` and `DASHBOARD_SESSION_SECRET` in the Compose `.env`, start the stack, then pipe a password to `docker compose exec -T api node dist/scripts/set-dashboard-password.js --stdin`.
+
+| Capability | Demo (`APP_MODE=demo`) | Local (`APP_MODE=local`) |
+| --- | --- | --- |
+| Dashboard data | Simulated | Real, from the configured storage and agents |
+| Dashboard login | Not required | Admin password and session cookie required |
+| SSH connections | Disabled | Subject to host policy and key trust |
+| Web terminal | Canned output only | Optional; disabled by default and requires extra origin/session configuration |
+| Host metrics | Simulated | In-process local agent or separately installed host agent |
+
 ## Configuration and project layout
 
 | Component | Location | Purpose |
@@ -85,6 +113,17 @@ npm run build
 ```
 
 `npm run build:agent` builds the Go agent; `npm run test:agent` runs its tests (Go required). See [package.json](package.json) for other scripts.
+
+## Troubleshooting
+
+- **Compose fails before the API starts:** Confirm `POSTGRES_PASSWORD` is set, then inspect `docker compose logs postgres migrate api`. Core migrations must succeed before the API starts; see the [storage guide](docs/postgres-timescale-storage.md).
+- **Port 3000 is unavailable:** Stop the conflicting process or change the host-side port mapping for `web` in `docker-compose.yml`. For a source install, set `PORT` in `.env` and open that port instead.
+- **Local login fails:** Check `APP_MODE`, `DASHBOARD_SESSION_SECRET` (at least 32 characters), and whether the admin password was set against the same storage backend used by the running API. Changing the password revokes existing sessions.
+- **Host metrics are missing:** Demo metrics are simulated. For local mode, check that the local agent is enabled or that the separately installed host agent is running (`systemctl status vps-manager-agent`); inspect its logs with `journalctl -u vps-manager-agent`.
+
+## Reporting security issues
+
+Do **not** post vulnerability details, credentials, or exploit steps in a public issue. Use GitHub's private vulnerability reporting feature for this repository if available; otherwise contact the maintainer privately through their GitHub profile before disclosing details. No dedicated security contact or response-time commitment is currently published. See the [security model](docs/security.md) for deployment safeguards.
 
 ## Contributing and support
 

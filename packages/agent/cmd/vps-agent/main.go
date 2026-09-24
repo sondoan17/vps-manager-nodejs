@@ -11,8 +11,8 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/vps-manager/agent/internal/config"
 	"github.com/vps-manager/agent/internal/commands"
+	"github.com/vps-manager/agent/internal/config"
 	"github.com/vps-manager/agent/internal/geo"
 	"github.com/vps-manager/agent/internal/metrics"
 	"github.com/vps-manager/agent/internal/push"
@@ -85,24 +85,21 @@ func main() {
 	detector.Start()
 	pushClient := push.NewClient(cfg)
 
-	// Docker v2 reads only the provisioned runtime keys and its authenticated
+	// Docker state reads only the provisioned runtime keys and its authenticated
 	// mutable delivery record. The immutable identity file is never read here.
 	base := filepath.Dir(statePath)
 	runtimeKeysFile := filepath.Join(base, "runtime-keys.json")
 	deliveryPath := filepath.Join(base, "delivery-state.json")
 	var runner *run.Runner
 	if st, e := state.LoadStore(runtimeKeysFile, deliveryPath); e != nil {
-		log.Printf("docker v2 state unavailable; continuing with host/v1 metrics: %v", e)
+		// Fail closed: without durable identity the runner strips any Docker
+		// branch and pushes host metrics only.
+		log.Printf("docker durable state unavailable; host metrics only (docker branch suppressed): %v", e)
 		runner = run.New(cfg, collector, pushClient)
 	} else {
 		collector.SetDockerContainerKeyFunc(st.ContainerKey)
 		collector.SetDockerFinalizeHook(run.FinalizeDocker(st))
-		collector.SetDockerEventInputProvider(func() (metrics.DockerEventInput, bool) {
-			if st.GetPending() != nil {
-				return metrics.DockerEventInput{}, false
-			}
-			return metrics.DockerEventInput{SinceNano: fmt.Sprint(st.GetWatermark().TimeNano), UntilNano: fmt.Sprint(time.Now().Add(-time.Second).UnixNano()), AgentInstanceID: st.InstanceID(), FromDigests: st.GetWatermark().BoundaryDigests}, true
-		})
+		collector.SetDockerEventInputProvider(run.DockerEventInput(st))
 		collector.SetDockerStorageEnabled(true)
 		runner = run.NewWithState(cfg, collector, pushClient, st)
 	}
@@ -140,9 +137,15 @@ func main() {
 				defer ticker.Stop()
 				for {
 					cycleCtx, cycleCancel := context.WithTimeout(ctx, time.Duration(cfg.RequestTimeoutSeconds)*time.Second)
-					if err := worker.ProcessOne(cycleCtx); err != nil && ctx.Err() == nil { log.Printf("command cycle failed: %v", err) }
+					if err := worker.ProcessOne(cycleCtx); err != nil && ctx.Err() == nil {
+						log.Printf("command cycle failed: %v", err)
+					}
 					cycleCancel()
-					select { case <-ctx.Done(): return; case <-ticker.C: }
+					select {
+					case <-ctx.Done():
+						return
+					case <-ticker.C:
+					}
 				}
 			}()
 		}

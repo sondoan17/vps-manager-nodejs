@@ -387,7 +387,7 @@ function DockerServerMetrics({
           <div className="divide-y divide-white/10">
             {metric.containers.map((container) => (
               <div
-                key={container.id}
+                key={container.containerKey}
                 className="grid gap-2 px-3 py-3 text-sm font-normal text-white/60 md:grid-cols-[minmax(140px,1fr)_minmax(160px,1.25fr)_0.7fr_0.7fr_0.8fr_0.6fr] md:items-center"
                 title={container.status}
               >

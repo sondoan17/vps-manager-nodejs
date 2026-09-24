@@ -58,82 +58,14 @@ const agentSystemInfoInputSchema = z
 
 // ── Docker metrics sub-schemas ─────────────────────────────────────────
 
-const agentDockerContainerMetricSchema = z
-  .object({
-    id: z.string().max(16),
-    name: z.string().max(255),
-    image: z.string().max(255),
-    status: z.string().max(255).optional(),
-    state: z.string().max(255),
-    createdAt: z.string().max(255).optional(),
-    cpuPercent: z.number().finite().min(0).max(100000),
-    memoryUsageBytes: z.number().int().finite().min(0).safe(),
-    memoryLimitBytes: z.number().int().finite().min(0).safe().optional(),
-    networkRxBytes: z.number().int().finite().min(0).safe(),
-    networkTxBytes: z.number().int().finite().min(0).safe(),
-    blockReadBytes: z.number().int().finite().min(0).safe(),
-    blockWriteBytes: z.number().int().finite().min(0).safe(),
-    pids: z.number().int().finite().min(0).safe(),
-  })
-  .strict();
 
-/**
- * I0 contract lock: v1 branch is byte-for-byte the pre-Phase-1 validation.
- * Do not widen it. V2 is additive under `docker.schemaVersion: 2`.
- */
-const agentDockerMetricsV1InputSchema = z
-  .object({
-    collectedAt: z
-      .string()
-      .refine((val) => !isNaN(Date.parse(val)), {
-        message: "docker.collectedAt must be a parseable date",
-      })
-      .refine(
-        (val) => {
-          const ts = new Date(val).getTime();
-          const now = Date.now();
-          return ts >= now - TEN_MINUTES_MS && ts <= now + TWO_MINUTES_MS;
-        },
-        { message: "docker.collectedAt must be within -10m / +2m of now" },
-      ),
-    agentVersion: z.string().max(255).optional(),
-    engineVersion: z.string().max(64).optional(),
-    apiVersion: z.string().max(64).optional(),
-    os: z.string().max(32).optional(),
-    architecture: z.string().max(32).optional(),
-    schemaVersion: z.literal(1),
-    available: z.boolean(),
-    errorCode: z
-      .enum([
-        "socket_missing",
-        "permission_denied",
-        "timeout",
-        "daemon_unreachable",
-        "unsupported_os",
-        "bad_response",
-      ])
-      .optional(),
-    containerTotal: z.number().int().finite().min(0).safe(),
-    containerRunning: z.number().int().finite().min(0).safe(),
-    cpuPercent: z.number().finite().min(0).max(100000),
-    memoryUsageBytes: z.number().int().finite().min(0).safe(),
-    memoryLimitBytes: z.number().int().finite().min(0).safe().optional(),
-    networkRxBytes: z.number().int().finite().min(0).safe(),
-    networkTxBytes: z.number().int().finite().min(0).safe(),
-    blockReadBytes: z.number().int().finite().min(0).safe(),
-    blockWriteBytes: z.number().int().finite().min(0).safe(),
-    pids: z.number().int().finite().min(0).safe(),
-    containers: z.array(agentDockerContainerMetricSchema).max(20).default([]),
-  })
-  .strict();
-
-// ── Docker schema v2 (additive, strictly bounded) ────────────────────────
+// ── Docker schema (additive, strictly bounded) ────────────────────────
 // Privacy invariant: only the narrow allowlist below is accepted. Env,
 // labels, mounts, commands/entrypoints/args, logs, secrets, configs,
 // inspect payloads, volume names, layer IDs, and arbitrary event/storage
 // attributes are rejected by strict() at every nesting level.
 
-const dockerV2Timestamp = z
+const dockerTimestamp = z
   .string()
   .datetime({ offset: true })
   .refine(
@@ -199,6 +131,9 @@ const dockerEventContextSchema = z
     exitCode: z.number().int().min(0).max(255).optional(),
     signal: z.number().int().min(0).max(255).optional(),
     oomKilled: z.boolean().optional(),
+    // Canonical seconds-only normalization marker: the agent normalized a
+    // daemon event from `time` (seconds), so timeNano = seconds × 1e9.
+    reducedPrecision: z.boolean().optional(),
     reason: z
       .enum([
         "boundary_overflow",
@@ -287,7 +222,7 @@ const dockerStorageSchema = z
   })
   .strict();
 
-const agentDockerContainerMetricV2Schema = z
+const agentDockerContainerMetricSchema = z
   .object({
     containerKey,
     name: z.string().max(255),
@@ -324,9 +259,9 @@ const dockerMonitoringMetadataSchema = z.object({
   state: z.enum(["enabled", "disabled", "unknown"]),
 }).strict();
 
-const agentDockerMetricsV2BaseSchema = z
+const agentDockerMetricsBaseSchema = z
   .object({
-    collectedAt: dockerV2Timestamp,
+    collectedAt: dockerTimestamp,
     agentVersion: z.string().max(255).optional(),
     engineVersion: z.string().max(64).optional(),
     apiVersion: z.string().max(64).optional(),
@@ -349,7 +284,7 @@ const agentDockerMetricsV2BaseSchema = z
     blockReadBytes: nonNegative,
     blockWriteBytes: nonNegative,
     pids: nonNegative,
-    containers: z.array(agentDockerContainerMetricV2Schema).max(20),
+    containers: z.array(agentDockerContainerMetricSchema).max(20),
     sampledContainerAggregate: dockerAggregateSchema.optional(),
     events: z.array(dockerEventSchema).max(100).optional(),
     eventWindow: dockerEventWindowSchema.optional(),
@@ -360,13 +295,8 @@ const agentDockerMetricsV2BaseSchema = z
   })
   .strict();
 
-const agentDockerMetricsInputSchema = z
-  .discriminatedUnion("schemaVersion", [
-    agentDockerMetricsV1InputSchema,
-    agentDockerMetricsV2BaseSchema,
-  ])
+const agentDockerMetricsInputSchema = agentDockerMetricsBaseSchema
   .superRefine((v, ctx) => {
-    if (v.schemaVersion !== 2) return;
     // Event protocol is all-or-none: batchId/events/eventWindow/
     // fromWatermark/proposedWatermark travel together (flat plan item 7).
     // A minimal snapshot carries none of them (batchId absent with no event

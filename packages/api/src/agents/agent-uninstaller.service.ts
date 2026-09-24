@@ -189,10 +189,9 @@ export class AgentUninstallerService {
             throw new Error("Active agent credentials remain");
           }
 
-          // Clear stale agent state/system info/docker metrics, then persist the
-          // terminal `not_installed` state.
+          // Clear stale agent state/system info, then persist the terminal
+          // `not_installed` state.
           await this.agentRepository.deleteSystemInfo(vpsId);
-          await this.agentRepository.deleteDockerMetrics(vpsId);
           await this.agentRepository.upsertState({
             vpsId,
             status: "not_installed",

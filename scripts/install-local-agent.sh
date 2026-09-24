@@ -266,6 +266,7 @@ fi
 if [[ "$DRY_RUN" == "true" ]]; then
   echo "  [DRY-RUN] Would create directory: ${CONFIG_DIR} (root:${SERVICE_USER} 0750)"
   echo "  [DRY-RUN] Would install config: ${CONFIG_SRC} -> ${CONFIG_FILE} (root:${SERVICE_USER} 0640)"
+  echo "  [DRY-RUN] Would ensure Docker state before starting the service: ${DOCKER_IDENTITY_FILE} (root:root 0600) and ${DOCKER_RUNTIME_KEYS_FILE} (${SERVICE_USER}:${SERVICE_USER} 0600), provisioning idempotently without rotating an existing identity"
 else
   mkdir -p "$CONFIG_DIR"
   chown root:"${SERVICE_USER}" "$CONFIG_DIR"
@@ -283,10 +284,44 @@ else
     echo "Error: Could not resolve numeric UID for service user: ${SERVICE_USER}" >&2
     exit 1
   fi
-  "$BINARY_DEST" -provision-docker-state -docker-identity-path "$DOCKER_IDENTITY_FILE" -docker-runtime-keys-path "$DOCKER_RUNTIME_KEYS_FILE" -docker-runtime-owner-uid "$SERVICE_UID"
+  # Docker identity/runtime state: never rotate an existing identity, and
+  # never start the service without a pair the agent will accept.
+  if [[ -e "$DOCKER_RUNTIME_KEYS_FILE" && ! -e "$DOCKER_IDENTITY_FILE" ]]; then
+    echo "Error: ${DOCKER_RUNTIME_KEYS_FILE} exists without ${DOCKER_IDENTITY_FILE}." >&2
+    echo "  Refusing to rotate an existing Docker installation identity." >&2
+    echo "  Restore the identity file from backup, then re-run this installer." >&2
+    exit 1
+  fi
+  PROVISION_OWNER_UID=0
+  if [[ -e "$DOCKER_RUNTIME_KEYS_FILE" ]]; then
+    RUNTIME_OWNER_UID="$(stat -c %u "$DOCKER_RUNTIME_KEYS_FILE")"
+    case "$RUNTIME_OWNER_UID" in
+      0|"$SERVICE_UID")
+        PROVISION_OWNER_UID="$RUNTIME_OWNER_UID"
+        ;;
+      *)
+        echo "Error: unexpected owner uid ${RUNTIME_OWNER_UID} for ${DOCKER_RUNTIME_KEYS_FILE}." >&2
+        echo "  Refusing to touch Docker runtime keys owned by another user." >&2
+        exit 1
+        ;;
+    esac
+  fi
+  if ! "$BINARY_DEST" -provision-docker-state -docker-identity-path "$DOCKER_IDENTITY_FILE" -docker-runtime-keys-path "$DOCKER_RUNTIME_KEYS_FILE" -docker-runtime-owner-uid "$PROVISION_OWNER_UID"; then
+    echo "Error: Docker state provisioning failed; not starting the service." >&2
+    exit 1
+  fi
+  # Identity stays root-owned; runtime keys must belong to the service user.
   chown root:root "$DOCKER_IDENTITY_FILE"
   chmod 0600 "$DOCKER_IDENTITY_FILE"
+  chown "${SERVICE_USER}:${SERVICE_USER}" "$DOCKER_RUNTIME_KEYS_FILE"
   chmod 0600 "$DOCKER_RUNTIME_KEYS_FILE"
+  # Verification pass: accept the pair only if it passes exactly the owner/
+  # mode/pair validation the agent performs before it starts.
+  if ! "$BINARY_DEST" -provision-docker-state -docker-identity-path "$DOCKER_IDENTITY_FILE" -docker-runtime-keys-path "$DOCKER_RUNTIME_KEYS_FILE" -docker-runtime-owner-uid "$SERVICE_UID"; then
+    echo "Error: Docker state verification failed; not starting the service." >&2
+    exit 1
+  fi
+  echo "  Ensured Docker state: identity root:root 0600, runtime keys ${SERVICE_USER}:0600"
   echo "  Installed config: ${CONFIG_FILE}"
 fi
 

@@ -179,6 +179,8 @@ export class DockerMonitoringService {
       effectiveAt: input.collectedAt,
       containerKey: c.containerKey,
       name: c.name,
+      image: c.image,
+      status: c.status,
       state: c.state,
       metrics: {
         cpuPercent: c.cpuPercent,
@@ -242,10 +244,13 @@ export class DockerMonitoringService {
         collectedAt: input.collectedAt,
         sourceSequence,
         hostMetrics,
-        // Request digest excludes the persisted `name` field: digest inputs stay
-        // byte-identical to the pre-name mapping so replay dedupe is stable
-        // across this change (DOCKER_INGEST_DIGEST_VERSION remains 1).
-        containers: containerSamples.map(({ name: _name, ...sample }) => sample),
+        // Request digest excludes persisted container identity fields
+        // (`name`/`image`/`status`): digest inputs stay byte-identical to the
+        // pre-identity mapping so replay dedupe is stable across this change
+        // (DOCKER_INGEST_DIGEST_VERSION remains 1).
+        containers: containerSamples.map(
+          ({ name: _name, image: _image, status: _status, ...sample }) => sample,
+        ),
         events,
         storage: input.storage,
         ...(input.monitoring === undefined
@@ -255,7 +260,6 @@ export class DockerMonitoringService {
       requestDigestVersion: DOCKER_INGEST_DIGEST_VERSION,
       receivedAt,
       sourceSequence,
-      compatibility: { latest: true },
       hostSample,
       containerSamples,
       events,
@@ -291,6 +295,12 @@ export class DockerMonitoringService {
             },
           }
         : {}),
+      available: input.available,
+      ...(input.errorCode === undefined ? {} : { errorCode: input.errorCode }),
+      ...(input.engineVersion === undefined
+        ? {}
+        : { engineVersion: input.engineVersion }),
+      ...(input.apiVersion === undefined ? {} : { apiVersion: input.apiVersion }),
       ...(input.monitoring === undefined
         ? {}
         : { monitoring: { ...input.monitoring } }),

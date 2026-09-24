@@ -27,10 +27,10 @@ func newDefaultDockerHTTPClient(socketPath string, timeout time.Duration) *http.
 }
 
 // collectDocker performs Docker metrics collection via the Docker Engine API
-// over the Unix socket. Returns a fully populated DockerMetrics on success or
+// over the Unix socket. Returns a fully populated DockerCollectionSnapshot on success or
 // a sanitized unavailable object on any error. Never returns nil so the caller
 // can always attach the result.
-func (c *Collector) collectDocker(ctx context.Context) *DockerMetrics {
+func (c *Collector) collectDocker(ctx context.Context) *DockerCollectionSnapshot {
 	// Lazy-init the HTTP client.
 	c.dockerMu.Lock()
 	client := c.dockerHTTPClient
@@ -43,8 +43,8 @@ func (c *Collector) collectDocker(ctx context.Context) *DockerMetrics {
 	if baseURL == "" {
 		baseURL = "http://localhost"
 	}
-	// Persist production defaults so v2 event/storage calls reuse the exact
-	// client and base URL initialized for v1.
+	// Persist production defaults so event/storage calls reuse the exact
+	// client and base URL initialized during collection.
 	c.dockerBaseURL = baseURL
 	if client == nil {
 		client = newDefaultDockerHTTPClient(socketPath, DefaultDockerTimeoutSeconds*time.Second)

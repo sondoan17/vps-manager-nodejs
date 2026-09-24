@@ -96,6 +96,34 @@ describe("AgentUpgraderService", () => {
     expect(f.commands.some((c) => c.includes("kill -TERM"))).toBe(false);
     expect(f.commands.some((c) => c.includes("backup-") && c.includes("mv --"))).toBe(false);
   });
+
+  it("provisions Docker v2 state with the staged binary before preflight and start", async () => {
+    const f = await fixture({ observations: [fState("1.0.0", 0), fState("2.0.0", 1), fState("2.0.0", 2), fState("2.0.0", 3)] });
+    await f.task();
+    const provision = f.commands.findIndex((c) => c.includes("-provision-docker-state"));
+    const once = f.commands.findIndex((c) => c.includes(" -once"));
+    const stop = f.commands.findIndex((c) => c.includes("kill -TERM") && c.includes("owns()"));
+    const swap = f.commands.findIndex((c) => c.includes("vps-agent.backup-"));
+    const start = f.commands.findIndex((c) => c.includes("nohup"));
+    expect(provision).toBeGreaterThanOrEqual(0);
+    // Provisioning gates everything: preflight, stop, swap, and start.
+    expect([provision, once, stop, swap, start]).toEqual([...([provision, once, stop, swap, start])].sort((a, b) => a - b));
+    const provisionCmd = f.commands[provision];
+    // Uses the staged binary and the shared agent state directory.
+    expect(provisionCmd).toContain("vps-agent.stage-");
+    expect(provisionCmd).toContain("/.vps-manager-agent/");
+    // Never rotates an existing identity: identity-loss guard precedes any provision call.
+    expect(provisionCmd.indexOf("refusing to rotate the installation identity")).toBeGreaterThan(-1);
+    expect(provisionCmd.indexOf("-provision-docker-state")).toBeGreaterThan(
+      provisionCmd.indexOf("refusing to rotate the installation identity"),
+    );
+    // Root/passwdless-sudo fail-closed guard precedes any provision call.
+    expect(provisionCmd.indexOf("passwordless sudo")).toBeLessThan(
+      provisionCmd.indexOf("-provision-docker-state"),
+    );
+    // Final verification pass validates with the runtime owner uid.
+    expect(provisionCmd).toContain("-docker-runtime-owner-uid \"$_u\"");
+  });
 });
 
 function fState(version: string, second: number): AgentState {

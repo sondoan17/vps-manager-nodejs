@@ -258,9 +258,9 @@ describe("dashboard host health", () => {
       {
         listStates: vi.fn().mockResolvedValue([]),
         listSystemInfo: vi.fn().mockResolvedValue([]),
-        listDockerMetrics: vi.fn().mockResolvedValue([]),
       } as never,
       { list: vi.fn().mockResolvedValue([]) } as never,
+      {} as never,
     );
 
     // Act

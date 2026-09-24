@@ -6,8 +6,8 @@ import (
 	"testing"
 )
 
-func fixtureV1(n int) *DockerMetrics {
-	v1 := &DockerMetrics{
+func collectionFixture(n int) *DockerCollectionSnapshot {
+	collection := &DockerCollectionSnapshot{
 		CollectedAt:      "2026-01-01T00:00:30Z",
 		EngineVersion:    "25.0.3",
 		APIVersion:       "1.44",
@@ -21,7 +21,7 @@ func fixtureV1(n int) *DockerMetrics {
 		Containers:       make([]DockerContainerMetric, 0, n),
 	}
 	for i := 0; i < n; i++ {
-		v1.Containers = append(v1.Containers, DockerContainerMetric{
+		collection.Containers = append(collection.Containers, DockerContainerMetric{
 			ID:               strings.Repeat("a", 16) + strings.Repeat("0", 0) + string(rune('a'+i%26)) + string(rune('0'+i%10)),
 			Name:             "c",
 			Image:            "img:test",
@@ -31,22 +31,22 @@ func fixtureV1(n int) *DockerMetrics {
 			PIDs:             1,
 		})
 	}
-	return v1
+	return collection
 }
 
 func TestDockerGateOnBoundedOutput(t *testing.T) {
 	c := NewCollector()
-	v1 := fixtureV1(2)
-	// Authoritative totals must match v1 even when sampling.
-	got := c.collectDockerSnapshot(context.Background(), v1)
+	collection := collectionFixture(2)
+	// Authoritative totals must match the collection even when sampling.
+	got := c.collectDockerSnapshot(context.Background(), collection)
 	if got == nil {
 		t.Fatal("gate-on must produce a snapshot")
 	}
-	if got.ContainerTotal != v1.ContainerTotal || got.ContainerRunning != v1.ContainerRunning {
-		t.Fatalf("counts not authoritative: %+v vs %+v", got, v1)
+	if got.ContainerTotal != collection.ContainerTotal || got.ContainerRunning != collection.ContainerRunning {
+		t.Fatalf("counts not authoritative: %+v vs %+v", got, collection)
 	}
-	if got.CPUPercent != v1.CPUPercent || got.MemoryUsageBytes != v1.MemoryUsageBytes {
-		t.Fatalf("host aggregates must mirror v1: %+v", got)
+	if got.CPUPercent != collection.CPUPercent || got.MemoryUsageBytes != collection.MemoryUsageBytes {
+		t.Fatalf("host aggregates must mirror the collection: %+v", got)
 	}
 	if len(got.Containers) != 2 {
 		t.Fatalf("containers=%d want 2", len(got.Containers))
@@ -68,7 +68,7 @@ func TestDockerGateOnBoundedOutput(t *testing.T) {
 		t.Fatalf("2/2 must be complete: %+v", got.SampledContainerAggregate.Coverage)
 	}
 	// Deterministic key derivation: same input maps to same key.
-	again := c.collectDockerSnapshot(context.Background(), v1)
+	again := c.collectDockerSnapshot(context.Background(), collection)
 	for i := range got.Containers {
 		if got.Containers[i].ContainerKey != again.Containers[i].ContainerKey {
 			t.Fatal("containerKey derivation must be stable")
@@ -79,21 +79,21 @@ func TestDockerGateOnBoundedOutput(t *testing.T) {
 		t.Fatalf("collector must not synthesize batch/watermark/storage: %+v", got)
 	}
 	// With durable IDs attached via the narrow hook, the minimal snapshot validates.
-	c.SetDockerFinalizeHook(func(m *DockerMetricsV2) {
+	c.SetDockerFinalizeHook(func(m *DockerMetrics) {
 		m.AgentInstanceID = strings.Repeat("a", 32)
 		m.SnapshotID = strings.Repeat("b", 64)
 	})
-	hooked := c.collectDockerSnapshot(context.Background(), v1)
+	hooked := c.collectDockerSnapshot(context.Background(), collection)
 	if err := validateDockerMetrics(*hooked); err != nil {
 		t.Fatalf("hooked minimal snapshot must validate: %v", err)
 	}
 }
 
 func TestDockerPartialCoverage(t *testing.T) {
-	v1 := fixtureV1(MaxContainers + 5)
-	v1.ContainerTotal = MaxContainers + 5
-	v1.ContainerRunning = MaxContainers + 5
-	got := dockerFromV1(v1, nil)
+	collection := collectionFixture(MaxContainers + 5)
+	collection.ContainerTotal = MaxContainers + 5
+	collection.ContainerRunning = MaxContainers + 5
+	got := dockerSnapshotFromCollection(collection, nil)
 	if got == nil {
 		t.Fatal("expected snapshot")
 	}
@@ -112,36 +112,37 @@ func TestDockerPartialCoverage(t *testing.T) {
 	}
 }
 
-func TestDockerPreservesV1(t *testing.T) {
+func TestDockerSnapshotDoesNotMutateLegacyInput(t *testing.T) {
 	c := NewCollector()
-	v1 := fixtureV1(1)
-	before := *v1
-	beforeContainers := append([]DockerContainerMetric(nil), v1.Containers...)
-	_ = c.collectDockerSnapshot(context.Background(), v1)
-	if v1.ContainerTotal != before.ContainerTotal || v1.CPUPercent != before.CPUPercent || len(v1.Containers) != len(beforeContainers) {
-		t.Fatal("v1 input must not be mutated")
+	collection := collectionFixture(1)
+	before := *collection
+	beforeContainers := append([]DockerContainerMetric(nil), collection.Containers...)
+	_ = c.collectDockerSnapshot(context.Background(), collection)
+	if collection.ContainerTotal != before.ContainerTotal || collection.CPUPercent != before.CPUPercent || len(collection.Containers) != len(beforeContainers) {
+		t.Fatal("legacy input must not be mutated")
 	}
-	// V1 output object identity is untouched by the collector link: the link
-	// only reads v1 and returns a separate v2 pointer.
+	// Legacy output object identity is untouched by the collector link: the
+	// link only reads the legacy input and returns a separate snapshot pointer.
 }
 
 func TestDockerDisableClears(t *testing.T) {
 	c := NewCollector()
 	c.SetDockerContainerKeyFunc(func(string) string { return strings.Repeat("k", 32) })
-	c.SetDockerFinalizeHook(func(*DockerMetricsV2) {})
+	c.SetDockerFinalizeHook(func(*DockerMetrics) {})
 }
 
-func TestDockerFailurePreservesV1(t *testing.T) {
+func TestDockerDerivationFailureDoesNotBreakLegacyCollection(t *testing.T) {
 	c := NewCollector()
-	// Panicking hook must not propagate; v2 is dropped (nil).
-	c.SetDockerFinalizeHook(func(*DockerMetricsV2) { panic("hook boom") })
-	if got := c.collectDockerSnapshot(context.Background(), fixtureV1(1)); got != nil {
-		t.Fatal("hook panic must yield nil v2")
+	// Panicking hook must not propagate; the snapshot is dropped (nil) while the
+	// legacy collection path keeps working.
+	c.SetDockerFinalizeHook(func(*DockerMetrics) { panic("hook boom") })
+	if got := c.collectDockerSnapshot(context.Background(), collectionFixture(1)); got != nil {
+		t.Fatal("hook panic must yield nil snapshot")
 	}
 	// Invalid injected key func skips containers but still yields a snapshot.
 	c.SetDockerFinalizeHook(nil)
 	c.SetDockerContainerKeyFunc(func(string) string { return "bad key!!" })
-	got := c.collectDockerSnapshot(context.Background(), fixtureV1(1))
+	got := c.collectDockerSnapshot(context.Background(), collectionFixture(1))
 	if got == nil {
 		t.Fatal("all-skipped keys must still yield an (empty-sample) snapshot")
 	}

@@ -274,7 +274,7 @@ func loadStoreOptions(rp, dp string, opts LoadOptions) (*Store, error) {
 	}
 	container := [32]byte{}
 	copy(container[:], containerBytes)
-	return &Store{path: dp, deliveryKeyPath: rp, deliveryKey: delivery, containerKey: container, instanceID: rk.AgentInstanceID, watermark: ds.Watermark, pending: ds.Pending, sequence: ds.Sequence, v2: true}, nil
+	return &Store{path: dp, deliveryKeyPath: rp, deliveryKey: delivery, containerKey: container, instanceID: rk.AgentInstanceID, watermark: ds.Watermark, pending: ds.Pending, sequence: ds.Sequence, splitIdentity: true}, nil
 }
 func decodeStrict(b []byte, v any) error {
 	d := json.NewDecoder(bytes.NewReader(b))

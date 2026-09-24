@@ -799,7 +799,8 @@ func TestPush_DockerPayloadSerialised(t *testing.T) {
 	m := &metrics.SystemMetrics{
 		CPU:    50.0,
 		Memory: 60.0,
-		Docker: &metrics.DockerMetricsV2{
+		Docker: &metrics.DockerMetrics{
+			SchemaVersion:  metrics.DockerMetricsSchemaVersion,
 			Available:      true,
 			ContainerTotal: 2,
 			CPUPercent:     75.0,
@@ -810,6 +811,9 @@ func TestPush_DockerPayloadSerialised(t *testing.T) {
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
+	if !strings.Contains(string(capturedBody), `"schemaVersion":2`) {
+		t.Errorf("wire docker branch must carry schemaVersion=2: %s", capturedBody)
+	}
 
 	var raw map[string]json.RawMessage
 	if err := json.Unmarshal(capturedBody, &raw); err != nil {
@@ -819,18 +823,57 @@ func TestPush_DockerPayloadSerialised(t *testing.T) {
 	if !ok {
 		t.Fatal("expected Docker field to be present in payload")
 	}
-	var v1 metrics.DockerMetricsV2
-	if err := json.Unmarshal(dockerRaw, &v1); err != nil {
+	var got metrics.DockerMetrics
+	if err := json.Unmarshal(dockerRaw, &got); err != nil {
 		t.Fatalf("unmarshal docker branch: %v", err)
 	}
-	if !v1.Available {
+	if got.SchemaVersion != metrics.DockerMetricsSchemaVersion {
+		t.Errorf("wire schemaVersion = %d, want %d", got.SchemaVersion, metrics.DockerMetricsSchemaVersion)
+	}
+	if !got.Available {
 		t.Error("expected Docker.Available=true")
 	}
-	if v1.ContainerTotal != 2 {
-		t.Errorf("Docker.ContainerTotal = %d, want 2", v1.ContainerTotal)
+	if got.ContainerTotal != 2 {
+		t.Errorf("Docker.ContainerTotal = %d, want 2", got.ContainerTotal)
 	}
-	if v1.CPUPercent != 75.0 {
-		t.Errorf("Docker.CPUPercent = %f, want 75.0", v1.CPUPercent)
+	if got.CPUPercent != 75.0 {
+		t.Errorf("Docker.CPUPercent = %f, want 75.0", got.CPUPercent)
+	}
+}
+
+// A complete zero-event window must reach the wire as an explicit
+// `"events":[]` (API all-or-none protocol: batchId/window must not be
+// paired with a missing events key), always alongside schemaVersion=2.
+func TestPush_EmptyEventWindowMarshalsEventsArray(t *testing.T) {
+	var capturedBody []byte
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var err error
+		capturedBody, err = io.ReadAll(r.Body)
+		if err != nil {
+			t.Errorf("read body: %v", err)
+		}
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte(`{"data":{"ok":true,"config":{"dockerMetricsEnabled":true,"history":true,"containerHistory":true,"events":true,"storage":true}}}`))
+	}))
+	defer srv.Close()
+
+	batch := testBatch()
+	empty := []metrics.DockerEvent{}
+	batch.Events = &empty
+
+	cfg := createTestConfig(srv.URL)
+	client := NewClient(cfg)
+	if _, err := client.Push(context.Background(), &metrics.SystemMetrics{CPU: 10, Docker: batch}); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !strings.Contains(string(capturedBody), `"events":[]`) {
+		t.Errorf("empty window must marshal explicit events array on the wire: %s", capturedBody)
+	}
+	if !strings.Contains(string(capturedBody), `"schemaVersion":2`) {
+		t.Errorf("wire docker branch must carry schemaVersion=2: %s", capturedBody)
+	}
+	if !strings.Contains(string(capturedBody), `"batchId"`) {
+		t.Errorf("wire docker branch must carry batchId: %s", capturedBody)
 	}
 }
 
@@ -1179,7 +1222,7 @@ func TestPush_DockerStripRetryNilAck(t *testing.T) {
 
 	m := &metrics.SystemMetrics{
 		CPU:    10,
-		Docker: &metrics.DockerMetricsV2{Available: true},
+		Docker: &metrics.DockerMetrics{Available: true},
 	}
 	res, err := client.Push(context.Background(), m)
 	if err != nil {
@@ -1219,7 +1262,7 @@ func TestPushWithRetry_StrippedRetryResult(t *testing.T) {
 	client := NewClient(cfg)
 	m := &metrics.SystemMetrics{
 		CPU:    10,
-		Docker: &metrics.DockerMetricsV2{Available: true},
+		Docker: &metrics.DockerMetrics{Available: true},
 	}
 	res, err := client.PushWithRetry(context.Background(), m)
 	if err != nil {
@@ -1231,7 +1274,7 @@ func TestPushWithRetry_StrippedRetryResult(t *testing.T) {
 }
 
 // ---------------------------------------------------------------------------
-// Docker v2 serialization + capability gate
+// Docker serialization + capability gate
 // ---------------------------------------------------------------------------
 
 func boolPtr(b bool) *bool { return &b }
@@ -1247,16 +1290,17 @@ func advertisedConfig() *ConfigResponse {
 	}
 }
 
-func testV2Batch() *metrics.DockerMetricsV2 {
-	return &metrics.DockerMetricsV2{
+func testBatch() *metrics.DockerMetrics {
+	return &metrics.DockerMetrics{
 		CollectedAt:      "2026-01-01T00:00:30Z",
+		SchemaVersion:    metrics.DockerMetricsSchemaVersion,
 		AgentInstanceID:  "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
 		SnapshotID:       "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
 		BatchID:          "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
 		Available:        true,
 		ContainerTotal:   1,
 		ContainerRunning: 1,
-		Containers: []metrics.DockerContainerV2{
+		Containers: []metrics.DockerContainer{
 			{
 				ContainerKey:     "kkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkk",
 				ID:               "abc123def456",
@@ -1272,31 +1316,31 @@ func testV2Batch() *metrics.DockerMetricsV2 {
 				PIDs:             2,
 			},
 		},
-		Events: []metrics.DockerEventV2{
+		Events: &[]metrics.DockerEvent{
 			{
 				EventID:         "evt-1",
 				EventOccurredAt: "2026-01-01T00:00:10Z",
 				ContainerKey:    "kkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkk",
 				Action:          metrics.DockerActionDie,
-				Context:         metrics.DockerEventContextV2{Version: metrics.DockerEventContextVersionV1},
+				Context:         metrics.DockerEventContext{Version: metrics.DockerEventContextVersion},
 			},
 		},
-		EventWindow: &metrics.DockerEventWindowV2{
+		EventWindow: &metrics.DockerEventWindow{
 			Since: "1",
 			Until: "2",
 		},
-		FromWatermark: &metrics.DockerEventWatermarkV2{
+		FromWatermark: &metrics.DockerEventWatermark{
 			TimeNano:        "1",
 			BoundaryDigests: []string{},
 		},
-		ProposedWatermark: &metrics.DockerEventWatermarkV2{
+		ProposedWatermark: &metrics.DockerEventWatermark{
 			TimeNano:        "2",
 			BoundaryDigests: []string{},
 		},
 	}
 }
 
-func TestPush_PayloadContainsV2WhenGateEnabled(t *testing.T) {
+func TestPush_PayloadContainsDockerWhenGateEnabled(t *testing.T) {
 	var capturedBody []byte
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		var err error
@@ -1314,7 +1358,8 @@ func TestPush_PayloadContainsV2WhenGateEnabled(t *testing.T) {
 
 	m := &metrics.SystemMetrics{
 		CPU: 10,
-		Docker: &metrics.DockerMetricsV2{
+		Docker: &metrics.DockerMetrics{
+			SchemaVersion:  metrics.DockerMetricsSchemaVersion,
 			Available:      true,
 			ContainerTotal: 1,
 		},
@@ -1335,19 +1380,19 @@ func TestPush_PayloadContainsV2WhenGateEnabled(t *testing.T) {
 	if err := json.Unmarshal(dockerRaw, &branch); err != nil {
 		t.Fatalf("unmarshal docker branch: %v", err)
 	}
-	var v2 metrics.DockerMetricsV2
-	if err := json.Unmarshal(dockerRaw, &v2); err != nil {
-		t.Fatalf("unmarshal v2 branch: %v", err)
+	var payload metrics.DockerMetrics
+	if err := json.Unmarshal(dockerRaw, &payload); err != nil {
+		t.Fatalf("unmarshal payload branch: %v", err)
 	}
-	if !v2.Available {
-		t.Errorf("canonical docker payload unavailable: %+v", v2)
+	if !payload.Available {
+		t.Errorf("canonical docker payload unavailable: %+v", payload)
 	}
 	if _, ok := raw["dockerV2"]; ok {
-		t.Error("must not invent a separate `dockerV2` wire field; v2 rides on `docker`")
+		t.Error("must not invent a separate `dockerV2` wire field; the payload rides on `docker`")
 	}
 }
 
-func TestPush_V1PreservedWhenGateDisabled(t *testing.T) {
+func TestPush_DockerBranchWithPartialConfigResponse(t *testing.T) {
 	var capturedBody []byte
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		var err error
@@ -1365,7 +1410,8 @@ func TestPush_V1PreservedWhenGateDisabled(t *testing.T) {
 
 	m := &metrics.SystemMetrics{
 		CPU: 10,
-		Docker: &metrics.DockerMetricsV2{
+		Docker: &metrics.DockerMetrics{
+			SchemaVersion:  metrics.DockerMetricsSchemaVersion,
 			Available:      true,
 			ContainerTotal: 3,
 		},
@@ -1379,14 +1425,14 @@ func TestPush_V1PreservedWhenGateDisabled(t *testing.T) {
 	}
 	dockerRaw, ok := raw["docker"]
 	if !ok {
-		t.Fatal("expected legacy v1 'docker' branch")
+		t.Fatal("expected 'docker' branch in payload")
 	}
-	var v1 metrics.DockerMetricsV2
-	if err := json.Unmarshal(dockerRaw, &v1); err != nil {
-		t.Fatalf("unmarshal v1 branch: %v", err)
+	var got metrics.DockerMetrics
+	if err := json.Unmarshal(dockerRaw, &got); err != nil {
+		t.Fatalf("unmarshal docker branch: %v", err)
 	}
-	if v1.ContainerTotal != 3 {
-		t.Errorf("expected canonical docker payload, got %+v", v1)
+	if got.ContainerTotal != 3 {
+		t.Errorf("expected canonical docker payload, got %+v", got)
 	}
 }
 
@@ -1456,7 +1502,7 @@ func TestPush_PartialAdvertisementLeavesGateFalse(t *testing.T) {
 	}
 }
 
-func TestPush_DowngradeStripsV2(t *testing.T) {
+func TestPush_DowngradeStripsDocker(t *testing.T) {
 	callCount := 0
 	var secondHasDocker bool
 	var secondChecked bool
@@ -1468,7 +1514,7 @@ func TestPush_DowngradeStripsV2(t *testing.T) {
 		_, hasDocker := raw["docker"]
 		if callCount == 1 {
 			if !hasDocker {
-				t.Error("first request should include docker (v2 branch)")
+				t.Error("first request should include docker branch")
 			} else {
 				var branch map[string]json.RawMessage
 				if err := json.Unmarshal(raw["docker"], &branch); err == nil {
@@ -1490,7 +1536,7 @@ func TestPush_DowngradeStripsV2(t *testing.T) {
 	client := NewClient(cfg)
 	m := &metrics.SystemMetrics{
 		CPU:    10,
-		Docker: &metrics.DockerMetricsV2{Available: true},
+		Docker: &metrics.DockerMetrics{Available: true},
 	}
 	res, err := client.Push(context.Background(), m)
 	if err != nil {
@@ -1500,7 +1546,7 @@ func TestPush_DowngradeStripsV2(t *testing.T) {
 		t.Errorf("expected 2 calls (strip+retry once), got %d", callCount)
 	}
 	if !secondChecked || secondHasDocker {
-		t.Error("second (stripped) request must not include docker (neither v1 nor v2)")
+		t.Error("second (stripped) request must not include the docker branch")
 	}
 	if res == nil || res.Docker != nil {
 		t.Errorf("stripped retry result must have nil Docker ack, got %+v", res)

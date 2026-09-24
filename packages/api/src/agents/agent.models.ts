@@ -74,7 +74,7 @@ export type AgentSystemInfo = {
 };
 
 export type AgentDockerContainerMetric = {
-  id: string;
+  containerKey: string;
   name: string;
   image: string;
   status?: string;
@@ -89,10 +89,6 @@ export type AgentDockerContainerMetric = {
   blockReadBytes: number;
   blockWriteBytes: number;
   pids: number;
-};
-
-export type AgentDockerContainerMetricV2 = Omit<AgentDockerContainerMetric, "id"> & {
-  containerKey: string;
 };
 
 export type AgentDockerErrorCode =
@@ -134,6 +130,9 @@ export type DockerEventContext = {
   exitCode?: number;
   signal?: number;
   oomKilled?: boolean;
+  // Canonical seconds-only normalization marker: the agent normalized a
+  // daemon event from `time` (seconds), so timeNano = seconds × 1e9.
+  reducedPrecision?: boolean;
   reason?: DockerEventGapReason | "daemon_restarted";
   skippedFromNano?: string;
   skippedThroughNano?: string;
@@ -176,35 +175,6 @@ export type AgentDockerStorageAggregate = {
   buildCache: DockerStorageCategory;
 };
 
-export type AgentDockerMetricsInputV1 = {
-  collectedAt: string;
-  agentVersion?: string;
-  engineVersion?: string;
-  apiVersion?: string;
-  os?: string;
-  architecture?: string;
-  schemaVersion: 1;
-  available: boolean;
-  errorCode?:
-    | "socket_missing"
-    | "permission_denied"
-    | "timeout"
-    | "daemon_unreachable"
-    | "unsupported_os"
-    | "bad_response";
-  containerTotal: number;
-  containerRunning: number;
-  cpuPercent: number;
-  memoryUsageBytes: number;
-  memoryLimitBytes?: number;
-  networkRxBytes: number;
-  networkTxBytes: number;
-  blockReadBytes: number;
-  blockWriteBytes: number;
-  pids: number;
-  containers: AgentDockerContainerMetric[];
-};
-
 export type DockerEventWatermark = {
   timeNano: string;
   boundaryDigests: string[];
@@ -228,7 +198,8 @@ export type DockerMonitoringMetadata = {
   state: "enabled" | "disabled" | "unknown";
 };
 
-export type AgentDockerMetricsInputV2 = {
+/** Canonical service-facing Docker shape; identity is required at ingest (legacy branches are rejected). */
+export type AgentDockerMetricsInput = {
   collectedAt: string;
   agentVersion?: string;
   engineVersion?: string;
@@ -253,7 +224,7 @@ export type AgentDockerMetricsInputV2 = {
   blockReadBytes: number;
   blockWriteBytes: number;
   pids: number;
-  containers: AgentDockerContainerMetricV2[];
+  containers: AgentDockerContainerMetric[];
   sampledContainerAggregate?: DockerSampledContainerAggregate;
   events?: AgentDockerEvent[];
   eventWindow?: DockerEventWindow;
@@ -263,31 +234,6 @@ export type AgentDockerMetricsInputV2 = {
   monitoring?: DockerMonitoringMetadata;
 };
 
-/** Unified service-facing Docker shape; v1 is normalized at ingest. */
-export type AgentDockerMetricsInput = AgentDockerMetricsInputV2;
-
-export type DockerMetricsFreshness = "fresh" | "stale";
-
-export type AgentDockerMetrics = AgentDockerMetricsInput & {
-  vpsId: string;
-  receivedAt: string;
-  freshness?: DockerMetricsFreshness;
-  ageSeconds?: number;
-  lastUpdatedAt?: string;
-};
-
-export type DockerIngestCapability = {
-  maxSchemaVersion: 1 | 2;
-  history: boolean;
-  containerHistory: boolean;
-  events: boolean;
-  storage: boolean;
-};
-
-export type DockerIngestStatus = {
-  schemaVersion: 1 | 2;
-  capabilities: DockerIngestCapability;
-};
 export type AgentMetricPayload = {
   vpsId?: string;
   collectedAt: string;

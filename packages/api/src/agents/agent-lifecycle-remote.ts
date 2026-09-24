@@ -96,6 +96,45 @@ export function buildManagedProcessStopCommand(
 }
 
 /**
+ * Docker identity/runtime-state provisioning for a managed install or
+ * upgrade. Runs as one remote shell script and MUST execute before any
+ * `-once` preflight or service start:
+ *
+ * 1. Fails closed when the login user is non-root without passwordless sudo
+ *    (the installation identity must be root-owned, so provisioning requires
+ *    root even though the agent itself runs unprivileged).
+ * 2. Fails closed when runtime keys exist without their installation identity
+ *    instead of silently rotating an existing identity.
+ * 3. Runs `-provision-docker-state` idempotently: a valid existing pair is
+ *    preserved byte-for-byte (no rotation on upgrade), a partial pair is
+ *    completed, then ownership/mode are enforced (identity root:root 0600,
+ *    runtime keys <login-user>:<login-group> 0600).
+ * 4. Re-runs provisioning with the login user's uid as the runtime owner so
+ *    the final state passes exactly the validation the agent performs before
+ *    it starts.
+ *
+ * Every failure path exits non-zero; the SSH layer rejects the command, the
+ * install/upgrade job fails, and no service is started or restarted.
+ */
+export function buildDockerStateProvisionCommand(
+  binary: string,
+  remoteDir: string,
+): string {
+  const b = shellQuote(binary);
+  const d = shellQuote(remoteDir);
+  return [
+    "set -eu",
+    `_d=${d}; _b=${b}; _id="$_d/docker-identity.json"; _rk="$_d/runtime-keys.json"; _u=$(id -u)`,
+    `if [ "$_u" -eq 0 ]; then _s=''; elif command -v sudo >/dev/null 2>&1 && sudo -n true >/dev/null 2>&1; then _s='sudo -n'; else echo 'Docker provisioning requires root or passwordless sudo on the remote host; refusing to start the agent without it' >&2; exit 1; fi`,
+    `if [ -e "$_rk" ] && [ ! -e "$_id" ]; then echo "Docker runtime keys exist without the installation identity ($_id); refusing to rotate the installation identity" >&2; exit 1; fi`,
+    `_p=0; if [ -e "$_rk" ]; then _o=$(stat -c %u "$_rk"); case "$_o" in 0|"$_u") _p="$_o";; *) echo "Unexpected owner uid $_o for $_rk; refusing to touch Docker runtime keys" >&2; exit 1;; esac; fi`,
+    `$_s "$_b" -provision-docker-state -docker-identity-path "$_id" -docker-runtime-keys-path "$_rk" -docker-runtime-owner-uid "$_p"`,
+    `$_s chown root:root "$_id"; $_s chown "$_u:$(id -gn)" "$_rk"; $_s chmod 0600 "$_id" "$_rk"`,
+    `$_s "$_b" -provision-docker-state -docker-identity-path "$_id" -docker-runtime-keys-path "$_rk" -docker-runtime-owner-uid "$_u"`,
+  ].join("\n");
+}
+
+/**
  * Transactional launch: the canonical pid file is published with `mv`
  * ONLY after the newly spawned process passes exact ownership checks (PID,
  * starttime, executable, and exact argv). The cleanup trap is armed before

@@ -108,24 +108,25 @@ func stateNano(w state.Watermark) string {
 	return strconv.FormatInt(w.TimeNano, 10)
 }
 
-// makeV2 builds a complete v2 batch bound to the store: from == committed
+// makeBatch builds a complete docker batch bound to the store: from == committed
 // watermark, proposed forward, window since==from until==proposed.
 // The batch carries non-empty events, containers, and storage so replay
 // tests prove byte-identical retransmission of real payload shape.
-func makeV2(s *state.Store, batch, snap string, proposedNano int64) *metrics.SystemMetrics {
+func makeBatch(s *state.Store, batch, snap string, proposedNano int64) *metrics.SystemMetrics {
 	from := s.GetWatermark()
 	exit := 137
 	return &metrics.SystemMetrics{
 		CPU: 50,
-		Docker: &metrics.DockerMetricsV2{
+		Docker: &metrics.DockerMetrics{
 			CollectedAt:     "2026-01-01T00:00:30Z",
+			SchemaVersion:   metrics.DockerMetricsSchemaVersion,
 			AgentInstanceID: s.InstanceID(),
 			SnapshotID:      snap,
 			SourceSequence:  strconv.FormatUint(s.Sequence(), 10),
 			BatchID:         batch,
 			Available:       true,
 			ContainerTotal:  2,
-			Containers: []metrics.DockerContainerV2{
+			Containers: []metrics.DockerContainer{
 				{
 					ContainerKey:     "kkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkk",
 					ID:               "abc123def456",
@@ -138,54 +139,54 @@ func makeV2(s *state.Store, batch, snap string, proposedNano int64) *metrics.Sys
 					PIDs:             12,
 				},
 			},
-			Events: []metrics.DockerEventV2{
+			Events: &[]metrics.DockerEvent{
 				{
 					EventID:         "evt-die-0001",
 					EventOccurredAt: "2026-01-01T00:00:10Z",
 					ContainerKey:    "kkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkk",
 					Action:          metrics.DockerActionDie,
-					Context:         metrics.DockerEventContextV2{Version: metrics.DockerEventContextVersionV1, ExitCode: &exit},
+					Context:         metrics.DockerEventContext{Version: metrics.DockerEventContextVersion, ExitCode: &exit},
 				},
 				{
 					EventID:         "evt-stop-0002",
 					EventOccurredAt: "2026-01-01T00:00:20Z",
 					ContainerKey:    "kkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkk",
 					Action:          metrics.DockerActionStop,
-					Context:         metrics.DockerEventContextV2{Version: metrics.DockerEventContextVersionV1},
+					Context:         metrics.DockerEventContext{Version: metrics.DockerEventContextVersion},
 				},
 			},
-			EventWindow: &metrics.DockerEventWindowV2{
+			EventWindow: &metrics.DockerEventWindow{
 				Since: stateNano(from),
 				Until: strconv.FormatInt(proposedNano, 10),
 			},
-			FromWatermark: &metrics.DockerEventWatermarkV2{
+			FromWatermark: &metrics.DockerEventWatermark{
 				TimeNano:        stateNano(from),
 				BoundaryDigests: append([]string(nil), from.BoundaryDigests...),
 			},
-			ProposedWatermark: &metrics.DockerEventWatermarkV2{
+			ProposedWatermark: &metrics.DockerEventWatermark{
 				TimeNano:        strconv.FormatInt(proposedNano, 10),
 				BoundaryDigests: []string{},
 			},
-			Storage: &metrics.DockerStorageAggregateV2{
-				FormulaVersion: metrics.DockerStorageFormulaVersionV1,
-				Images:         metrics.DockerStorageCategoryV2{Supported: true, Count: 2, TotalBytes: 1000},
-				Containers:     metrics.DockerStorageCategoryV2{Supported: true, Count: 1, TotalBytes: 500},
-				LocalVolumes:   metrics.DockerStorageCategoryV2{Supported: false},
-				BuildCache:     metrics.DockerStorageCategoryV2{Supported: false},
+			Storage: &metrics.DockerStorageAggregate{
+				FormulaVersion: metrics.DockerStorageFormulaVersion,
+				Images:         metrics.DockerStorageCategory{Supported: true, Count: 2, TotalBytes: 1000},
+				Containers:     metrics.DockerStorageCategory{Supported: true, Count: 1, TotalBytes: 500},
+				LocalVolumes:   metrics.DockerStorageCategory{Supported: false},
+				BuildCache:     metrics.DockerStorageCategory{Supported: false},
 			},
 		},
 	}
 }
 
-// marshalV2JSON returns the exact wire bytes of the Docker branch.
-func marshalV2JSON(t *testing.T, m *metrics.SystemMetrics) string {
+// marshalDockerJSON returns the exact wire bytes of the Docker branch.
+func marshalDockerJSON(t *testing.T, m *metrics.SystemMetrics) string {
 	t.Helper()
 	if m == nil || m.Docker == nil {
 		t.Fatal("expected non-nil Docker")
 	}
 	b, err := json.Marshal(m.Docker)
 	if err != nil {
-		t.Fatalf("marshal v2: %v", err)
+		t.Fatalf("marshal docker: %v", err)
 	}
 	return string(b)
 }
@@ -208,7 +209,7 @@ func ackFor(vps, batch, snap, inst, status, nano string) *push.PushResult {
 }
 
 // ---------------------------------------------------------------------------
-// V1 behavior preserved
+// Host-only push behavior (no Docker branch / no state wired)
 // ---------------------------------------------------------------------------
 
 func TestRunOnce_Success(t *testing.T) {
@@ -232,7 +233,7 @@ func TestRunOnce_Success(t *testing.T) {
 	}
 }
 
-func TestRunOnce_V1WithStateWired_NoStateInteraction(t *testing.T) {
+func TestRunOnce_HostOnlyWithStateWired_NoStateInteraction(t *testing.T) {
 	s := mustState(t)
 	collector := &mockCollector{metrics: &metrics.SystemMetrics{CPU: 50}}
 	pusher := &mockPusher{}
@@ -241,13 +242,16 @@ func TestRunOnce_V1WithStateWired_NoStateInteraction(t *testing.T) {
 		t.Fatalf("unexpected error: %v", err)
 	}
 	if s.GetPending() != nil {
-		t.Fatal("v1 path must not create pending")
+		t.Fatal("host-only path must not create pending")
 	}
 }
 
-func TestRunOnce_V2NoStateWired_PreservesPush(t *testing.T) {
+// Without durable state the runner must fail closed: the collected Docker
+// branch (no identity lifecycle behind it) is stripped from the wire while
+// the host metrics push still succeeds.
+func TestRunOnce_NoStateWired_StripsDockerBranch(t *testing.T) {
 	s := mustState(t)
-	m := makeV2(s, "b1", "s1", 100)
+	m := makeBatch(s, "b1", "s1", 100)
 	collector := &mockCollector{metrics: m}
 	pusher := &mockPusher{}
 	runner := New(createTestConfig(), collector, pusher) // no state
@@ -256,6 +260,10 @@ func TestRunOnce_V2NoStateWired_PreservesPush(t *testing.T) {
 	}
 	if pusher.pushRetryCount.Load() != 1 {
 		t.Fatalf("expected 1 push, got %d", pusher.pushRetryCount.Load())
+	}
+	if !pusher.lastStripped.Load() || pusher.gotDocker.Load() != 0 {
+		t.Fatalf("docker branch must be stripped without durable state: stripped=%v withDocker=%d",
+			pusher.lastStripped.Load(), pusher.gotDocker.Load())
 	}
 	if s.GetPending() != nil {
 		t.Fatal("unwired store must stay empty")
@@ -368,13 +376,13 @@ func TestRunLoop_StopsOnFatalPushError(t *testing.T) {
 }
 
 // ---------------------------------------------------------------------------
-// V2 success + commit
+// Docker success + commit
 // ---------------------------------------------------------------------------
 
 func TestFinalizeDocker_AssignsIdentityAndOnlyCompleteBatchID(t *testing.T) {
 	s := mustState(t)
 	fin := FinalizeDocker(s)
-	minimal := &metrics.DockerMetricsV2{}
+	minimal := &metrics.DockerMetrics{}
 	fin(minimal)
 	if minimal.AgentInstanceID != s.InstanceID() || minimal.SnapshotID == "" {
 		t.Fatalf("identity not assigned: %+v", minimal)
@@ -382,10 +390,10 @@ func TestFinalizeDocker_AssignsIdentityAndOnlyCompleteBatchID(t *testing.T) {
 	if minimal.BatchID != "" {
 		t.Fatalf("incomplete protocol must not receive batchId: %q", minimal.BatchID)
 	}
-	complete := &metrics.DockerMetricsV2{
-		EventWindow:       &metrics.DockerEventWindowV2{Since: "1", Until: "2"},
-		FromWatermark:     &metrics.DockerEventWatermarkV2{TimeNano: "1"},
-		ProposedWatermark: &metrics.DockerEventWatermarkV2{TimeNano: "2"},
+	complete := &metrics.DockerMetrics{
+		EventWindow:       &metrics.DockerEventWindow{Since: "1", Until: "2"},
+		FromWatermark:     &metrics.DockerEventWatermark{TimeNano: "1"},
+		ProposedWatermark: &metrics.DockerEventWatermark{TimeNano: "2"},
 	}
 	fin(complete)
 	if complete.AgentInstanceID != s.InstanceID() || complete.SnapshotID == "" || complete.BatchID == "" {
@@ -393,9 +401,9 @@ func TestFinalizeDocker_AssignsIdentityAndOnlyCompleteBatchID(t *testing.T) {
 	}
 }
 
-func TestV2_SuccessCommits(t *testing.T) {
+func TestDocker_SuccessCommits(t *testing.T) {
 	s := mustState(t)
-	m := makeV2(s, "b1", "s1", 100)
+	m := makeBatch(s, "b1", "s1", 100)
 	pusher := &mockPusher{
 		handler: func(got *metrics.SystemMetrics) (*push.PushResult, error) {
 			return ackFor("test-vps", "b1", "s1", s.InstanceID(), "committed", "100"), nil
@@ -413,9 +421,9 @@ func TestV2_SuccessCommits(t *testing.T) {
 	}
 }
 
-func TestV2_AlreadyCommittedCommits(t *testing.T) {
+func TestDocker_AlreadyCommittedCommits(t *testing.T) {
 	s := mustState(t)
-	m := makeV2(s, "b1", "s1", 100)
+	m := makeBatch(s, "b1", "s1", 100)
 	pusher := &mockPusher{
 		handler: func(got *metrics.SystemMetrics) (*push.PushResult, error) {
 			// Lost-response retry path: server already committed.
@@ -434,9 +442,9 @@ func TestV2_AlreadyCommittedCommits(t *testing.T) {
 	}
 }
 
-func TestV2_ReplayIgnoredCommits(t *testing.T) {
+func TestDocker_ReplayIgnoredCommits(t *testing.T) {
 	s := mustState(t)
-	m := makeV2(s, "b1", "s1", 100)
+	m := makeBatch(s, "b1", "s1", 100)
 	pusher := &mockPusher{
 		handler: func(got *metrics.SystemMetrics) (*push.PushResult, error) {
 			// Idempotent replay path: server ignored an equivalent replay.
@@ -455,9 +463,9 @@ func TestV2_ReplayIgnoredCommits(t *testing.T) {
 	}
 }
 
-func TestV2_CommittedWatermarkMismatch_LeavesPending(t *testing.T) {
+func TestDocker_CommittedWatermarkMismatch_LeavesPending(t *testing.T) {
 	s := mustState(t)
-	m := makeV2(s, "b1", "s1", 100)
+	m := makeBatch(s, "b1", "s1", 100)
 	pusher := &mockPusher{
 		handler: func(got *metrics.SystemMetrics) (*push.PushResult, error) {
 			// Stale replay: ids match but the durable watermark is foreign.
@@ -476,9 +484,9 @@ func TestV2_CommittedWatermarkMismatch_LeavesPending(t *testing.T) {
 	}
 }
 
-func TestV2_ConfigOnlySuccess_LeavesPending(t *testing.T) {
+func TestDocker_ConfigOnlySuccess_LeavesPending(t *testing.T) {
 	s := mustState(t)
-	m := makeV2(s, "b1", "s1", 100)
+	m := makeBatch(s, "b1", "s1", 100)
 	pusher := &mockPusher{
 		handler: func(got *metrics.SystemMetrics) (*push.PushResult, error) {
 			return okResult(), nil // nil Docker ack: old server
@@ -487,7 +495,7 @@ func TestV2_ConfigOnlySuccess_LeavesPending(t *testing.T) {
 	runner := NewWithState(createTestConfig(), &mockCollector{metrics: m}, pusher, s)
 	err := runner.RunOnce(context.Background())
 	if err == nil {
-		t.Fatal("expected v2 missing-ack error")
+		t.Fatal("expected docker missing-ack error")
 	}
 	if s.GetPending() == nil || s.GetPending().BatchID != "b1" {
 		t.Fatalf("pending must be preserved, got %+v", s.GetPending())
@@ -497,9 +505,9 @@ func TestV2_ConfigOnlySuccess_LeavesPending(t *testing.T) {
 	}
 }
 
-func TestV2_NilAckResult_LeavesPending(t *testing.T) {
+func TestDocker_NilAckResult_LeavesPending(t *testing.T) {
 	s := mustState(t)
-	m := makeV2(s, "b1", "s1", 100)
+	m := makeBatch(s, "b1", "s1", 100)
 	pusher := &mockPusher{
 		handler: func(got *metrics.SystemMetrics) (*push.PushResult, error) {
 			return nil, nil // pathological nil result, nil error
@@ -518,7 +526,7 @@ func TestV2_NilAckResult_LeavesPending(t *testing.T) {
 // Mismatch / malformed ack
 // ---------------------------------------------------------------------------
 
-func TestV2_MismatchAck_LeavesPending(t *testing.T) {
+func TestDocker_MismatchAck_LeavesPending(t *testing.T) {
 	cases := []struct {
 		name string
 		ack  *push.PushResult
@@ -541,7 +549,7 @@ func TestV2_MismatchAck_LeavesPending(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			sp := mustState(t)
 			// Rebuild batch bound to this fresh store (same ids).
-			mm := makeV2(sp, "b1", "s1", 100)
+			mm := makeBatch(sp, "b1", "s1", 100)
 			inst := sp.InstanceID()
 			ack := tc.ack
 			// Rewrite instance-bound acks to this store except the badInst case.
@@ -575,9 +583,9 @@ func TestV2_MismatchAck_LeavesPending(t *testing.T) {
 // Transport / conflict failures leave pending
 // ---------------------------------------------------------------------------
 
-func TestV2_Conflict_LeavesPending(t *testing.T) {
+func TestDocker_Conflict_LeavesPending(t *testing.T) {
 	s := mustState(t)
-	m := makeV2(s, "b1", "s1", 100)
+	m := makeBatch(s, "b1", "s1", 100)
 	pusher := &mockPusher{
 		handler: func(got *metrics.SystemMetrics) (*push.PushResult, error) {
 			return nil, &push.ErrConflict{StatusCode: 409, Body: "conflict"}
@@ -598,9 +606,9 @@ func TestV2_Conflict_LeavesPending(t *testing.T) {
 	}
 }
 
-func TestV2_TransportFailure_LeavesPending(t *testing.T) {
+func TestDocker_TransportFailure_LeavesPending(t *testing.T) {
 	s := mustState(t)
-	m := makeV2(s, "b1", "s1", 100)
+	m := makeBatch(s, "b1", "s1", 100)
 	pusher := &mockPusher{
 		failCount: 1,
 		err:       &push.ErrRetryable{StatusCode: 500, Err: errors.New("boom")},
@@ -620,14 +628,14 @@ func TestV2_TransportFailure_LeavesPending(t *testing.T) {
 // Crash windows
 // ---------------------------------------------------------------------------
 
-func TestV2_CrashAfterPersistBeforePush_RetrySameBatch(t *testing.T) {
+func TestDocker_CrashAfterPersistBeforePush_RetrySameBatch(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "docker-state.json")
 	s1, err := state.LoadOrCreate(path)
 	if err != nil {
 		t.Fatal(err)
 	}
-	m1 := makeV2(s1, "cb", "cs", 77)
+	m1 := makeBatch(s1, "cb", "cs", 77)
 	// Simulate crash after persist, before request: persist only.
 	cand, err := func() (state.PendingBatch, error) {
 		// Reuse runner derivation indirectly: run once with failing push.
@@ -654,7 +662,7 @@ func TestV2_CrashAfterPersistBeforePush_RetrySameBatch(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	m2 := makeV2(s2, "cb", "cs", 77)
+	m2 := makeBatch(s2, "cb", "cs", 77)
 	pusher2 := &mockPusher{
 		handler: func(got *metrics.SystemMetrics) (*push.PushResult, error) {
 			return ackFor("test-vps", "cb", "cs", s2.InstanceID(), "committed", "77"), nil
@@ -672,10 +680,10 @@ func TestV2_CrashAfterPersistBeforePush_RetrySameBatch(t *testing.T) {
 	}
 }
 
-func TestV2_PendingExists_BlocksLaterWindow_RetriesExactPending(t *testing.T) {
+func TestDocker_PendingExists_BlocksLaterWindow_RetriesExactPending(t *testing.T) {
 	s := mustState(t)
-	first := makeV2(s, "b1", "s1", 100)
-	firstJSON := marshalV2JSON(t, first)
+	first := makeBatch(s, "b1", "s1", 100)
+	firstJSON := marshalDockerJSON(t, first)
 	var pushed []*metrics.SystemMetrics
 	var pushedJSON []string
 	pusher := &mockPusher{
@@ -698,7 +706,7 @@ func TestV2_PendingExists_BlocksLaterWindow_RetriesExactPending(t *testing.T) {
 	}
 	// Later window with a different batch must be blocked; exact pending
 	// payload is retried from durable state (never the later window).
-	later := makeV2(s, "b2", "s2", 200)
+	later := makeBatch(s, "b2", "s2", 200)
 	runner2collector := &mockCollector{metrics: later}
 	runner2 := runner
 	runner2.collector = runner2collector
@@ -719,21 +727,149 @@ func TestV2_PendingExists_BlocksLaterWindow_RetriesExactPending(t *testing.T) {
 	}
 }
 
+// While a durable pending exists the production event provider
+// (DockerEventInput, the exact code main wires into the collector)
+// suppresses the next window, so the fresh collection is batch-less by
+// construction. The runner must still replay the exact pending payload and
+// commit on the ack — never fall through to a minimal/host-only push that
+// would strand the pending forever.
+func TestDocker_PendingReplaysWhenEventProviderSuppressed(t *testing.T) {
+	s := mustState(t)
+	first := makeBatch(s, "b1", "s1", 100)
+	firstJSON := marshalDockerJSON(t, first)
+	// Cycle 1: transport failure after persist leaves the durable pending.
+	pusher1 := &mockPusher{
+		failCount: 1,
+		err:       &push.ErrRetryable{StatusCode: 500, Err: errors.New("boom")},
+	}
+	r1 := NewWithState(createTestConfig(), &mockCollector{metrics: first}, pusher1, s)
+	if err := r1.RunOnce(context.Background()); err == nil {
+		t.Fatal("expected first push failure")
+	}
+	if s.GetPending() == nil {
+		t.Fatal("pending must exist")
+	}
+
+	// Cycle 2: consult the REAL provider exactly as production wires it.
+	// Pending exists → suppression (ok=false) → fresh snapshot has no event
+	// branch (identity only, no batchId).
+	provider := DockerEventInput(s)
+	if _, ok := provider(); ok {
+		t.Fatal("production event provider must suppress while pending exists")
+	}
+	fresh := &metrics.SystemMetrics{CPU: 77}
+	snap := &metrics.DockerMetrics{
+		CollectedAt:   "2026-01-01T00:01:00Z",
+		SchemaVersion: metrics.DockerMetricsSchemaVersion,
+		Available:     true,
+	}
+	FinalizeDocker(s)(snap)
+	if snap.BatchID != "" {
+		t.Fatalf("suppressed collection must stay batch-less, got batchId %q", snap.BatchID)
+	}
+	fresh.Docker = snap
+
+	var gotJSON string
+	pusher2 := &mockPusher{
+		handler: func(got *metrics.SystemMetrics) (*push.PushResult, error) {
+			b, _ := json.Marshal(got.Docker)
+			gotJSON = string(b)
+			return ackFor("test-vps", "b1", "s1", s.InstanceID(), "committed", "100"), nil
+		},
+	}
+	r2 := NewWithState(createTestConfig(), &mockCollector{metrics: fresh}, pusher2, s)
+	if err := r2.RunOnce(context.Background()); err != nil {
+		t.Fatalf("suppressed-window replay must succeed: %v", err)
+	}
+	if gotJSON != firstJSON {
+		t.Fatalf("replay must carry exact pending bytes:\n got=%s\nwant=%s", gotJSON, firstJSON)
+	}
+	if s.GetPending() != nil {
+		t.Fatal("pending cleared after ack commit")
+	}
+	if got := s.GetWatermark(); got.TimeNano != 100 {
+		t.Fatalf("watermark = %+v want 100", got)
+	}
+}
+
+// An empty event window is a legitimate complete batch: events must marshal
+// as an explicit empty array (API all-or-none protocol), persist durably,
+// replay byte-identically, and commit like any other batch.
+func TestDocker_EmptyEventWindowBatch_RoundTripsAndCommits(t *testing.T) {
+	s := mustState(t)
+	m := makeBatch(s, "b1", "s1", 100)
+	empty := []metrics.DockerEvent{}
+	m.Docker.Events = &empty
+	firstJSON := marshalDockerJSON(t, m)
+	if !strings.Contains(firstJSON, `"events":[]`) {
+		t.Fatalf("empty window must marshal an explicit events array: %s", firstJSON)
+	}
+	if !strings.Contains(firstJSON, `"schemaVersion":2`) {
+		t.Fatalf("payload must carry schemaVersion=2: %s", firstJSON)
+	}
+	pusher1 := &mockPusher{
+		failCount: 1,
+		err:       &push.ErrRetryable{StatusCode: 500, Err: errors.New("down")},
+	}
+	r1 := NewWithState(createTestConfig(), &mockCollector{metrics: m}, pusher1, s)
+	if err := r1.RunOnce(context.Background()); err == nil {
+		t.Fatal("expected first push failure")
+	}
+	if s.GetPending() == nil {
+		t.Fatal("pending must exist")
+	}
+	// Recovery cycle: production provider suppresses a new window while the
+	// pending exists; the exact empty-window payload must replay and commit.
+	provider := DockerEventInput(s)
+	if _, ok := provider(); ok {
+		t.Fatal("production event provider must suppress while pending exists")
+	}
+	fresh := &metrics.SystemMetrics{CPU: 80}
+	freshSnap := &metrics.DockerMetrics{
+		CollectedAt:   "2026-01-01T00:01:00Z",
+		SchemaVersion: metrics.DockerMetricsSchemaVersion,
+		Available:     true,
+	}
+	FinalizeDocker(s)(freshSnap)
+	fresh.Docker = freshSnap
+	var gotJSON string
+	pusher2 := &mockPusher{
+		handler: func(got *metrics.SystemMetrics) (*push.PushResult, error) {
+			b, _ := json.Marshal(got.Docker)
+			gotJSON = string(b)
+			return ackFor("test-vps", "b1", "s1", s.InstanceID(), "committed", "100"), nil
+		},
+	}
+	r2 := NewWithState(createTestConfig(), &mockCollector{metrics: fresh}, pusher2, s)
+	if err := r2.RunOnce(context.Background()); err != nil {
+		t.Fatalf("empty-window replay must succeed: %v", err)
+	}
+	if gotJSON != firstJSON {
+		t.Fatalf("empty-window replay must be byte-identical:\n got=%s\nwant=%s", gotJSON, firstJSON)
+	}
+	if s.GetPending() != nil {
+		t.Fatal("pending cleared after ack commit")
+	}
+	if got := s.GetWatermark(); got.TimeNano != 100 {
+		t.Fatalf("watermark = %+v want 100", got)
+	}
+}
+
 // After restart (fresh Runner, fresh state handle, no in-memory cache) the
-// runner must replay the exact durable V2PayloadJSON bytes, even when the
+// runner must replay the exact durable PendingPayloadJSON bytes, even when the
 // newly collected cycle carries a different event window.
-func TestV2_RestartReplaysExactPendingJSON(t *testing.T) {
+func TestDocker_RestartReplaysExactPendingJSON(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "docker-state.json")
 	s1, err := state.LoadOrCreate(path)
 	if err != nil {
 		t.Fatal(err)
 	}
-	m1 := makeV2(s1, "b1", "s1", 100)
-	if len(m1.Docker.Events) == 0 || len(m1.Docker.Containers) == 0 || m1.Docker.Storage == nil {
-		t.Fatal("makeV2 must carry non-empty events, containers, storage")
+	m1 := makeBatch(s1, "b1", "s1", 100)
+	if m1.Docker.Events == nil || len(*m1.Docker.Events) == 0 || len(m1.Docker.Containers) == 0 || m1.Docker.Storage == nil {
+		t.Fatal("makeBatch must carry non-empty events, containers, storage")
 	}
-	wantJSON := marshalV2JSON(t, m1)
+	wantJSON := marshalDockerJSON(t, m1)
 	pusher1 := &mockPusher{
 		failCount: 1,
 		err:       &push.ErrRetryable{StatusCode: 500, Err: errors.New("down")},
@@ -743,12 +879,12 @@ func TestV2_RestartReplaysExactPendingJSON(t *testing.T) {
 	if s1.GetPending() == nil {
 		t.Fatal("pending must exist")
 	}
-	if got := s1.GetPending(); got.V2PayloadJSON != wantJSON {
-		t.Fatalf("durable payload must equal first-push JSON:\n got=%s\nwant=%s", got.V2PayloadJSON, wantJSON)
+	if got := s1.GetPending(); got.PendingPayloadJSON != wantJSON {
+		t.Fatalf("durable payload must equal first-push JSON:\n got=%s\nwant=%s", got.PendingPayloadJSON, wantJSON)
 	}
 	sum := sha256.Sum256([]byte(wantJSON))
-	if got := s1.GetPending(); got.V2PayloadDigest != hex.EncodeToString(sum[:]) {
-		t.Fatalf("durable digest mismatch: got %q", got.V2PayloadDigest)
+	if got := s1.GetPending(); got.PendingPayloadDigest != hex.EncodeToString(sum[:]) {
+		t.Fatalf("durable digest mismatch: got %q", got.PendingPayloadDigest)
 	}
 	// Simulate process restart: fresh store handle + fresh Runner handle.
 	// Newly collected metrics carry a different batch/window plus fresh
@@ -757,7 +893,7 @@ func TestV2_RestartReplaysExactPendingJSON(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	later := makeV2(s2, "b2", "s2", 200)
+	later := makeBatch(s2, "b2", "s2", 200)
 	later.CPU = 99.5
 	later.Memory = 11.1
 	var gotJSON string
@@ -790,15 +926,15 @@ func TestV2_RestartReplaysExactPendingJSON(t *testing.T) {
 
 // Crash after persist/before push then restart with an identical collector
 // payload must still push the exact durable bytes.
-func TestV2_RestartIdenticalCollectorReplaysIdenticalJSON(t *testing.T) {
+func TestDocker_RestartIdenticalCollectorReplaysIdenticalJSON(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "docker-state.json")
 	s1, err := state.LoadOrCreate(path)
 	if err != nil {
 		t.Fatal(err)
 	}
-	m1 := makeV2(s1, "cb", "cs", 77)
-	wantJSON := marshalV2JSON(t, m1)
+	m1 := makeBatch(s1, "cb", "cs", 77)
+	wantJSON := marshalDockerJSON(t, m1)
 	pusher1 := &mockPusher{
 		failCount: 1,
 		err:       &push.ErrRetryable{StatusCode: 0, Err: errors.New("net down")},
@@ -812,7 +948,7 @@ func TestV2_RestartIdenticalCollectorReplaysIdenticalJSON(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	m2 := makeV2(s2, "cb", "cs", 77)
+	m2 := makeBatch(s2, "cb", "cs", 77)
 	var gotJSON string
 	pusher2 := &mockPusher{
 		handler: func(got *metrics.SystemMetrics) (*push.PushResult, error) {
@@ -834,7 +970,7 @@ func TestV2_RestartIdenticalCollectorReplaysIdenticalJSON(t *testing.T) {
 }
 
 // ---------------------------------------------------------------------------
-// Corrupt durable pending: fail closed, preserve pending, no v2 push.
+// Corrupt durable pending: fail closed, preserve pending, no docker push.
 // ---------------------------------------------------------------------------
 
 // tamperState wraps a DockerState handle and returns a mutated pending copy.
@@ -853,7 +989,7 @@ func (s *tamperState) GetPending() *state.PendingBatch {
 
 func mustPending(t *testing.T, s *state.Store, batch, snap string, proposed int64) *state.PendingBatch {
 	t.Helper()
-	m := makeV2(s, batch, snap, proposed)
+	m := makeBatch(s, batch, snap, proposed)
 	pusher := &mockPusher{
 		failCount: 1,
 		err:       &push.ErrRetryable{StatusCode: 500, Err: errors.New("down")},
@@ -867,16 +1003,16 @@ func mustPending(t *testing.T, s *state.Store, batch, snap string, proposed int6
 	return got
 }
 
-func TestV2_MalformedPendingFailClosed(t *testing.T) {
+func TestDocker_MalformedPendingFailClosed(t *testing.T) {
 	s := mustState(t)
 	mustPending(t, s, "b1", "s1", 100)
 	bad := &tamperState{
 		DockerState: s,
 		mut: func(p *state.PendingBatch) *state.PendingBatch {
 			cp := *p
-			cp.V2PayloadJSON = "{not json"
-			sum := sha256.Sum256([]byte(cp.V2PayloadJSON))
-			cp.V2PayloadDigest = hex.EncodeToString(sum[:])
+			cp.PendingPayloadJSON = "{not json"
+			sum := sha256.Sum256([]byte(cp.PendingPayloadJSON))
+			cp.PendingPayloadDigest = hex.EncodeToString(sum[:])
 			return &cp
 		},
 	}
@@ -887,7 +1023,7 @@ func TestV2_MalformedPendingFailClosed(t *testing.T) {
 			return ackFor("test-vps", "b1", "s1", s.InstanceID(), "committed", "100"), nil
 		},
 	}
-	later := makeV2(s, "b2", "s2", 200)
+	later := makeBatch(s, "b2", "s2", 200)
 	runner := NewWithState(createTestConfig(), &mockCollector{metrics: later}, pusher, bad)
 	err := runner.RunOnce(context.Background())
 	if err == nil || !strings.Contains(err.Error(), "corrupt") {
@@ -904,7 +1040,7 @@ func TestV2_MalformedPendingFailClosed(t *testing.T) {
 	}
 }
 
-func TestV2_TamperedDigestPendingFailClosed(t *testing.T) {
+func TestDocker_TamperedDigestPendingFailClosed(t *testing.T) {
 	s := mustState(t)
 	orig := mustPending(t, s, "b1", "s1", 100)
 	bad := &tamperState{
@@ -912,7 +1048,7 @@ func TestV2_TamperedDigestPendingFailClosed(t *testing.T) {
 		mut: func(p *state.PendingBatch) *state.PendingBatch {
 			cp := *p
 			// Flip payload bytes while keeping the old digest.
-			cp.V2PayloadJSON = strings.Replace(cp.V2PayloadJSON, "b1", "bx", 1)
+			cp.PendingPayloadJSON = strings.Replace(cp.PendingPayloadJSON, "b1", "bx", 1)
 			return &cp
 		},
 	}
@@ -924,7 +1060,7 @@ func TestV2_TamperedDigestPendingFailClosed(t *testing.T) {
 			return ackFor("test-vps", "b1", "s1", s.InstanceID(), "committed", "100"), nil
 		},
 	}
-	later := makeV2(s, "b2", "s2", 200)
+	later := makeBatch(s, "b2", "s2", 200)
 	runner := NewWithState(createTestConfig(), &mockCollector{metrics: later}, pusher, bad)
 	err := runner.RunOnce(context.Background())
 	if err == nil || !strings.Contains(err.Error(), "corrupt") {
@@ -938,7 +1074,7 @@ func TestV2_TamperedDigestPendingFailClosed(t *testing.T) {
 	}
 }
 
-func TestV2_TamperedMetadataPendingFailClosed(t *testing.T) {
+func TestDocker_TamperedMetadataPendingFailClosed(t *testing.T) {
 	s := mustState(t)
 	mustPending(t, s, "b1", "s1", 100)
 	bad := &tamperState{
@@ -947,7 +1083,7 @@ func TestV2_TamperedMetadataPendingFailClosed(t *testing.T) {
 			cp := *p
 			// Metadata divergence: payload is intact but the digest field
 			// no longer matches it.
-			cp.V2PayloadDigest = strings.Repeat("0", 64)
+			cp.PendingPayloadDigest = strings.Repeat("0", 64)
 			return &cp
 		},
 	}
@@ -958,7 +1094,7 @@ func TestV2_TamperedMetadataPendingFailClosed(t *testing.T) {
 			return ackFor("test-vps", "b1", "s1", s.InstanceID(), "committed", "100"), nil
 		},
 	}
-	later := makeV2(s, "b2", "s2", 200)
+	later := makeBatch(s, "b2", "s2", 200)
 	runner := NewWithState(createTestConfig(), &mockCollector{metrics: later}, pusher, bad)
 	err := runner.RunOnce(context.Background())
 	if err == nil || !strings.Contains(err.Error(), "corrupt") {
@@ -972,15 +1108,15 @@ func TestV2_TamperedMetadataPendingFailClosed(t *testing.T) {
 	}
 }
 
-func TestV2_EmptyPayloadPendingFailClosed(t *testing.T) {
+func TestDocker_EmptyPayloadPendingFailClosed(t *testing.T) {
 	s := mustState(t)
 	mustPending(t, s, "b1", "s1", 100)
 	bad := &tamperState{
 		DockerState: s,
 		mut: func(p *state.PendingBatch) *state.PendingBatch {
 			cp := *p
-			cp.V2PayloadJSON = ""
-			cp.V2PayloadDigest = ""
+			cp.PendingPayloadJSON = ""
+			cp.PendingPayloadDigest = ""
 			return &cp
 		},
 	}
@@ -991,7 +1127,7 @@ func TestV2_EmptyPayloadPendingFailClosed(t *testing.T) {
 			return okResult(), nil
 		},
 	}
-	later := makeV2(s, "b2", "s2", 200)
+	later := makeBatch(s, "b2", "s2", 200)
 	runner := NewWithState(createTestConfig(), &mockCollector{metrics: later}, pusher, bad)
 	if err := runner.RunOnce(context.Background()); err == nil {
 		t.Fatal("expected fail-closed error on empty payload")
@@ -1015,15 +1151,15 @@ type failPersist struct {
 
 func (f *failPersist) PersistPending(p state.PendingBatch) error { return f.err }
 
-func TestV2_PersistError_HostContinues(t *testing.T) {
+func TestDocker_PersistError_HostContinues(t *testing.T) {
 	s := mustState(t)
-	m := makeV2(s, "b1", "s1", 100)
-	var sawV2 *bool
+	m := makeBatch(s, "b1", "s1", 100)
+	var sawDocker *bool
 	b := false
-	sawV2 = &b
+	sawDocker = &b
 	pusher := &mockPusher{
 		handler: func(got *metrics.SystemMetrics) (*push.PushResult, error) {
-			*sawV2 = got.Docker != nil
+			*sawDocker = got.Docker != nil
 			return okResult(), nil
 		},
 	}
@@ -1032,19 +1168,19 @@ func TestV2_PersistError_HostContinues(t *testing.T) {
 	if err := runner.RunOnce(context.Background()); err == nil {
 		t.Fatal("expected persist error")
 	}
-	if *sawV2 {
+	if *sawDocker {
 		t.Fatal("persist failure must fall back to host-only push")
 	}
 }
 
-func TestV2_InvalidCollectedBatch_HostContinues(t *testing.T) {
+func TestDocker_InvalidCollectedBatch_HostContinues(t *testing.T) {
 	s := mustState(t)
-	m := makeV2(s, "b1", "s1", 100)
+	m := makeBatch(s, "b1", "s1", 100)
 	m.Docker.AgentInstanceID = "wrong-instance"
-	var sawV2 bool
+	var sawDocker bool
 	pusher := &mockPusher{
 		handler: func(got *metrics.SystemMetrics) (*push.PushResult, error) {
-			sawV2 = got.Docker != nil
+			sawDocker = got.Docker != nil
 			return okResult(), nil
 		},
 	}
@@ -1052,7 +1188,7 @@ func TestV2_InvalidCollectedBatch_HostContinues(t *testing.T) {
 	if err := runner.RunOnce(context.Background()); err == nil {
 		t.Fatal("expected invalid batch error")
 	}
-	if sawV2 {
+	if sawDocker {
 		t.Fatal("invalid batch must push host-only")
 	}
 	if s.GetPending() != nil {
@@ -1064,8 +1200,8 @@ func TestV2_InvalidCollectedBatch_HostContinues(t *testing.T) {
 // Event bodies never logged (static guard)
 // ---------------------------------------------------------------------------
 
-func TestV2_NoEventBodyLogging(t *testing.T) {
+func TestDocker_NoEventBodyLogging(t *testing.T) {
 	// Static guard: run.go must not log event payloads. Search is
-	// intentionally narrow: no Printf with %v of events or marshalled v2.
+	// intentionally narrow: no Printf with %v of events or marshalled docker.
 	_ = fmt.Sprint()
 }

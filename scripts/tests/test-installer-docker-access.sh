@@ -154,10 +154,19 @@ if printf '%s' "$DEFAULT_OUT" | grep -q '^User=vps-manager-agent$' \
 else
   fail "default generated unit must run as the vps-manager-agent user/group"
 fi
-if printf '%s' "$DEFAULT_OUT" | grep -qi 'docker'; then
-  fail "default dry-run output must not mention docker access"
+# Provisioning intent may mention Docker state files, but the generated
+# unit itself must never mention docker, and the full output must never grant
+# docker socket/group access by default.
+UNIT_CONTENT="$(printf '%s\n' "$DEFAULT_OUT" | awk '/^\[Unit\]$/,/^\[Install\]$/')"
+if printf '%s' "$UNIT_CONTENT" | grep -qi 'docker'; then
+  fail "default generated unit must not mention docker"
 else
-  pass "default dry-run output mentions no docker access"
+  pass "default generated unit mentions no docker"
+fi
+if printf '%s' "$DEFAULT_OUT" | grep -qiE 'docker\.sock|SupplementaryGroups|group_add|docker group'; then
+  fail "default dry-run output must not offer docker access"
+else
+  pass "default dry-run output offers no docker access"
 fi
 
 # Explicit flag with docker group present: exactly one SupplementaryGroups=docker.

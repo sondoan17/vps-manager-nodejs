@@ -34,6 +34,7 @@ import {
   AGENT_LIFECYCLE_LOCK,
   buildLifecycleLockAcquireCommand,
   buildLifecycleLockReleaseCommand,
+  buildDockerStateProvisionCommand,
   buildManagedProcessInspectCommand,
   buildManagedProcessStopCommand,
   buildTransactionalStartCommand,
@@ -215,6 +216,17 @@ export class AgentUpgraderService {
         throw new Error("Candidate returned an invalid version");
       candidateVersion = versionOut;
       await ctx.update("validating", 30);
+      // Provision Docker identity/runtime state with the staged binary
+      // BEFORE touching the live service. Fail-closed: a non-zero exit rejects
+      // here, so the live agent keeps running untouched and the staged binary
+      // is cleaned up. An existing identity is preserved (state.Provision is
+      // idempotent) — never rotated on upgrade.
+      await this.ssh.execCommand(
+        vps,
+        buildDockerStateProvisionCommand(staged, dir),
+        auth,
+        30_000,
+      );
       await this.ssh.execCommand(
         vps,
         `${q(staged)} -config ${q(config)} -once`,

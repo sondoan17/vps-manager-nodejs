@@ -20,16 +20,16 @@ var (
 
 // SystemMetrics represents a single snapshot of system metrics.
 type SystemMetrics struct {
-	CPU         float64          `json:"cpu"`
-	Memory      float64          `json:"memory"`
-	Disk        float64          `json:"disk"`
-	LoadAverage float64          `json:"loadAverage"`
-	NetworkRx   float64          `json:"networkRx"`
-	NetworkTx   float64          `json:"networkTx"`
-	Uptime      float64          `json:"uptime"`
-	System      *SystemInfo      `json:"system,omitempty"`
-	Docker      *DockerMetricsV2 `json:"docker,omitempty"`
-	Location    *Location        `json:"location,omitempty"`
+	CPU         float64        `json:"cpu"`
+	Memory      float64        `json:"memory"`
+	Disk        float64        `json:"disk"`
+	LoadAverage float64        `json:"loadAverage"`
+	NetworkRx   float64        `json:"networkRx"`
+	NetworkTx   float64        `json:"networkTx"`
+	Uptime      float64        `json:"uptime"`
+	System      *SystemInfo    `json:"system,omitempty"`
+	Docker      *DockerMetrics `json:"docker,omitempty"`
+	Location    *Location      `json:"location,omitempty"`
 }
 
 // CPUStats holds raw CPU time values from /proc/stat.
@@ -63,7 +63,7 @@ type Collector struct {
 	dockerHTTPClient *http.Client
 	dockerBaseURL    string
 	dockerSocketPath string
-	// Additive v2 runtime hooks (gate defaults off). The key func derives
+	// Additive Docker runtime hooks (gate defaults off). The key func derives
 	// stable opaque containerKeys; the finalize hook lets Runner attach
 	// durable batch metadata before push. Neither performs I/O.
 	dockerKeyFunc     DockerContainerKeyFunc

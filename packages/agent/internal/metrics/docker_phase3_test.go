@@ -78,7 +78,7 @@ func phase3Server(t *testing.T, versionBody, containersBody string, stats func(i
 	}))
 }
 
-func phase3Collect(t *testing.T, server *httptest.Server) (*DockerMetrics, []*http.Request) {
+func phase3Collect(t *testing.T, server *httptest.Server) (*DockerCollectionSnapshot, []*http.Request) {
 	t.Helper()
 	client, rec := newRecordingClient(server.Client())
 	dm := collectDockerFromAPI(context.Background(), client, server.URL)

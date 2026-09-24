@@ -5,7 +5,6 @@ import type { AppConfig } from "../config/app-config.js";
 import type {
   AgentCredential,
   AgentCredentialStatus,
-  AgentDockerMetricsInputV2,
   AgentMetricPayload,
 } from "./agent.models.js";
 import type { MetricSample } from "../metrics/metrics.models.js";
@@ -257,23 +256,7 @@ export class AgentService {
         }
         throw error;
       }
-      const legacyDocker = parsed.docker as unknown as {
-        schemaVersion?: number;
-        containers: Array<Record<string, unknown>>;
-      } | undefined;
-      if (legacyDocker?.schemaVersion === 1) {
-        parsed.docker = {
-          ...(legacyDocker as unknown as AgentDockerMetricsInputV2),
-          schemaVersion: 2,
-          agentInstanceId: "legacy",
-          snapshotId: `legacy-${parsed.collectedAt}`,
-          sourceSequence: "1",
-          containers: legacyDocker.containers.map((container) => ({
-            ...(container as unknown as AgentDockerMetricsInputV2["containers"][number]),
-            containerKey: String(container.id ?? "legacy-container"),
-          })),
-        };
-      }
+
 
       // 3. If vpsId is provided in payload, it must match the credential owner
       if (parsed.vpsId !== undefined && parsed.vpsId !== credential.vpsId) {

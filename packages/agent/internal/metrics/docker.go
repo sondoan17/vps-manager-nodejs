@@ -2,9 +2,10 @@ package metrics
 
 import "time"
 
-// DockerMetrics is a bounded sanitized snapshot of Docker container metrics
-// sent from the Go agent to the backend.
-type DockerMetrics struct {
+// DockerCollectionSnapshot is the bounded legacy collection shape for Docker container
+// metrics. It never reaches the wire: the canonical Docker payload
+// (DockerMetrics) is derived from it.
+type DockerCollectionSnapshot struct {
 	VpsId        string `json:"vpsId,omitempty"`
 	CollectedAt  string `json:"collectedAt,omitempty"`
 	ReceivedAt   string `json:"receivedAt,omitempty"`
@@ -32,7 +33,7 @@ type DockerMetrics struct {
 // DockerContainerMetric is a bounded sanitized per-container metric snapshot.
 type DockerContainerMetric struct {
 	ID     string `json:"id"`
-	fullID string // daemon ID retained internally for v2 derivation
+	fullID string // daemon ID retained internally for key derivation
 
 	Name             string  `json:"name"`
 	Image            string  `json:"image"`
@@ -123,10 +124,10 @@ func dockerUintToInt(value uint64) int {
 	return int(value)
 }
 
-// unavailableDocker returns a sanitized DockerMetrics with the given error code
+// unavailableDocker returns a sanitized DockerCollectionSnapshot with the given error code
 // and Available=false.
-func unavailableDocker(errorCode string) *DockerMetrics {
-	return &DockerMetrics{
+func unavailableDocker(errorCode string) *DockerCollectionSnapshot {
+	return &DockerCollectionSnapshot{
 		Available:   false,
 		ErrorCode:   errorCode,
 		CollectedAt: time.Now().UTC().Format(time.RFC3339),

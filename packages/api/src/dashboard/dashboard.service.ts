@@ -9,11 +9,11 @@ import {
   getDemoMetrics,
 } from "../demo/demo-fixtures.js";
 import type {
+  DashboardDockerMetrics,
   DashboardMetricSample,
   DashboardOverview,
   DashboardSummary,
 } from "../dashboard/dashboard.models.js";
-import type { AgentDockerMetrics } from "../agents/agent.models.js";
 import type { VpsRecord } from "../vps/vps.models.js";
 import { applyAgentState } from "../vps/vps.models.js";
 import {
@@ -22,12 +22,14 @@ import {
   isFreshTimestamp as isFreshTimestampShared,
 } from "../common/host-health.js";
 import type { AgentRepository } from "../persistence/repositories/agent.repository.js";
+import type { JobRepository } from "../persistence/repositories/job.repository.js";
 import type { VpsRepository } from "../persistence/repositories/vps.repository.js";
 import type { MetricRepository } from "../persistence/repositories/metric.repository.js";
-import type { JobRepository } from "../persistence/repositories/job.repository.js";
+import type { DockerMonitoringRepository } from "../persistence/repositories/docker-monitoring.repository.js";
 import {
   AGENT_REPOSITORY,
   APP_CONFIG,
+  DOCKER_MONITORING_REPOSITORY,
   JOB_REPOSITORY,
   METRIC_REPOSITORY,
   VPS_REPOSITORY,
@@ -65,9 +67,12 @@ export function isFreshTimestamp(
 }
 
 export function deriveDockerPresentation(
-  metrics: AgentDockerMetrics,
+  metrics: Omit<
+    DashboardDockerMetrics,
+    "freshness" | "ageSeconds" | "lastUpdatedAt"
+  >,
   now = Date.now(),
-): AgentDockerMetrics {
+): DashboardDockerMetrics {
   const received = Date.parse(metrics.receivedAt);
   const ageSeconds = Number.isFinite(received)
     ? Math.max(0, Math.floor((now - received) / 1000))
@@ -95,6 +100,8 @@ export class DashboardService {
     private readonly metricRepository: MetricRepository,
     @Inject(AGENT_REPOSITORY) private readonly agentRepository: AgentRepository,
     @Inject(JOB_REPOSITORY) private readonly jobRepository: JobRepository,
+    @Inject(DOCKER_MONITORING_REPOSITORY)
+    private readonly dockerMonitoringRepository: DockerMonitoringRepository,
   ) {}
 
   async overview(): Promise<DashboardOverview> {
@@ -150,14 +157,18 @@ export class DashboardService {
     const systemInfo = allSystemInfo.filter((si) => serverIds.has(si.vpsId));
     const jobs = await this.jobRepository.list();
 
-    // Only return Docker metrics for servers with dockerMetricsEnabled === true
-    const allDockerMetrics = await this.agentRepository.listDockerMetrics();
+    // Only return Docker metrics for servers with dockerMetricsEnabled === true,
+    // sourced from the latest committed snapshot per enabled server.
     const enabledIds = new Set(
       servers.filter((s) => s.dockerMetricsEnabled === true).map((s) => s.id),
     );
-    const dockerMetrics = allDockerMetrics
-      .filter((dm) => enabledIds.has(dm.vpsId))
-      .map((dm) => deriveDockerPresentation(dm));
+    const dockerMetrics = (
+      await Promise.all(
+        [...enabledIds].map((vpsId) =>
+          this.readDockerLatest(vpsId, stateById.get(vpsId)?.version),
+        ),
+      )
+    ).filter((dm): dm is DashboardDockerMetrics => dm !== null);
 
     return {
       mode: "local",
@@ -181,5 +192,69 @@ export class DashboardService {
       systemInfo,
       dockerMetrics,
     };
+  }
+
+  /**
+   * Latest committed Docker snapshot for one VPS, presentation-derived.
+   * Returns null when the store has no committed host sample or
+   * authoritative latest. Never reads the legacy agent_docker_metrics
+   * projection.
+   */
+  private async readDockerLatest(
+    vpsId: string,
+    agentVersion: string | undefined,
+  ): Promise<DashboardDockerMetrics | null> {
+    const [latest, hostPage, containers] = await Promise.all([
+      this.dockerMonitoringRepository.getAuthoritativeLatest(vpsId),
+      this.dockerMonitoringRepository.listHostSamples({ vpsId, limit: 1 }),
+      this.dockerMonitoringRepository.listCurrentContainers(vpsId),
+    ]);
+    const host = hostPage.data[0];
+    if (!host || !latest) return null;
+
+    const m = host.metrics;
+    const base: Omit<
+      DashboardDockerMetrics,
+      "freshness" | "ageSeconds" | "lastUpdatedAt"
+    > = {
+      vpsId,
+      agentInstanceId: host.agentInstanceId,
+      snapshotId: host.snapshotId,
+      schemaVersion: 2,
+      collectedAt: host.collectedAt,
+      receivedAt: host.receivedAt,
+      effectiveAt: host.effectiveAt,
+      ...(agentVersion === undefined ? {} : { agentVersion }),
+      sourceSequence: latest.sourceSequence,
+      ...(latest.available === undefined ? {} : { available: latest.available }),
+      ...(latest.errorCode === undefined ? {} : { errorCode: latest.errorCode }),
+      ...(latest.engineVersion === undefined
+        ? {}
+        : { engineVersion: latest.engineVersion }),
+      ...(latest.apiVersion === undefined ? {} : { apiVersion: latest.apiVersion }),
+      containerTotal: m.containerTotal ?? 0,
+      containerRunning: m.containerRunning ?? 0,
+      cpuPercent: m.cpuPercent ?? 0,
+      memoryUsageBytes: m.memoryUsageBytes ?? 0,
+      ...(typeof m.memoryLimitBytes === "number"
+        ? { memoryLimitBytes: m.memoryLimitBytes }
+        : {}),
+      networkRxBytes: m.networkRxBytes ?? 0,
+      networkTxBytes: m.networkTxBytes ?? 0,
+      blockReadBytes: m.blockReadBytes ?? 0,
+      blockWriteBytes: m.blockWriteBytes ?? 0,
+      pids: m.pids ?? 0,
+      containers: containers.map((container) => ({
+        containerKey: container.containerKey,
+        name: container.name ?? container.containerKey,
+        state: container.state ?? "",
+        cpuPercent: container.metrics.cpuPercent,
+        memoryUsageBytes: container.metrics.memoryUsageBytes,
+        pids: container.metrics.pids,
+        ...(container.image === undefined ? {} : { image: container.image }),
+        ...(container.status === undefined ? {} : { status: container.status }),
+      })),
+    };
+    return deriveDockerPresentation(base);
   }
 }

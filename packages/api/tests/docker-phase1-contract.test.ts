@@ -2,8 +2,8 @@ import { describe, expect, it } from "vitest";
 import { agentMetricPayloadSchema } from "../src/agents/agent.schemas.js";
 
 // ── Docker Phase 1 I0 contract tests ─────────────────────────────────────
-// Additive v2 contract only. No ingestion/capability/persistence wiring.
-// V1 validation must remain byte-for-byte the pre-Phase-1 behavior.
+// Additive contract only. No ingestion/capability/persistence wiring.
+// Wire contract: only schemaVersion 2 docker branches are accepted; legacy branches are rejected at ingest.
 
 function corePayload() {
   return {
@@ -19,26 +19,7 @@ function corePayload() {
   };
 }
 
-function validV1Docker(overrides: Record<string, unknown> = {}) {
-  return {
-    collectedAt: new Date().toISOString(),
-    schemaVersion: 1 as const,
-    available: true,
-    containerTotal: 1,
-    containerRunning: 1,
-    cpuPercent: 5,
-    memoryUsageBytes: 1024,
-    networkRxBytes: 10,
-    networkTxBytes: 10,
-    blockReadBytes: 10,
-    blockWriteBytes: 10,
-    pids: 2,
-    containers: [],
-    ...overrides,
-  };
-}
-
-function validV2Container(overrides: Record<string, unknown> = {}) {
+function validDockerContainer(overrides: Record<string, unknown> = {}) {
   return {
     name: "/web-nginx",
     image: "nginx:1.25",
@@ -56,7 +37,7 @@ function validV2Container(overrides: Record<string, unknown> = {}) {
   };
 }
 
-function validV2Docker(overrides: Record<string, unknown> = {}) {
+function validDockerPayload(overrides: Record<string, unknown> = {}) {
   return {
     collectedAt: new Date().toISOString(),
     schemaVersion: 2 as const,
@@ -74,7 +55,7 @@ function validV2Docker(overrides: Record<string, unknown> = {}) {
     blockReadBytes: 10,
     blockWriteBytes: 10,
     pids: 2,
-    containers: [validV2Container()],
+    containers: [validDockerContainer()],
     sampledContainerAggregate: {
       coverage: { detailsSampled: 1, detailsTotalEligible: 1, complete: true },
       cpuPercent: 5,
@@ -108,83 +89,68 @@ function validV2Docker(overrides: Record<string, unknown> = {}) {
   };
 }
 
-describe("I0 v1 compatibility (literal v1 unchanged)", () => {
-  it("accepts a minimal v1 docker branch under the v2 API", () => {
+describe("wire contract (schemaVersion 2 only)", () => {
+  it("rejects a schemaVersion 1 docker branch", () => {
+    expect(() =>
+      agentMetricPayloadSchema.parse({
+        ...corePayload(),
+        docker: { ...validDockerPayload(), schemaVersion: 1 },
+      }),
+    ).toThrow();
+  });
+
+  it("rejects a docker branch without schemaVersion", () => {
+    expect(() => {
+      const { schemaVersion: _dropped, ...withoutSchema } = validDockerPayload();
+      void _dropped;
+      return agentMetricPayloadSchema.parse({
+        ...corePayload(),
+        docker: withoutSchema,
+      });
+    }).toThrow();
+  });
+
+  it("accepts reducedPrecision event context and rejects non-boolean values", () => {
     const parsed = agentMetricPayloadSchema.parse({
       ...corePayload(),
-      docker: validV1Docker(),
-    });
-    expect(parsed.docker?.schemaVersion).toBe(1);
-  });
-
-  it("accepts v1 engine metadata at exact cap lengths", () => {
-    const parsed = agentMetricPayloadSchema.parse({
-      ...corePayload(),
-      docker: validV1Docker({
-        engineVersion: "e".repeat(64),
-        apiVersion: "a".repeat(64),
-        os: "o".repeat(32),
-        architecture: "x".repeat(32),
+      docker: validDockerPayload({
+        events: [
+          {
+            ...validDockerPayload().events[0]!,
+            context: { version: 1, reducedPrecision: true },
+          },
+        ],
       }),
     });
-    expect(parsed.docker?.schemaVersion).toBe(1);
-  });
-
-  it("still rejects v1 unknown fields, >20 containers, and over-limit metadata", () => {
+    expect(parsed.docker?.events[0]?.context?.reducedPrecision).toBe(true);
     expect(() =>
       agentMetricPayloadSchema.parse({
         ...corePayload(),
-        docker: validV1Docker({ extraField: "nope" }),
-      }),
-    ).toThrow();
-    expect(() =>
-      agentMetricPayloadSchema.parse({
-        ...corePayload(),
-        docker: validV1Docker({
-          containers: Array.from({ length: 21 }, () => validV2Container()),
-        }),
-      }),
-    ).toThrow();
-    expect(() =>
-      agentMetricPayloadSchema.parse({
-        ...corePayload(),
-        docker: validV1Docker({ engineVersion: "e".repeat(65) }),
-      }),
-    ).toThrow();
-  });
-
-  it("still enforces the v1 docker collectedAt -10m/+2m window", () => {
-    expect(() =>
-      agentMetricPayloadSchema.parse({
-        ...corePayload(),
-        docker: validV1Docker({
-          collectedAt: new Date(Date.now() - 11 * 60_1000).toISOString(),
-        }),
-      }),
-    ).toThrow();
-    expect(() =>
-      agentMetricPayloadSchema.parse({
-        ...corePayload(),
-        docker: validV1Docker({
-          collectedAt: new Date(Date.now() + 3 * 60_1000).toISOString(),
+        docker: validDockerPayload({
+          events: [
+            {
+              ...validDockerPayload().events[0]!,
+              context: { version: 1, reducedPrecision: "yes" },
+            },
+          ],
         }),
       }),
     ).toThrow();
   });
 });
 
-describe("I0 v2 acceptance + strict unknown fields", () => {
-  it("accepts a full bounded v2 snapshot/event/storage payload", () => {
+describe("I0 acceptance + strict unknown fields", () => {
+  it("accepts a full bounded snapshot/event/storage payload", () => {
     const parsed = agentMetricPayloadSchema.parse({
       ...corePayload(),
-      docker: validV2Docker(),
+      docker: validDockerPayload(),
     });
     expect(parsed.docker?.schemaVersion).toBe(2);
   });
 
-  it("accepts a minimal v2 snapshot without optional branches", () => {
+  it("accepts a minimal snapshot without optional branches", () => {
     const { sampledContainerAggregate, events, eventWindow, fromWatermark, proposedWatermark, batchId, storage, ...rest } =
-      validV2Docker();
+      validDockerPayload();
     void batchId;
     void sampledContainerAggregate;
     void events;
@@ -196,10 +162,10 @@ describe("I0 v2 acceptance + strict unknown fields", () => {
     expect(parsed.docker?.schemaVersion).toBe(2);
   });
 
-  it("rejects unknown fields at every v2 nesting level", () => {
+  it("rejects unknown fields at every nesting level", () => {
     const cases: Array<[string, Record<string, unknown>]> = [
       ["top", { nope: 1 }],
-      ["container", { containers: [validV2Container({ nope: 1 })] }],
+      ["container", { containers: [validDockerContainer({ nope: 1 })] }],
       [
         "aggregate",
         {
@@ -255,7 +221,7 @@ describe("I0 v2 acceptance + strict unknown fields", () => {
         () =>
           agentMetricPayloadSchema.parse({
             ...corePayload(),
-            docker: validV2Docker(extra),
+            docker: validDockerPayload(extra),
           }),
         label,
       ).toThrow();
@@ -266,7 +232,7 @@ describe("I0 v2 acceptance + strict unknown fields", () => {
     expect(() =>
       agentMetricPayloadSchema.parse({
         ...corePayload(),
-        docker: validV1Docker({ schemaVersion: 99 }),
+        docker: { ...validDockerPayload(), schemaVersion: 99 },
       }),
     ).toThrow();
   });
@@ -290,7 +256,7 @@ describe("I0 privacy invariants: forbidden docker detail classes", () => {
     expect(() =>
       agentMetricPayloadSchema.parse({
         ...corePayload(),
-        docker: validV2Docker({ containers: [validV2Container(extra)] }),
+        docker: validDockerPayload({ containers: [validDockerContainer(extra)] }),
       }),
     ).toThrow();
   });
@@ -300,7 +266,7 @@ describe("I0 privacy invariants: forbidden docker detail classes", () => {
     expect(() =>
       agentMetricPayloadSchema.parse({
         ...corePayload(),
-        docker: validV2Docker({
+        docker: validDockerPayload({
           events: [
             {
               eventId: "e1",
@@ -317,7 +283,7 @@ describe("I0 privacy invariants: forbidden docker detail classes", () => {
     expect(() =>
       agentMetricPayloadSchema.parse({
         ...corePayload(),
-        docker: validV2Docker({
+        docker: validDockerPayload({
           storage: {
             formulaVersion: 1 as const,
             images: { supported: true, count: 1, totalBytes: 1 },
@@ -337,7 +303,7 @@ describe("I0 privacy invariants: forbidden docker detail classes", () => {
     expect(() =>
       agentMetricPayloadSchema.parse({
         ...corePayload(),
-        docker: validV2Docker({
+        docker: validDockerPayload({
           events: [
             {
               eventId: "e1",
@@ -352,15 +318,15 @@ describe("I0 privacy invariants: forbidden docker detail classes", () => {
   });
 });
 
-describe("I0 v2 caps and timestamps", () => {
+describe("I0 caps and timestamps", () => {
   it("enforces 20-container, 100-event, and 256-digest caps", () => {
     const containers = Array.from({ length: 21 }, (_, i) =>
-      validV2Container({ containerKey: `ck_${i}` }),
+      validDockerContainer({ containerKey: `ck_${i}` }),
     );
     expect(() =>
       agentMetricPayloadSchema.parse({
         ...corePayload(),
-        docker: validV2Docker({ containers }),
+        docker: validDockerPayload({ containers }),
       }),
     ).toThrow();
 
@@ -373,14 +339,14 @@ describe("I0 v2 caps and timestamps", () => {
     expect(() =>
       agentMetricPayloadSchema.parse({
         ...corePayload(),
-        docker: validV2Docker({ events }),
+        docker: validDockerPayload({ events }),
       }),
     ).toThrow();
 
     expect(() =>
       agentMetricPayloadSchema.parse({
         ...corePayload(),
-        docker: validV2Docker({
+        docker: validDockerPayload({
           proposedWatermark: {
             timeNano: "2",
             boundaryDigests: Array.from({ length: 257 }, (_, i) => `d${i}`),
@@ -390,11 +356,11 @@ describe("I0 v2 caps and timestamps", () => {
     ).toThrow();
   });
 
-  it("enforces v2 collectedAt window, event ISO time, and watermark format", () => {
+  it("enforces collectedAt window, event ISO time, and watermark format", () => {
     expect(() =>
       agentMetricPayloadSchema.parse({
         ...corePayload(),
-        docker: validV2Docker({
+        docker: validDockerPayload({
           collectedAt: new Date(Date.now() - 11 * 60_1000).toISOString(),
         }),
       }),
@@ -402,7 +368,7 @@ describe("I0 v2 caps and timestamps", () => {
     expect(() =>
       agentMetricPayloadSchema.parse({
         ...corePayload(),
-        docker: validV2Docker({
+        docker: validDockerPayload({
           events: [
             {
               eventId: "e1",
@@ -417,13 +383,13 @@ describe("I0 v2 caps and timestamps", () => {
     expect(() =>
       agentMetricPayloadSchema.parse({
         ...corePayload(),
-        docker: validV2Docker({ fromWatermark: { timeNano: "-5", boundaryDigests: [] } }),
+        docker: validDockerPayload({ fromWatermark: { timeNano: "-5", boundaryDigests: [] } }),
       }),
     ).toThrow();
   });
 
   it("requires agentInstanceId/snapshotId/containerKey and rejects bad ids", () => {
-    const base = validV2Docker();
+    const base = validDockerPayload();
     for (const key of ["agentInstanceId", "snapshotId"] as const) {
       const { [key]: _dropped, ...rest } = base;
       void _dropped;
@@ -434,16 +400,16 @@ describe("I0 v2 caps and timestamps", () => {
     expect(() =>
       agentMetricPayloadSchema.parse({
         ...corePayload(),
-        docker: validV2Docker({ containers: [validV2Container({ containerKey: "has space!" })] }),
+        docker: validDockerPayload({ containers: [validDockerContainer({ containerKey: "has space!" })] }),
       }),
     ).toThrow();
   });
 
-  it("rejects v2 gap payload without a typed gapReason enum value", () => {
+  it("rejects gap payload without a typed gapReason enum value", () => {
     expect(() =>
       agentMetricPayloadSchema.parse({
         ...corePayload(),
-        docker: validV2Docker({
+        docker: validDockerPayload({
           eventWindow: { since: "1", until: "2", capped: true, lossy: true, gapReason: "mystery" },
           events: [
             {
@@ -463,7 +429,7 @@ describe("Gate 1 canonical flat plan contract (golden + protocol rules)", () => 
   // Cross-language golden object: flat top-level batch fields, canonical
   // decimal-string exact nanoseconds, identical field names in both
   // languages, contemporary 19-digit nanoseconds.
-  function goldenV2Docker() {
+  function goldenDockerPayload() {
     const since = "1767225590000000000";
     const until = "1767225620000000000";
     return {
@@ -483,7 +449,7 @@ describe("Gate 1 canonical flat plan contract (golden + protocol rules)", () => 
       blockReadBytes: 10,
       blockWriteBytes: 10,
       pids: 2,
-      containers: [validV2Container({ containerKey: "k".repeat(32) })],
+      containers: [validDockerContainer({ containerKey: "k".repeat(32) })],
       sampledContainerAggregate: {
         coverage: {
           detailsSampled: 1,
@@ -534,7 +500,7 @@ describe("Gate 1 canonical flat plan contract (golden + protocol rules)", () => 
   }
 
   it("accepts the canonical golden object with 19-digit nanoseconds", () => {
-    const parsed = agentMetricPayloadSchema.parse({ ...corePayload(), docker: goldenV2Docker() });
+    const parsed = agentMetricPayloadSchema.parse({ ...corePayload(), docker: goldenDockerPayload() });
     expect(parsed.docker?.schemaVersion).toBe(2);
     if (parsed.docker?.schemaVersion === 2) {
       expect(parsed.docker.eventWindow?.since).toBe("1767225590000000000");
@@ -545,17 +511,17 @@ describe("Gate 1 canonical flat plan contract (golden + protocol rules)", () => 
 
   it("rejects partial event batches (all-or-none protocol, batchId included)", () => {
     // A complete batch carries all five flat fields; the golden object has them.
-    const complete = agentMetricPayloadSchema.parse({ ...corePayload(), docker: goldenV2Docker() });
+    const complete = agentMetricPayloadSchema.parse({ ...corePayload(), docker: goldenDockerPayload() });
     expect(complete.docker?.schemaVersion).toBe(2);
     // Empty branch (no event fields at all, batchId absent) is the minimal snapshot.
-    const minimal = goldenV2Docker();
+    const minimal = goldenDockerPayload();
     for (const k of ["batchId", "events", "eventWindow", "fromWatermark", "proposedWatermark"] as const) {
       delete (minimal as Record<string, unknown>)[k];
     }
     const parsedMinimal = agentMetricPayloadSchema.parse({ ...corePayload(), docker: minimal });
     expect(parsedMinimal.docker?.schemaVersion).toBe(2);
     // Events without batchId is partial even when window/watermarks are present.
-    const noBatch = goldenV2Docker();
+    const noBatch = goldenDockerPayload();
     delete (noBatch as Record<string, unknown>).batchId;
     expect(() => agentMetricPayloadSchema.parse({ ...corePayload(), docker: noBatch })).toThrow();
     // batchId alone without the event branch is partial.
@@ -566,7 +532,7 @@ describe("Gate 1 canonical flat plan contract (golden + protocol rules)", () => 
     expect(() =>
       agentMetricPayloadSchema.parse({
         ...corePayload(),
-        docker: validV2Docker({
+        docker: validDockerPayload({
           batchId: undefined,
           eventWindow: undefined,
           fromWatermark: undefined,
@@ -575,7 +541,7 @@ describe("Gate 1 canonical flat plan contract (golden + protocol rules)", () => 
       }),
     ).toThrow();
     // Window alone without batchId/events/watermarks is also partial.
-    const noEvents = goldenV2Docker();
+    const noEvents = goldenDockerPayload();
     delete (noEvents as Record<string, unknown>).batchId;
     delete (noEvents as Record<string, unknown>).events;
     delete (noEvents as Record<string, unknown>).fromWatermark;
@@ -587,7 +553,7 @@ describe("Gate 1 canonical flat plan contract (golden + protocol rules)", () => 
     const badWindow = (since: string, until: string) =>
       agentMetricPayloadSchema.parse({
         ...corePayload(),
-        docker: goldenV2DockerWithWindow(since, until),
+        docker: goldenDockerPayloadWithWindow(since, until),
       });
     // Equal and inverted windows rejected (canonical ordering, no overflow).
     expect(() => badWindow("1767225620000000000", "1767225620000000000")).toThrow();
@@ -597,12 +563,12 @@ describe("Gate 1 canonical flat plan contract (golden + protocol rules)", () => 
       expect(() =>
         agentMetricPayloadSchema.parse({
           ...corePayload(),
-          docker: validV2Docker({ fromWatermark: { timeNano: bad, boundaryDigests: [] } }),
+          docker: validDockerPayload({ fromWatermark: { timeNano: bad, boundaryDigests: [] } }),
         }),
       ).toThrow();
     }
-    function goldenV2DockerWithWindow(since: string, until: string) {
-      const g = goldenV2Docker();
+    function goldenDockerPayloadWithWindow(since: string, until: string) {
+      const g = goldenDockerPayload();
       return {
         ...g,
         eventWindow: { ...g.eventWindow, since, until },
@@ -613,7 +579,7 @@ describe("Gate 1 canonical flat plan contract (golden + protocol rules)", () => 
   });
 
   it("enforces lossy/gapReason consistency", () => {
-    const base = goldenV2Docker();
+    const base = goldenDockerPayload();
     // lossy=true without gapReason rejected.
     expect(() =>
       agentMetricPayloadSchema.parse({
@@ -643,7 +609,7 @@ describe("Gate 1 canonical flat plan contract (golden + protocol rules)", () => 
   });
 
   it("enforces safe watermark/window relations (since=S, until=U)", () => {
-    const base = goldenV2Docker();
+    const base = goldenDockerPayload();
     expect(() =>
       agentMetricPayloadSchema.parse({
         ...corePayload(),
@@ -665,7 +631,7 @@ describe("Gate 1 canonical flat plan contract (golden + protocol rules)", () => 
   ] as const)(
     "abandonment-through-U reason %s requires proposed==until",
     (gapReason) => {
-      const base = goldenV2Docker();
+      const base = goldenDockerPayload();
       const since = base.eventWindow.since as string;
       const until = base.eventWindow.until as string;
       const mid = "1767225605000000000";
@@ -698,7 +664,7 @@ describe("Gate 1 canonical flat plan contract (golden + protocol rules)", () => 
   );
 
   it("allows partial proposed<until for boundary_overflow and capped non-lossy batches", () => {
-    const base = goldenV2Docker();
+    const base = goldenDockerPayload();
     const since = base.eventWindow.since as string;
     const until = base.eventWindow.until as string;
     const mid = "1767225605000000000";
@@ -735,7 +701,7 @@ describe("Gate 1 canonical flat plan contract (golden + protocol rules)", () => 
   });
 
   it("requires containerKey for container actions, allows host-scope omission", () => {
-    const base = goldenV2Docker();
+    const base = goldenDockerPayload();
     // die without containerKey rejected.
     expect(() =>
       agentMetricPayloadSchema.parse({
@@ -774,7 +740,7 @@ describe("Gate 1 canonical flat plan contract (golden + protocol rules)", () => 
   });
 
   it("enforces exact ID/digest limits (32/64/128/64)", () => {
-    const base = goldenV2Docker();
+    const base = goldenDockerPayload();
     // agentInstanceId/containerKey cap at 32; snapshot/batch at 64; event at 128; digest at 64.
     expect(() =>
       agentMetricPayloadSchema.parse({
@@ -832,7 +798,7 @@ describe("Gate 1 canonical flat plan contract (golden + protocol rules)", () => 
   });
 
   it("requires top-level host aggregates and keeps sampled aggregate optional", () => {
-    const base = goldenV2Docker();
+    const base = goldenDockerPayload();
     // Host aggregate is required: dropping cpuPercent fails.
     const { cpuPercent: _dropped, ...withoutHost } = base;
     void _dropped;

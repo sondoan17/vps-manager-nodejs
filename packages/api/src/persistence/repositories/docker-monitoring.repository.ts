@@ -21,6 +21,7 @@ import {
 import type {
   DockerAlert,
   DockerAlertResolutionReason,
+  DockerAuthoritativeLatest,
   DockerUnavailableRuleState,
   DockerCursorPayload,
   DockerEventWatermark,
@@ -160,6 +161,13 @@ export type DockerMonitoringRepository = {
     query: DockerRollupsQuery,
   ): Promise<DockerPage<DockerMetricRollup>>;
   getStorageLatest(vpsId: string): Promise<DockerStorageLatest | undefined>;
+  /**
+   * Authoritative latest ingest identity plus overview fields (availability,
+   * engine metadata) for this VPS; undefined before the first commit.
+   */
+  getAuthoritativeLatest(
+    vpsId: string,
+  ): Promise<DockerAuthoritativeLatest | undefined>;
   listAlerts(query: DockerAlertsQuery): Promise<DockerPage<DockerAlert>>;
   acknowledgeAlert(
     vpsId: string,
@@ -586,6 +594,13 @@ export function createJsonDockerMonitoringRepository(
       });
     },
 
+    async getAuthoritativeLatest(vpsId) {
+      const store = await readStore();
+      const latest = store.latestByVps[vpsId];
+      if (latest === undefined) return undefined;
+      return { ...latest };
+    },
+
     async listCurrentContainers(vpsId) {
       const store = await readStore();
       // Latest committed snapshot identity comes from the committed samples
@@ -623,6 +638,13 @@ export function createJsonDockerMonitoringRepository(
           containerKey: s.containerKey,
           ...(s.name !== undefined ? { name: s.name } : {}),
           ...(s.state !== undefined ? { state: s.state } : {}),
+          ...(s.image !== undefined ? { image: s.image } : {}),
+          ...(s.status !== undefined ? { status: s.status } : {}),
+          metrics: {
+            cpuPercent: s.metrics.cpuPercent,
+            memoryUsageBytes: s.metrics.memoryUsageBytes,
+            pids: s.metrics.pids,
+          },
         }));
     },
 
@@ -963,18 +985,9 @@ export function createJsonDockerMonitoringRepository(
           return store;
         }
         const prior = store.latestByVps[unit.vpsId];
-        const sourceSequence =
-          unit.agentInstanceId === "legacy"
-            ? String((prior ? BigInt(prior.sourceSequence) : 0n) + 1n)
-            : unit.sourceSequence;
+        const sourceSequence = unit.sourceSequence;
         if (
           prior &&
-          unit.agentInstanceId === "legacy" &&
-          prior.activeInstanceId !== "legacy"
-        )
-          throw new DockerIngestConflict("active_instance_conflict");
-        if (
-          prior && unit.agentInstanceId !== "legacy" &&
           prior.activeInstanceId !== unit.agentInstanceId &&
           compareDockerSourceSequence(
             sourceSequence,
@@ -985,7 +998,6 @@ export function createJsonDockerMonitoringRepository(
         if (
           prior &&
           prior.activeInstanceId === unit.agentInstanceId &&
-          unit.agentInstanceId !== "legacy" &&
           compareDockerSourceSequence(
             sourceSequence,
             prior.sourceSequence,
@@ -1012,19 +1024,11 @@ export function createJsonDockerMonitoringRepository(
             agentInstanceId: unit.agentInstanceId,
             batchId: unit.batchId,
             receivedAt: unit.receivedAt,
+            committedWatermark: unit.eventProtocol?.proposedWatermark,
             revision: store.revision,
           };
           return enforceCaps(store);
         }
-        if (
-          prior &&
-          prior.activeInstanceId !== unit.agentInstanceId &&
-          compareDockerSourceSequence(
-            sourceSequence,
-            prior.sourceSequence,
-          ) <= 0
-        )
-          throw new DockerIngestConflict("active_instance_conflict");
         const watermark = store.watermarks.find(
           (w) =>
             w.vpsId === unit.vpsId &&
@@ -1323,10 +1327,15 @@ export function createJsonDockerMonitoringRepository(
           activeInstanceId: unit.agentInstanceId,
           snapshotId: unit.snapshotId,
           sourceSequence,
+          ...(unit.available === undefined ? {} : { available: unit.available }),
+          ...(unit.errorCode === undefined ? {} : { errorCode: unit.errorCode }),
+          ...(unit.engineVersion === undefined
+            ? {}
+            : { engineVersion: unit.engineVersion }),
+          ...(unit.apiVersion === undefined ? {} : { apiVersion: unit.apiVersion }),
           receivedAt: unit.receivedAt,
           updatedAt: unit.receivedAt,
           revision: store.revision,
-          compatibility: unit.compatibility,
         };
         const committed = {
           status: "committed" as const,

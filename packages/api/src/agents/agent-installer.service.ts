@@ -17,6 +17,7 @@ import { AuditService } from "../audit/audit.service.js";
 import { JobRunnerService } from "../jobs/job-runner.service.js";
 import { JobService } from "../jobs/job.service.js";
 import { AgentLifecycleCoordinator } from "./agent-lifecycle-coordinator.js";
+import { buildDockerStateProvisionCommand } from "./agent-lifecycle-remote.js";
 import { sanitiseError } from "../jobs/job-runner.service.js";
 import {
   APP_CONFIG,
@@ -239,6 +240,18 @@ export class AgentInstallerService {
             configContent,
             0o600,
             sshAuth,
+          );
+
+          // Provision Docker identity/runtime state before any agent run.
+          // Fail-closed: a non-zero exit rejects here, the install job fails,
+          // and neither -once nor the background start is reached. An existing
+          // identity is preserved (state.Provision is idempotent).
+          await ctx.update("provisioning-docker-state", 60);
+          await this.ssh.execCommand(
+            vps,
+            buildDockerStateProvisionCommand(remoteBinary, remoteDir),
+            sshAuth,
+            30_000,
           );
 
           // Run -once validation

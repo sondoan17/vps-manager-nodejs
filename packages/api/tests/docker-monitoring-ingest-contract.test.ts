@@ -30,7 +30,6 @@ const requiredUnit: DockerIngestUnit = {
   requestDigestVersion: 1,
   receivedAt: hostSample.receivedAt,
   sourceSequence: "90071992547409931234567890",
-  compatibility: { latest: true },
   hostSample,
 };
 

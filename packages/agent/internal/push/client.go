@@ -65,7 +65,7 @@ func (e *ErrRetryable) Unwrap() error { return e.Err }
 
 // ConfigResponse carries runtime configuration returned by the server
 // after a successful metrics push. DockerMetricsEnabled is required;
-// v2 capability fields are optional and omitted by old servers.
+// Docker capability fields are optional and omitted by old servers.
 type ConfigResponse struct {
 	DockerMetricsEnabled bool  `json:"dockerMetricsEnabled"`
 	History              *bool `json:"history,omitempty"`
@@ -80,7 +80,7 @@ type Watermark struct {
 	BoundaryDigests []string `json:"boundaryDigests"`
 }
 
-// DockerAck is the typed v2 ingest acknowledgement.
+// DockerAck is the typed Docker ingest acknowledgement.
 type DockerAck struct {
 	IngestStatus       string    `json:"ingestStatus"`
 	BatchId            string    `json:"batchId"`
@@ -90,7 +90,7 @@ type DockerAck struct {
 }
 
 // PushResult is the typed structured result of a successful push.
-// Docker is nil for old servers, stripped retries, and invalid v2 acks
+// Docker is nil for old servers, stripped retries, and invalid Docker acks
 // (fail closed).
 type PushResult struct {
 	VpsId      string          `json:"vpsId"`
@@ -148,9 +148,8 @@ type payload struct {
 	Docker       any                 `json:"docker,omitempty"`
 }
 
-// selectDockerBranch returns the `docker` wire branch for this push:
-// the canonical v2 batch when the gate is enabled and a v2 batch is
-// present, otherwise the legacy v1 snapshot (possibly nil, omitted).
+// selectDockerBranch returns the `docker` wire branch for this push: the
+// canonical Docker batch when present, otherwise nil (branch omitted).
 func (c *Client) selectDockerBranch(m *metrics.SystemMetrics) any {
 	if m == nil {
 		return nil
@@ -240,7 +239,7 @@ func sanitizeConfig(cfg *ConfigResponse) *ConfigResponse {
 
 // buildSuccessResult parses a 2xx body of the form
 // {data:{ok,vpsId,receivedAt,config,docker?}}. Old responses without docker
-// remain valid with nil ack. Invalid v2 acks fail closed to nil ack.
+// remain valid with nil ack. Invalid Docker acks fail closed to nil ack.
 // Never logs response bodies.
 func buildSuccessResult(body []byte) *PushResult {
 	failClosed := &PushResult{Config: &ConfigResponse{DockerMetricsEnabled: false}}
@@ -360,9 +359,9 @@ func (c *Client) Push(ctx context.Context, m *metrics.SystemMetrics) (*PushResul
 	case resp.StatusCode == 409:
 		return nil, &ErrConflict{StatusCode: resp.StatusCode, Body: sanitizedBody}
 	case resp.StatusCode == 400 && (m.Docker != nil):
-		// Fail closed for downgraded/old servers or schema mismatches: disable
-		// Docker collection and the v2 gate, then retry once without either
-		// Docker branch (v1 or v2) so core host metrics do not become fragile.
+		// Fail closed for downgraded servers or schema mismatches: disable
+		// Docker collection and the Docker gate, then retry once without the
+		// Docker branch so core host metrics keep flowing.
 		c.disableDockerConfig()
 		stripped := *m
 		stripped.Docker = nil

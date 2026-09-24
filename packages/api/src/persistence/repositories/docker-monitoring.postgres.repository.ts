@@ -24,6 +24,7 @@ import {
 import type {
   DockerAlert,
   DockerAlertResolutionReason,
+  DockerAuthoritativeLatest,
   DockerContainerSample,
   DockerCurrentContainer,
   DockerCursorPayload,
@@ -564,6 +565,42 @@ export function createPostgresDockerMonitoringRepository(
       };
     },
 
+    async getAuthoritativeLatest(
+      vpsId: string,
+    ): Promise<DockerAuthoritativeLatest | undefined> {
+      const result = await pool.query<{
+        active_instance_id: string;
+        active_snapshot_id: string;
+        source_sequence: string;
+        available: boolean | null;
+        error_code: string | null;
+        engine_version: string | null;
+        api_version: string | null;
+        received_at: Date | string;
+        updated_at: Date | string;
+        revision: string;
+      }>(
+        `SELECT active_instance_id,active_snapshot_id,source_sequence,available,error_code,engine_version,api_version,received_at,updated_at,revision FROM docker_ingest_latest WHERE vps_id = $1`,
+        [vpsId],
+      );
+      const row = result.rows[0];
+      if (row === undefined) return undefined;
+      return {
+        activeInstanceId: row.active_instance_id,
+        snapshotId: row.active_snapshot_id,
+        sourceSequence: String(row.source_sequence),
+        ...(row.available == null ? {} : { available: row.available }),
+        ...(row.error_code == null ? {} : { errorCode: row.error_code }),
+        ...(row.engine_version == null
+          ? {}
+          : { engineVersion: row.engine_version }),
+        ...(row.api_version == null ? {} : { apiVersion: row.api_version }),
+        receivedAt: requiredIsoString(row.received_at),
+        updatedAt: requiredIsoString(row.updated_at),
+        revision: Number(row.revision),
+      };
+    },
+
     async listCurrentContainers(
       vpsId: string,
     ): Promise<DockerCurrentContainer[]> {
@@ -587,8 +624,11 @@ export function createPostgresDockerMonitoringRepository(
         container_key: string;
         name: string | null;
         state: string | null;
+        image: string | null;
+        status: string | null;
+        metrics: { cpuPercent: number; memoryUsageBytes: number; pids: number };
       }>(
-        `SELECT agent_instance_id, container_key, name, state ` +
+        `SELECT agent_instance_id, container_key, name, state, image, status, metrics ` +
           `FROM docker_metric_samples WHERE vps_id = $1 ` +
           `AND agent_instance_id = $2 AND snapshot_id = $3 ` +
           `AND container_key IS NOT NULL ORDER BY container_key ASC, id ASC`,
@@ -599,6 +639,13 @@ export function createPostgresDockerMonitoringRepository(
         containerKey: row.container_key,
         ...(row.name != null ? { name: row.name } : {}),
         ...(row.state != null ? { state: row.state } : {}),
+        ...(row.image != null ? { image: row.image } : {}),
+        ...(row.status != null ? { status: row.status } : {}),
+        metrics: {
+          cpuPercent: row.metrics.cpuPercent,
+          memoryUsageBytes: row.metrics.memoryUsageBytes,
+          pids: row.metrics.pids,
+        },
       }));
     },
 
@@ -1009,15 +1056,10 @@ export function createPostgresDockerMonitoringRepository(
             [unit.vpsId],
           )
         ).rows[0];
-        const isLegacy = unit.agentInstanceId === "legacy";
-        const sourceSequence = isLegacy
-          ? String((latest ? BigInt(latest.source_sequence) : 0n) + 1n)
-          : unit.sourceSequence;
+        const sourceSequence = unit.sourceSequence;
         const seq = BigInt(sourceSequence);
-        if (latest && isLegacy && latest.active_instance_id !== "legacy")
-          throw new DockerIngestConflict("active_instance_conflict");
         if (
-          latest && !isLegacy &&
+          latest &&
           latest.active_instance_id === unit.agentInstanceId &&
           seq < BigInt(latest.source_sequence)
         ) {
@@ -1028,6 +1070,9 @@ export function createPostgresDockerMonitoringRepository(
             agentInstanceId: unit.agentInstanceId,
             ...(unit.batchId ? { batchId: unit.batchId } : {}),
             receivedAt: unit.receivedAt,
+            ...(unit.eventProtocol
+              ? { committedWatermark: unit.eventProtocol.proposedWatermark }
+              : {}),
             revision: Number(latest.revision),
           };
           return result;
@@ -1322,7 +1367,7 @@ export function createPostgresDockerMonitoringRepository(
         );
         for (const sample of unit.containerSamples ?? [])
           await client.query(
-            `INSERT INTO docker_metric_samples (id,vps_id,agent_instance_id,snapshot_id,container_key,name,state,collected_at,received_at,effective_at,metrics,coverage) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12) ON CONFLICT DO NOTHING`,
+            `INSERT INTO docker_metric_samples (id,vps_id,agent_instance_id,snapshot_id,container_key,name,state,image,status,collected_at,received_at,effective_at,metrics,coverage) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14) ON CONFLICT DO NOTHING`,
             [
               sample.id,
               unit.vpsId,
@@ -1331,6 +1376,8 @@ export function createPostgresDockerMonitoringRepository(
               sample.containerKey,
               sample.name ?? null,
               sample.state ?? null,
+              sample.image ?? null,
+              sample.status ?? null,
               new Date(sample.collectedAt),
               received,
               new Date(sample.effectiveAt),
@@ -1372,16 +1419,22 @@ export function createPostgresDockerMonitoringRepository(
               event.oomKilled ?? null,
             ],
           );
+        // docker_ingest_latest.compatibility is NOT NULL jsonb object (migration
+        // 014); the domain no longer threads it, so write the constant marker.
         await client.query(
-          "INSERT INTO docker_ingest_latest (vps_id,active_instance_id,active_snapshot_id,source_sequence,received_at,updated_at,revision,compatibility) VALUES ($1,$2,$3,$4,$5,$5,$6,$7) ON CONFLICT (vps_id) DO UPDATE SET active_instance_id=EXCLUDED.active_instance_id,active_snapshot_id=EXCLUDED.active_snapshot_id,source_sequence=EXCLUDED.source_sequence,received_at=EXCLUDED.received_at,updated_at=EXCLUDED.updated_at,revision=EXCLUDED.revision,compatibility=EXCLUDED.compatibility",
+          "INSERT INTO docker_ingest_latest (vps_id,active_instance_id,active_snapshot_id,source_sequence,available,error_code,engine_version,api_version,received_at,updated_at,revision,compatibility) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$9,$10,$11) ON CONFLICT (vps_id) DO UPDATE SET active_instance_id=EXCLUDED.active_instance_id,active_snapshot_id=EXCLUDED.active_snapshot_id,source_sequence=EXCLUDED.source_sequence,available=EXCLUDED.available,error_code=EXCLUDED.error_code,engine_version=EXCLUDED.engine_version,api_version=EXCLUDED.api_version,received_at=EXCLUDED.received_at,updated_at=EXCLUDED.updated_at,revision=EXCLUDED.revision,compatibility=EXCLUDED.compatibility",
           [
             unit.vpsId,
             unit.agentInstanceId,
             unit.snapshotId,
             sourceSequence,
+            unit.available ?? null,
+            unit.errorCode ?? null,
+            unit.engineVersion ?? null,
+            unit.apiVersion ?? null,
             received,
             revision,
-            unit.compatibility,
+            { latest: true },
           ],
         );
         const result: DockerIngestResult = {

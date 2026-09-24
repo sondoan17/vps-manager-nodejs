@@ -1,4 +1,4 @@
-import { mkdtemp, readFile, rm } from "node:fs/promises";
+import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
@@ -22,7 +22,6 @@ function unit(n: string, o: Partial<DockerIngestUnit> = {}): DockerIngestUnit {
     requestDigestVersion: 1,
     receivedAt,
     sourceSequence: n,
-    compatibility: { latest: true },
     hostSample: {
       id: `h${n}`,
       vpsId: "v",
@@ -85,44 +84,68 @@ describe("Docker JSON I3 ingest", () => {
     await rm(dir, { recursive: true, force: true });
   });
 
-  it("allocates durable legacy sequences, preserves replay idempotency, and rejects legacy after v2", async () => {
-    const legacy = (n: string) => unit(n, {
-      agentInstanceId: "legacy",
-      snapshotId: `legacy-${n}`,
-      sourceSequence: "1",
-      hostSample: {
-        ...unit(n).hostSample,
-        agentInstanceId: "legacy",
-        snapshotId: `legacy-${n}`,
-      },
-    });
-    const first = legacy("1");
-    const second = legacy("2");
-    expect((await repo.ingestUnit(first)).ingestStatus).toBe("committed");
-    expect((await repo.ingestUnit(second)).ingestStatus).toBe("committed");
-    expect((await repo.ingestUnit(first)).ingestStatus).toBe("already_committed");
-    const persisted = JSON.parse(await readFile(join(dir, "store.json"), "utf8")) as {
-      latestByVps: Record<string, { sourceSequence: string }>;
-      snapshots: Array<{ snapshotId: string; sourceSequence: string }>;
-    };
-    expect(persisted.latestByVps.v.sourceSequence).toBe("2");
-    expect(persisted.snapshots.filter((s) => s.snapshotId.startsWith("legacy-")).map((s) => s.sourceSequence)).toEqual(["1", "2"]);
-
-    await repo.ingestUnit(unit("10", { agentInstanceId: "v2" }));
-    await expect(repo.ingestUnit(legacy("3"))).rejects.toMatchObject({ code: "active_instance_conflict" });
+  it("returns batchId and committedWatermark on replay_ignored for event batches", async () => {
+    expect((await repo.ingestUnit(batch("5"))).ingestStatus).toBe("committed");
+    const replay = await repo.ingestUnit(batch("3"));
+    expect(replay.ingestStatus).toBe("replay_ignored");
+    expect(replay.batchId).toBe("b3");
+    expect(replay.committedWatermark?.timeNano).toBe("3");
   });
 
-  it("serializes concurrent legacy allocations without duplicate sequences", async () => {
-    const legacy = (n: string) => unit(n, {
-      agentInstanceId: "legacy",
-      snapshotId: `legacy-${n}`,
-      sourceSequence: "1",
-      hostSample: { ...unit(n).hostSample, agentInstanceId: "legacy", snapshotId: `legacy-${n}` },
+  it("persists authoritative latest overview fields and current container identity", async () => {
+    const withOverview = unit("7", {
+      available: false,
+      errorCode: "socket_missing",
+      engineVersion: "25.0.3",
+      apiVersion: "1.44",
+      containerSamples: [
+        {
+          id: "c7",
+          vpsId: "v",
+          agentInstanceId: "i",
+          snapshotId: "s7",
+          collectedAt: t(7),
+          receivedAt: t(7),
+          effectiveAt: t(7),
+          containerKey: "ck_7",
+          name: "/web",
+          state: "running",
+          image: "nginx:1.25",
+          status: "Up 1 hour",
+          metrics: {
+            cpuPercent: 1,
+            memoryUsageBytes: 2,
+            networkRxBytes: 3,
+            networkTxBytes: 4,
+            blockReadBytes: 5,
+            blockWriteBytes: 6,
+            pids: 7,
+          },
+        },
+      ],
     });
-    const results = await Promise.all([repo.ingestUnit(legacy("1")), repo.ingestUnit(legacy("2"))]);
-    expect(results.map((r) => r.ingestStatus).sort()).toEqual(["committed", "committed"]);
-    const persisted = JSON.parse(await readFile(join(dir, "store.json"), "utf8")) as { snapshots: Array<{ snapshotId: string; sourceSequence: string }> };
-    expect(persisted.snapshots.map((s) => s.sourceSequence).sort()).toEqual(["1", "2"]);
+    expect((await repo.ingestUnit(withOverview)).ingestStatus).toBe("committed");
+    expect(await repo.getAuthoritativeLatest("v")).toMatchObject({
+      activeInstanceId: "i",
+      snapshotId: "s7",
+      sourceSequence: "7",
+      available: false,
+      errorCode: "socket_missing",
+      engineVersion: "25.0.3",
+      apiVersion: "1.44",
+    });
+    expect(await repo.getAuthoritativeLatest("missing-vps")).toBeUndefined();
+    expect(await repo.listCurrentContainers("v")).toEqual([
+      {
+        agentInstanceId: "i",
+        containerKey: "ck_7",
+        name: "/web",
+        state: "running",
+        image: "nginx:1.25",
+        status: "Up 1 hour",
+        metrics: { cpuPercent: 1, memoryUsageBytes: 2, pids: 7 },
+      },
+    ]);
   });
 
   it("commits eventless units, exact replays, and rejects snapshot digest changes without mutation", async () => {
