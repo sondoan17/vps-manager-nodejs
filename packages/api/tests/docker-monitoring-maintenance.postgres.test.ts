@@ -196,6 +196,7 @@ describe("docker monitoring postgres maintenance (PostgreSQL)", () => {
     const migrations = await loadMigrations();
     await pool.query(migrations.find((m) => m.id === "013_docker_monitoring.sql")!.sql);
     await pool.query(migrations.find((m) => m.id === "014_docker_ingest.sql")!.sql);
+    await pool.query(migrations.find((m) => m.id === "020_docker_v2_overview.sql")!.sql);
     repo = createPostgresDockerMonitoringRepository(pool as never);
   }, 30000);
 

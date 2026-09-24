@@ -106,6 +106,10 @@ describe("docker monitoring repository (PostgreSQL, I1)", () => {
       (m) => m.id === "016_docker_alert_resolution.sql",
     )!;
     await pool.query(alertResolutionMigration.sql);
+    const overviewMigration = (await loadMigrations()).find(
+      (m) => m.id === "020_docker_v2_overview.sql",
+    )!;
+    await pool.query(overviewMigration.sql);
     repo = createPostgresDockerMonitoringRepository(pool as never);
   }, 30000);
 
