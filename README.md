@@ -1,177 +1,91 @@
 # VPS Operations Dashboard
 
-Self-hosted VPS Operations Dashboard with safe demo mode, SSH key provisioning, simulated realtime metrics, command jobs, demo terminal output, audit logs, Docker deployment, and CI.
+A self-hosted dashboard for monitoring and managing VPS instances. The project includes a NestJS API, a React/Vite web interface, and an optional Go agent for host metrics. Demo mode uses simulated data, so you can explore the dashboard without a VPS or real SSH credentials.
 
-The project is portfolio-ready without real VPS credentials: `APP_MODE=demo` seeds sample servers, fake metrics, job progress, audit events, and canned terminal output while disabling real SSH/network operations.
-
-## Screenshots
-
-Screenshots are captured under `docs/screenshots/` after running the production dashboard locally:
-
-- `docs/screenshots/overview.png` - dashboard overview, server health, jobs, metrics, audit, and demo terminal
-- `docs/screenshots/mobile.png` - mobile responsive layout
-
-## Demo Quickstart
-
-```bash
-npm ci
-npm run build
-APP_MODE=demo npm start
-```
-
-Open `http://localhost:3000`. Demo mode needs no credentials and shows the banner `Demo mode: simulated servers, no real SSH connections.`
-
-## Docker Quickstart
-
-```bash
-# Set the Postgres password first
-export POSTGRES_PASSWORD=your_secure_password_here
-docker compose up --build
-```
-
-The Compose service defaults to `APP_MODE=demo`, exposes `http://localhost:3000`, and mounts writable volumes for `/app/data` and `/app/private`.
-
-`POSTGRES_PASSWORD` is **required** — it is used by the Postgres container on first start and by the API to construct `DATABASE_URL`. Set it via environment variable or `.env` file.
-
-Before the API starts, the Compose stack automatically runs a one-shot `migrate` service that applies core database migrations (non-optional). The API waits for migrations to complete successfully. Optional TimescaleDB migrations remain manual (see `docs/postgres-timescale-storage.md`).
+> **License status:** This repository does not currently contain a `LICENSE` file. No license to use, modify, or distribute the source code has been granted. Contact the maintainer before using it beyond the permissions provided by GitHub's terms.
 
 ## Features
 
-- Safe demo dashboard with seeded servers: `edge-sgp-01`, `api-fra-02`, and `worker-sfo-01`.
-- Health cards for total, healthy, warning, unreachable, and running jobs.
-- Simulated command jobs with queued/running/succeeded progress states and bounded output previews.
-- Fresh/stale metric cards for CPU, memory, disk, load, network, and uptime samples.
-- Audit timeline for dashboard views, job state transitions, terminal opens, and blocked SSH host attempts.
-- Read-only demo terminal with canned commands and no real network access.
-- Local VPS CRUD and SSH key provisioning flow with one-time passwords only.
-- Runtime safety config, local-mode bearer auth, request IDs, rate limiting, Helmet headers, redaction, and SSH host policy.
-- Production web build served from root `public/` with static path protection.
+- Server health overview and CPU, memory, disk, system load, network, and uptime metrics.
+- VPS management, SSH key provisioning and verification, command jobs, and audit logs.
+- Demo mode with simulated servers, metrics, job progress, and terminal output; no real SSH connections.
+- Local mode with dashboard authentication, SSH host restrictions, and an optional web terminal.
+- Optional host agent for metrics collection and Docker monitoring. Docker socket access is not granted by default.
+- JSON or PostgreSQL storage, with Docker Compose and a Linux amd64 installer available for deployment.
 
-## Architecture
+## Requirements
 
-- `packages/api/` - NestJS on an Express adapter, controllers, services, repositories, config, security middleware, and tests.
-- `packages/web/` - Vite React dashboard with shadcn-style local primitives and Tailwind design tokens.
-- `data/` - JSON persistence for portfolio MVP data files.
-- `private/` - local SSH key material, gitignored and never returned by the API.
-- `public/` - built frontend assets served by the backend.
-- `dist/` - compiled backend; `npm start` runs `node dist/server.js`.
+- From source: a Node.js version compatible with the workspaces (Node.js 22 recommended), npm, and Git.
+- With Docker Compose: Docker and Docker Compose; Node.js is not required on the host.
+- With the installer: Linux amd64, systemd if installing the host agent, and `sudo` access. Review the script before running it with administrator privileges.
 
-See `docs/architecture.md` for module details.
-
-## Security Model
-
-Demo mode cannot call real SSH. Local mode requires a DB-backed admin password for dashboard access (set via `npm run set-dashboard-password`). Real SSH operations remain guarded by host policy and explicit config. Passwords are accepted only for provisioning requests and are never stored in browser storage, JSON files, logs, public assets, or API responses.
-
-See `docs/security.md` for the full model.
-
-## One-Command Install (Linux amd64)
+## Try it locally (no VPS required)
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/sondoan17/vps-manager-nodejs/main/scripts/install.sh | sudo bash
+git clone https://github.com/sondoan17/vps-manager-nodejs.git
+cd vps-manager-nodejs
+npm ci
+npm run build
+npm start
 ```
 
-This installs:
+The default is `APP_MODE=demo`. Open <http://localhost:3000>; the API health endpoint is <http://localhost:3000/api/health>. Demo mode uses simulated data and does not establish real SSH connections.
 
-- **Docker app**: Web UI + API server in containers (`/opt/vps-manager`)
-- **Host agent**: systemd unit that collects system metrics and pushes to the local API
-- **Dashboard**: accessible at `http://<your-ip>:38280`
+For development, run `npm run dev` (API) and `npm run dev:web` (Vite) in separate terminals. Copy `.env.example` to `.env` and adjust settings as needed; never commit secrets. See [.env.example](.env.example) for environment variables and defaults.
 
-The installer:
+## Deploy with Docker Compose
 
-1. Detects Linux amd64 and Docker (auto-installs with `--install-docker`)
-2. Generates secure config in `/opt/vps-manager/.env` (mode 0600)
-3. Creates a `docker-compose.yml` with API (loopback `127.0.0.1:38281`) and Web (`:38280`)
-4. Pulls images and starts containers
-5. Sets the dashboard password
-6. Extracts the agent binary from the API container
-7. Bootstraps an agent credential and config
-8. Installs the systemd agent via `install-local-agent.sh`
+Create a `.env` file in the repository root with a strong PostgreSQL password:
 
-Options: `--help`, `--dry-run`, `--app-dir`, `--app-port`, `--api-port`, `--api-image`, `--web-image`, `--backend-url`, `--allow-insecure-backend-url`, `--dashboard-password-file`, `--install-docker`, `--skip-pull`, `--skip-agent`, `--rotate-agent`, `--enable-docker-metrics-access`.
+```dotenv
+POSTGRES_PASSWORD=replace_with_a_strong_password
+```
 
-Docker metrics are off by default and can be toggled per server from the dashboard. To let the host systemd agent read Docker metrics, install it with `--enable-docker-metrics-access`; this adds `SupplementaryGroups=docker` to the service unit. The Docker group is root-equivalent, so only enable this on hosts where you accept that permission. The installer never changes Docker socket permissions and fails safely if the `docker` group is missing. The Docker collector reports bounded container names, image names, status, and resource usage only; it does not collect env vars, labels, mounts, logs, or commands. To revoke Docker access later, reinstall the agent without the flag and restart the service (`sudo systemctl restart vps-manager-agent`). See `docs/security.md` for revoke/troubleshooting details.
-
-### Docker App Only (without host agent)
+Then run:
 
 ```bash
-sudo ./scripts/install.sh --skip-agent
+docker compose up --build -d
 ```
 
-### Host Agent Only (if app is already running)
+Open <http://localhost:3000>. Compose starts PostgreSQL, runs migrations before starting the API, and serves the web interface through nginx. The API is bound to `127.0.0.1:3001` on the host. Demo mode remains the default. Data and private keys are stored in Docker volumes: `docker compose down` preserves them, while `docker compose down -v` **deletes the data**. Optional TimescaleDB migrations are described in the [storage guide](docs/postgres-timescale-storage.md).
+
+## Install on a Linux amd64 VPS
+
+Use [scripts/install.sh](scripts/install.sh) to deploy the application and host agent. **Review the script and its options before running it with sudo**:
 
 ```bash
-# Extract binary and bootstrap credential
-umask 077
-AGENT_CONFIG="$(mktemp)"
-docker compose -f /opt/vps-manager/docker-compose.yml exec -T api node dist/scripts/bootstrap-local-agent.js \
-  --backend-url http://127.0.0.1:38280 \
-  --config-only \
-  --rotate > "$AGENT_CONFIG"
-
-docker cp $(docker compose -f /opt/vps-manager/docker-compose.yml ps -q api):/app/agent/vps-agent-linux-amd64 /tmp/vps-agent
-
-sudo ./scripts/install-local-agent.sh --binary /tmp/vps-agent --config "$AGENT_CONFIG"
-# Optional Docker metrics access:
-# sudo ./scripts/install-local-agent.sh --binary /tmp/vps-agent --config "$AGENT_CONFIG" --enable-docker-metrics-access
-KEEP_CREDENTIAL_ID="$(sed -n 's/.*"token"[[:space:]]*:[[:space:]]*"vma_\([^"]*\)_.*/\1/p' "$AGENT_CONFIG" | head -1)"
-docker compose -f /opt/vps-manager/docker-compose.yml exec -T api node dist/scripts/revoke-agent-credentials.js \
-  --vps-id vps_local_host \
-  --keep-credential-id "$KEEP_CREDENTIAL_ID"
-rm -f "$AGENT_CONFIG" /tmp/vps-agent
+sudo ./scripts/install.sh --help
+sudo ./scripts/install.sh --dry-run
+sudo ./scripts/install.sh
 ```
 
-### Uninstall
+The installer creates configuration under `/opt/vps-manager`, starts the containers, sets the dashboard password, and installs a systemd agent to collect host metrics. The dashboard is available at `http://<server-ip>:38280` by default. Use `--skip-agent` to install only the application, or `--install-docker` to let the installer install Docker. Run `--help` for other options.
+
+**Deployment security:** Do not expose the local-mode dashboard to the public Internet over plain HTTP. Use HTTPS and configure the origin and cookies accordingly. Enable `ENABLE_WEB_TERMINAL=true` only in `APP_MODE=local`, with the required settings documented in [.env.example](.env.example). The agent has no Docker access by default; `--enable-docker-metrics-access` grants membership in the `docker` group, which is effectively root-equivalent on the host. Read the [security model](docs/security.md) before enabling SSH, the terminal, or Docker access.
+
+## Configuration and project layout
+
+| Component | Location | Purpose |
+| --- | --- | --- |
+| API | `packages/api/` | NestJS/Express, authentication, VPS, metrics, jobs, audit |
+| Web | `packages/web/` | React/Vite dashboard |
+| Agent | `packages/agent/` | Host metrics collection and authorized Docker operations |
+| Local data | `data/`, `private/` | JSON data and SSH keys; not served over HTTP |
+| Deployment | `docker-compose.yml`, `scripts/` | Compose, migrations, and host agent installation |
+
+`APP_MODE=demo` is for public exploration without real SSH. `APP_MODE=local` is for managing real infrastructure and requires a dashboard administrator password; set it with `npm run set-dashboard-password` (or the corresponding production script). `STORAGE_DRIVER=json` is the default when running directly; Compose uses PostgreSQL and automatically runs migrations. See the [architecture](docs/architecture.md), [security model](docs/security.md), and [demo guide](docs/demo.md) for details.
+
+## Development and checks
 
 ```bash
-sudo ./scripts/install-local-agent.sh --uninstall             # removes host agent
-docker compose -f /opt/vps-manager/docker-compose.yml down    # stops containers, preserves data
-
-# Optional destructive purge:
-docker compose -f /opt/vps-manager/docker-compose.yml down -v
-sudo rm -rf /opt/vps-manager
+npm ci
+npm run typecheck
+npm test
+npm run build
 ```
 
-## Architecture
+`npm run build:agent` builds the Go agent; `npm run test:agent` runs its tests (Go required). See [package.json](package.json) for other scripts.
 
-The architecture uses two agent modes:
+## Contributing and support
 
-1. **In-process local agent** (`LocalAgentSupervisorService`): When `APP_MODE=local` and `LOCAL_AGENT_ENABLED=true`, the API process itself collects system metrics every N seconds and pushes them to the `MetricRepository`. The machine is registered as a local `VpsRecord` with `kind=local`, `managedBy=system`. Requires no separate binary.
-
-2. **Host systemd agent**: A standalone Go binary (`vps-agent`) deployed as a systemd service. Configured via `bootstrap-local-agent` script which creates a credential/token and outputs agent config. Used in production deployments when the API runs in Docker and the host needs separate metric collection.
-
-## Scripts
-
-- `npm run dev` - run the API workspace with `tsx watch`
-- `npm run dev:web` - run the Vite dashboard with `/api` proxy
-- `npm run build:web` - build React dashboard into root `public/`
-- `npm run build:api` - compile TypeScript API to root `dist/`
-- `npm run build` - build web, then API
-- `npm start` - run compiled server
-- `npm test` - run backend and frontend Vitest tests
-- `npm run typecheck` - typecheck API and web workspaces
-- `npm run bootstrap-local-agent` - bootstrap agent credential and config (`--backend-url <url>` required)
-- `npm run set-dashboard-password` - set dashboard admin password
-
-## API Surface
-
-- `GET /api/health`
-- `GET /api/dashboard`
-- `GET /api/vps`
-- `POST /api/vps`
-- `GET /api/vps/:id`
-- `PATCH /api/vps/:id`
-- `DELETE /api/vps/:id`
-- `POST /api/vps/:id/provision-key` with `{ "password": "..." }`
-- `POST /api/vps/:id/verify-key`
-
-List endpoints (`/api/jobs`, `/api/audit`, `/api/metrics`) support pagination via `?limit=N&offset=N`. Default limit is 100, max is 500 for each. Responses include a `page` object with `{ limit, offset, nextOffset? }`. Audit filters use AND semantics: `?resourceId=x&result=y` returns only events matching all criteria. Metrics `?vpsId=x` returns 0 or 1 latest sample (no pagination).
-
-Rate limiting is per-process in demo/JSON mode and shared through Postgres-backed buckets when `STORAGE_DRIVER=postgres`. Set `TRUST_PROXY_HOPS` when running behind a trusted reverse proxy so limits apply to the real client IP.
-
-## Testing Strategy
-
-CI runs `npm ci`, `npm test`, `npm run typecheck`, `npm run build`, and a Docker image build. Backend tests cover config safety, auth, redaction, SSH host policy, static path protection, secret non-leakage, and demo dashboard data. Frontend tests cover dashboard rendering and password storage invariants.
-
-## Roadmap Scope
-
-Implemented portfolio MVP: demo mode, seeded servers, health cards, simulated jobs, metrics, audit timeline, demo terminal, Docker Compose, GitHub Actions, and portfolio docs. Post-MVP items remain intentionally deferred: full WebSocket SSH terminal, SQLite persistence, server-sent realtime updates, and cloud-provider provisioning.
+Report bugs or suggest features through [GitHub Issues](https://github.com/sondoan17/vps-manager-nodejs/issues). For pull requests, describe the change, how you verified it, and any security implications. Run `npm run typecheck`, `npm test`, and `npm run build` before submitting. Never include SSH keys, passwords, tokens, or `.env` files in issues or commits. Check the license status above before reusing or distributing the source code.
