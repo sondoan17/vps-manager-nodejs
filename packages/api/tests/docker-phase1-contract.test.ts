@@ -361,6 +361,11 @@ describe("I0 caps and timestamps", () => {
       agentMetricPayloadSchema.parse({
         ...corePayload(),
         docker: validDockerPayload({
+          batchId: undefined,
+          events: undefined,
+          eventWindow: undefined,
+          fromWatermark: undefined,
+          proposedWatermark: undefined,
           collectedAt: new Date(Date.now() - 11 * 60_1000).toISOString(),
         }),
       }),

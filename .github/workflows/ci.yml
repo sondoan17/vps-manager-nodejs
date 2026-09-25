@@ -215,8 +215,9 @@ jobs:
       - name: Scan API image for critical fixable vulnerabilities
         # Report-only scan (exit-code 0) so the web scan and both SBOMs still
         # run even if this image has findings; the final gate below fails.
-        # always() keeps this independent of the web scan/SBOM step outcomes.
-        if: always() && steps.effective.outputs.api_changed == 'true'
+        # Scan only images successfully built in this job; a failed prerequisite
+        # already fails verification and must not trigger a registry fallback.
+        if: (success() || failure()) && steps.effective.outputs.api_changed == 'true' && steps['api-build'].outcome == 'success'
         uses: aquasecurity/trivy-action@v0.36.0
         with:
           scan-type: image
@@ -229,8 +230,9 @@ jobs:
           exit-code: "0"
 
       - name: Scan web image for critical fixable vulnerabilities
-        # Independent of the API scan result; final gate aggregates both.
-        if: always() && steps.effective.outputs.web_changed == 'true'
+        # A failed API scan is itself a release failure, not a reason to skip
+        # the independent web scan.
+        if: (success() || failure()) && steps.effective.outputs.web_changed == 'true' && steps['web-build'].outcome == 'success'
         uses: aquasecurity/trivy-action@v0.36.0
         with:
           scan-type: image
@@ -243,7 +245,7 @@ jobs:
           exit-code: "0"
 
       - name: Generate SBOM for API image
-        if: always() && steps.effective.outputs.api_changed == 'true'
+        if: (success() || failure()) && steps.effective.outputs.api_changed == 'true' && steps['api-build'].outcome == 'success'
         uses: anchore/sbom-action@v0
         with:
           image: vps-manager-nodejs-api:ci
@@ -251,7 +253,7 @@ jobs:
           output-file: sbom-api.spdx.json
 
       - name: Generate SBOM for web image
-        if: always() && steps.effective.outputs.web_changed == 'true'
+        if: (success() || failure()) && steps.effective.outputs.web_changed == 'true' && steps['web-build'].outcome == 'success'
         uses: anchore/sbom-action@v0
         with:
           image: vps-manager-nodejs-web:ci
