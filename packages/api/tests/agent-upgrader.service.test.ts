@@ -62,6 +62,7 @@ describe("AgentUpgraderService", () => {
     await f.task();
     expect(f.ctx.succeed).toHaveBeenCalledWith("complete");
     const once = f.commands.findIndex((c) => c.includes(" -once"));
+    expect(f.commands[once]).toContain(" -host-only");
     const identify = f.commands.findIndex((c) => c.includes("_matches=0"));
     const stop = f.commands.findIndex((c) => c.includes("kill -TERM") && c.includes("owns()"));
     const swap = f.commands.findIndex((c) => c.includes("vps-agent.backup-"));

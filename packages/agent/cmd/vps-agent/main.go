@@ -26,6 +26,7 @@ func main() {
 	configPath := flag.String("config", "", "path to config file")
 	stateFlag := flag.String("state", "", "path to persisted state file")
 	once := flag.Bool("once", false, "collect and push metrics once then exit")
+	hostOnly := flag.Bool("host-only", false, "with -once, push host metrics without Docker durable state")
 	showVersion := flag.Bool("version", false, "print agent version and exit")
 	provision := flag.Bool("provision-docker-state", false, "provision Docker identity and runtime keys, then exit")
 	identityPath := flag.String("docker-identity-path", "", "Docker identity output path")
@@ -72,6 +73,9 @@ func main() {
 	}
 
 	log.Printf("starting agent: %s", cfg)
+	if *hostOnly && !*once {
+		log.Fatal("-host-only requires -once")
+	}
 
 	collector := metrics.NewCollector()
 	statePath := cfg.StatePath
@@ -95,7 +99,9 @@ func main() {
 	runtimeKeysFile := filepath.Join(base, "runtime-keys.json")
 	deliveryPath := filepath.Join(base, "delivery-state.json")
 	var runner *run.Runner
-	if st, e := state.LoadStore(runtimeKeysFile, deliveryPath); e != nil {
+	if *hostOnly {
+		runner = run.New(cfg, collector, pushClient)
+	} else if st, e := state.LoadStore(runtimeKeysFile, deliveryPath); e != nil {
 		// Fail closed: without durable identity the runner strips any Docker
 		// branch and pushes host metrics only.
 		log.Printf("docker durable state unavailable; host metrics only (docker branch suppressed): %v", e)
@@ -126,32 +132,34 @@ func main() {
 
 	// Commands run independently from metrics so a slow/failing command can
 	// never delay collection or create a second metrics owner.
-	if st, e := state.LoadStore(runtimeKeysFile, deliveryPath); e == nil {
-		resolver, re := commands.NewDockerTargetResolver("", time.Duration(cfg.RequestTimeoutSeconds)*time.Second, st.ContainerKey)
-		control, ce := commands.DefaultDockerControl("", time.Duration(cfg.RequestTimeoutSeconds)*time.Second)
-		receipts, se := commands.NewFileReceiptStore(filepath.Join(base, "command-receipt.json"))
-		client := commands.NewClient(cfg)
-		if re != nil || ce != nil || se != nil {
-			log.Printf("command worker unavailable: resolver=%v controller=%v receipt=%v", re, ce, se)
-		} else if worker, we := commands.NewWorker(st.InstanceID(), cfg.VpsId, client, control, receipts, resolver); we != nil {
-			log.Printf("command worker unavailable: %v", we)
-		} else {
-			go func() {
-				ticker := time.NewTicker(time.Duration(cfg.IntervalSeconds) * time.Second)
-				defer ticker.Stop()
-				for {
-					cycleCtx, cycleCancel := context.WithTimeout(ctx, time.Duration(cfg.RequestTimeoutSeconds)*time.Second)
-					if err := worker.ProcessOne(cycleCtx); err != nil && ctx.Err() == nil {
-						log.Printf("command cycle failed: %v", err)
+	if !*hostOnly {
+		if st, e := state.LoadStore(runtimeKeysFile, deliveryPath); e == nil {
+			resolver, re := commands.NewDockerTargetResolver("", time.Duration(cfg.RequestTimeoutSeconds)*time.Second, st.ContainerKey)
+			control, ce := commands.DefaultDockerControl("", time.Duration(cfg.RequestTimeoutSeconds)*time.Second)
+			receipts, se := commands.NewFileReceiptStore(filepath.Join(base, "command-receipt.json"))
+			client := commands.NewClient(cfg)
+			if re != nil || ce != nil || se != nil {
+				log.Printf("command worker unavailable: resolver=%v controller=%v receipt=%v", re, ce, se)
+			} else if worker, we := commands.NewWorker(st.InstanceID(), cfg.VpsId, client, control, receipts, resolver); we != nil {
+				log.Printf("command worker unavailable: %v", we)
+			} else {
+				go func() {
+					ticker := time.NewTicker(time.Duration(cfg.IntervalSeconds) * time.Second)
+					defer ticker.Stop()
+					for {
+						cycleCtx, cycleCancel := context.WithTimeout(ctx, time.Duration(cfg.RequestTimeoutSeconds)*time.Second)
+						if err := worker.ProcessOne(cycleCtx); err != nil && ctx.Err() == nil {
+							log.Printf("command cycle failed: %v", err)
+						}
+						cycleCancel()
+						select {
+						case <-ctx.Done():
+							return
+						case <-ticker.C:
+						}
 					}
-					cycleCancel()
-					select {
-					case <-ctx.Done():
-						return
-					case <-ticker.C:
-					}
-				}
-			}()
+				}()
+			}
 		}
 	}
 

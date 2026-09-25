@@ -229,7 +229,7 @@ export class AgentUpgraderService {
       );
       await this.ssh.execCommand(
         vps,
-        `${q(staged)} -config ${q(config)} -once`,
+        `${q(staged)} -config ${q(config)} -once -host-only`,
         auth,
         45_000,
       );
