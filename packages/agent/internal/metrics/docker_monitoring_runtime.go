@@ -98,7 +98,7 @@ func (c *Collector) collectDockerAPI(ctx context.Context, out *DockerMetrics, st
 									// array; nil would marshal as null.
 									evs = []DockerEvent{}
 								}
-								out.Events, out.EventWindow, out.FromWatermark, out.ProposedWatermark = &evs, win, &DockerEventWatermark{TimeNano: in.SinceNano, BoundaryDigests: append([]string(nil), in.FromDigests...)}, prop
+								out.Events, out.EventWindow, out.FromWatermark, out.ProposedWatermark = &evs, win, &DockerEventWatermark{TimeNano: in.SinceNano, BoundaryDigests: append([]string{}, in.FromDigests...)}, prop
 							}
 						}
 					}()

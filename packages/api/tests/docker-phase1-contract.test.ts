@@ -90,6 +90,14 @@ function validDockerPayload(overrides: Record<string, unknown> = {}) {
 }
 
 describe("wire contract (schemaVersion 2 only)", () => {
+  it("accepts an existing pending batch with a null empty watermark", () => {
+    const parsed = agentMetricPayloadSchema.parse({
+      ...corePayload(),
+      docker: validDockerPayload({ fromWatermark: { timeNano: "1", boundaryDigests: null } }),
+    });
+    expect(parsed.docker?.fromWatermark?.boundaryDigests).toEqual([]);
+  });
+
   it("rejects a schemaVersion 1 docker branch", () => {
     expect(() =>
       agentMetricPayloadSchema.parse({

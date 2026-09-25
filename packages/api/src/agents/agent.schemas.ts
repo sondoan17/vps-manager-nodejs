@@ -164,7 +164,7 @@ const dockerEventSchema = z
 const dockerWatermarkSchema = z
   .object({
     timeNano: nanoString,
-    boundaryDigests: z.array(digest).max(256),
+    boundaryDigests: z.array(digest).max(256).nullable().transform((value) => value ?? []),
   })
   .strict();
 
