@@ -16,6 +16,7 @@ import { createJsonMetricRepository } from "../src/persistence/repositories/metr
 import { createKeyService } from "../src/ssh/keyService.js";
 import { createVpsStore } from "../src/persistence/store/vpsStore.js";
 import { AgentService } from "../src/agents/agent.service.js";
+import { agentMetricPayloadSchema } from "../src/agents/agent.schemas.js";
 import { AgentLifecycleCoordinator } from "../src/agents/agent-lifecycle-coordinator.js";
 import { isFreshTimestamp } from "../src/monitoring/monitoring.service.js";
 
@@ -1297,6 +1298,21 @@ describe("Docker ingest via AgentService", () => {
       ...overrides,
     };
   }
+
+  it("accepts an old durable batch replay but rejects an old unbatched snapshot", () => {
+    const old = new Date(Date.now() - 60 * 60_000).toISOString();
+    const oldSnapshot = validStructuredDockerPayload({ collectedAt: old });
+    const batch = {
+      ...oldSnapshot,
+      batchId: "batch_abc123",
+      events: [],
+      eventWindow: { since: "0", until: "1", capped: false, lossy: false },
+      fromWatermark: { timeNano: "0", boundaryDigests: [] },
+      proposedWatermark: { timeNano: "1", boundaryDigests: [] },
+    };
+    expect(agentMetricPayloadSchema.safeParse(validPayload({ docker: oldSnapshot })).success).toBe(false);
+    expect(agentMetricPayloadSchema.safeParse(validPayload({ docker: batch })).success).toBe(true);
+  });
 
   it("returns the accepted structured acknowledgement without a legacy write", async () => {
     const vpsId = await createVps();

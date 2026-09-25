@@ -65,17 +65,7 @@ const agentSystemInfoInputSchema = z
 // inspect payloads, volume names, layer IDs, and arbitrary event/storage
 // attributes are rejected by strict() at every nesting level.
 
-const dockerTimestamp = z
-  .string()
-  .datetime({ offset: true })
-  .refine(
-    (val) => {
-      const ts = new Date(val).getTime();
-      const now = Date.now();
-      return ts >= now - TEN_MINUTES_MS && ts <= now + TWO_MINUTES_MS;
-    },
-    { message: "docker.collectedAt must be within -10m / +2m of now" },
-  );
+const dockerTimestamp = z.string().datetime({ offset: true });
 
 const safeId = (max: number) =>
   z
@@ -297,6 +287,19 @@ const agentDockerMetricsBaseSchema = z
 
 const agentDockerMetricsInputSchema = agentDockerMetricsBaseSchema
   .superRefine((v, ctx) => {
+    // A durable batch replays byte-for-byte until acknowledged. Its original
+    // collection time can be arbitrarily old after an outage or failed upgrade.
+    // Fresh snapshots still require a recent timestamp; neither may be future-dated.
+    const collectedAt = new Date(v.collectedAt).getTime();
+    if (
+      collectedAt > Date.now() + TWO_MINUTES_MS ||
+      (v.batchId === undefined && collectedAt < Date.now() - TEN_MINUTES_MS)
+    ) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: "docker.collectedAt must be recent unless replaying a durable batch",
+      });
+    }
     // Event protocol is all-or-none: batchId/events/eventWindow/
     // fromWatermark/proposedWatermark travel together (flat plan item 7).
     // A minimal snapshot carries none of them (batchId absent with no event
