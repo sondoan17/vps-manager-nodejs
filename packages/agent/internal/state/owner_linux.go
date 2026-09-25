@@ -8,10 +8,10 @@ import (
 	"syscall"
 )
 
-// checkFileOwnership fails closed when the state file owner differs from the
-// effective UID of this process. In production the agent runs as root, so this
-// is equivalent to the required root-owned check; in tests it detects foreign
-// ownership without requiring uid 0.
+// checkFileOwnershipWithUID fails closed when the state file owner differs from
+// the expected UID. Provisioning requires both files to be owned by the
+// executing UID (0600); root provisioning of an existing root-owned identity
+// remains supported because the executor is uid 0 there.
 func checkFileOwnershipWithUID(fi os.FileInfo, expected *int) error {
 	if expected == nil {
 		return checkFileOwnership("", fi)
@@ -23,7 +23,11 @@ func checkFileOwnershipWithUID(fi os.FileInfo, expected *int) error {
 	return nil
 }
 
-func provisionIdentityOwnerUID() int { return 0 }
+// provisionIdentityOwnerUID defaults to the executing UID so nonroot initial
+// provisioning succeeds when both files are owned by the caller (0600).
+// Root callers pass the service UID via ProvisionOptions.RuntimeOwnerUID for
+// existing split-owner installs; the identity default stays uid 0 there.
+func provisionIdentityOwnerUID() int { return os.Geteuid() }
 func provisionRuntimeOwnerUID() int  { return os.Geteuid() }
 
 func checkFileOwnership(_ string, fi os.FileInfo) error {

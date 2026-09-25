@@ -34,8 +34,8 @@ func main() {
 	flag.Parse()
 
 	if *provision {
-		if os.Geteuid() != 0 || *identityPath == "" || *runtimeKeysPath == "" || *runtimeOwnerUID == "" {
-			fmt.Fprintln(os.Stderr, "provisioning requires root, explicit identity/runtime-key paths, and a runtime owner UID")
+		if *identityPath == "" || *runtimeKeysPath == "" || *runtimeOwnerUID == "" {
+			fmt.Fprintln(os.Stderr, "provisioning requires explicit identity/runtime-key paths and a runtime owner UID")
 			os.Exit(1)
 		}
 		uid, err := strconv.ParseUint(*runtimeOwnerUID, 10, 0)
@@ -44,6 +44,10 @@ func main() {
 			os.Exit(1)
 		}
 		runtimeUID := int(uid)
+		if os.Geteuid() != 0 && runtimeUID != os.Geteuid() {
+			fmt.Fprintln(os.Stderr, "unprivileged provisioning requires the runtime owner UID to match the executing user")
+			os.Exit(1)
+		}
 		if err := state.Provision(*identityPath, *runtimeKeysPath, state.ProvisionOptions{RuntimeOwnerUID: &runtimeUID}); err != nil {
 			log.Fatalf("docker state provisioning failed: %v", err)
 		}

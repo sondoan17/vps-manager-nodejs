@@ -100,18 +100,37 @@ export function buildManagedProcessStopCommand(
  * upgrade. Runs as one remote shell script and MUST execute before any
  * `-once` preflight or service start:
  *
- * 1. Fails closed when the login user is non-root without passwordless sudo
- *    (the installation identity must be root-owned, so provisioning requires
- *    root even though the agent itself runs unprivileged).
- * 2. Fails closed when runtime keys exist without their installation identity
- *    instead of silently rotating an existing identity.
- * 3. Runs `-provision-docker-state` idempotently: a valid existing pair is
- *    preserved byte-for-byte (no rotation on upgrade), a partial pair is
- *    completed, then ownership/mode are enforced (identity root:root 0600,
+ * Privileged (root or passwordless sudo):
+ * 1. Fails closed when either file exists without the other: a partial pair
+ *    is never completed, and runtime keys without an identity are refused
+ *    rather than silently rotating a fresh identity.
+ * 2. Runs `-provision-docker-state` idempotently: a valid existing pair is
+ *    preserved byte-for-byte (no rotation on upgrade), then ownership/mode
+ *    are enforced (identity root:root 0600,
  *    runtime keys <login-user>:<login-group> 0600).
- * 4. Re-runs provisioning with the login user's uid as the runtime owner so
+ * 3. Re-runs provisioning with the login user's uid as the runtime owner so
  *    the final state passes exactly the validation the agent performs before
  *    it starts.
+ *
+ * Unprivileged (non-root without passwordless sudo):
+ * 1. Clean install (neither file exists) provisions a user-owned 0600 pair
+ *    directly, with no privilege escalation attempt (runtime owner uid must
+ *    equal the invoking euid, which the agent CLI enforces).
+ * 2. An existing intact user-owned pair is re-provisioned as the login user:
+ *    the agent validates content and the runtime↔identity match and preserves
+ *    both files byte-for-byte (no rotation on upgrade).
+ * 3. An existing root-owned identity with user-owned runtime keys is left
+ *    completely untouched (no provision, no chown/chmod): stat checks confirm
+ *    regular files, 0600 modes, non-empty content, and the split owners, then
+ *    the script exits 0 so the caller's subsequent `-once` preflight runs. That
+ *    preflight validates the runtime keys standalone (strict JSON, 32-byte
+ *    keys, 0600 + owner, delivery-state MAC) — it never reads the identity
+ *    file, so the runtime↔identity cryptographic match is unverifiable as the
+ *    SSH user and is revalidated by the next privileged provision. An absent
+ *    identity fails closed at the shell guard above rather than being accepted.
+ * 4. Anything else fails closed: a partial pair, non-regular files, insecure
+ *    modes, unexpected owners, or empty files exit non-zero without touching
+ *    state.
  *
  * Every failure path exits non-zero; the SSH layer rejects the command, the
  * install/upgrade job fails, and no service is started or restarted.
@@ -125,12 +144,20 @@ export function buildDockerStateProvisionCommand(
   return [
     "set -eu",
     `_d=${d}; _b=${b}; _id="$_d/docker-identity.json"; _rk="$_d/runtime-keys.json"; _u=$(id -u)`,
-    `if [ "$_u" -eq 0 ]; then _s=''; elif command -v sudo >/dev/null 2>&1 && sudo -n true >/dev/null 2>&1; then _s='sudo -n'; else echo 'Docker provisioning requires root or passwordless sudo on the remote host; refusing to start the agent without it' >&2; exit 1; fi`,
+    `# Privilege: root, else passwordless sudo (verified with sudo -n), else unprivileged user-owned state only.`,
+    `if [ "$_u" -eq 0 ]; then _s=''; elif command -v sudo >/dev/null 2>&1 && sudo -n true >/dev/null 2>&1; then _s='sudo -n'; else _s='_nosudo'; fi`,
     `if [ -e "$_rk" ] && [ ! -e "$_id" ]; then echo "Docker runtime keys exist without the installation identity ($_id); refusing to rotate the installation identity" >&2; exit 1; fi`,
+    `if [ -e "$_id" ] && [ ! -e "$_rk" ]; then echo "Docker installation identity exists without runtime keys ($_rk); refusing to provision a partial pair" >&2; exit 1; fi`,
     `_p=0; if [ -e "$_rk" ]; then _o=$(stat -c %u "$_rk"); case "$_o" in 0|"$_u") _p="$_o";; *) echo "Unexpected owner uid $_o for $_rk; refusing to touch Docker runtime keys" >&2; exit 1;; esac; fi`,
-    `$_s "$_b" -provision-docker-state -docker-identity-path "$_id" -docker-runtime-keys-path "$_rk" -docker-runtime-owner-uid "$_p"`,
-    `$_s chown root:root "$_id"; $_s chown "$_u:$(id -gn)" "$_rk"; $_s chmod 0600 "$_id" "$_rk"`,
-    `$_s "$_b" -provision-docker-state -docker-identity-path "$_id" -docker-runtime-keys-path "$_rk" -docker-runtime-owner-uid "$_u"`,
+    `if [ "$_s" != '_nosudo' ]; then $_s "$_b" -provision-docker-state -docker-identity-path "$_id" -docker-runtime-keys-path "$_rk" -docker-runtime-owner-uid "$_p"; $_s chown root:root "$_id"; $_s chown "$_u:$(id -gn)" "$_rk"; $_s chmod 0600 "$_id" "$_rk"; $_s "$_b" -provision-docker-state -docker-identity-path "$_id" -docker-runtime-keys-path "$_rk" -docker-runtime-owner-uid "$_u"; exit 0; fi`,
+    `if [ ! -e "$_id" ] && [ ! -e "$_rk" ]; then "$_b" -provision-docker-state -docker-identity-path "$_id" -docker-runtime-keys-path "$_rk" -docker-runtime-owner-uid "$_u"; exit 0; fi`,
+    `if [ ! -f "$_id" ] || [ ! -f "$_rk" ]; then echo "Docker state files must be regular files; refusing to provision without privilege" >&2; exit 1; fi`,
+    `_im=$(stat -c %a "$_id"); _io=$(stat -c %u "$_id"); _rm=$(stat -c %a "$_rk"); _ro=$(stat -c %u "$_rk")`,
+    `case "$_im" in 600) ;; *) echo "Insecure mode $_im for $_id; refusing to provision without privilege" >&2; exit 1;; esac`,
+    `case "$_rm" in 600) ;; *) echo "Insecure mode $_rm for $_rk; refusing to provision without privilege" >&2; exit 1;; esac`,
+    `if [ "$_io" = "$_u" ] && [ "$_ro" = "$_u" ]; then "$_b" -provision-docker-state -docker-identity-path "$_id" -docker-runtime-keys-path "$_rk" -docker-runtime-owner-uid "$_u"; exit 0; fi`,
+    `if [ "$_io" = 0 ] && [ "$_ro" = "$_u" ] && [ -s "$_id" ] && [ -s "$_rk" ]; then exit 0; fi`,
+    `echo "Unexpected Docker state owners (identity uid $_io, runtime uid $_ro); refusing to touch Docker state without privilege" >&2; exit 1`,
   ].join("\n");
 }
 
