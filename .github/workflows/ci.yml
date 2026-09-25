@@ -138,6 +138,7 @@ jobs:
         uses: docker/setup-buildx-action@v3
 
       - name: Build API Docker image
+        id: api-build
         if: steps.effective.outputs.api_changed == 'true'
         uses: docker/build-push-action@v6
         with:
@@ -175,6 +176,7 @@ jobs:
           '
 
       - name: Build web Docker image
+        id: web-build
         if: steps.effective.outputs.web_changed == 'true'
         uses: docker/build-push-action@v6
         with:
